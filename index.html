@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -204,6 +204,10 @@ body { background:#F2F2F2; color:var(--bh-dark); }
 .btn-rem-peca:hover { background:#DC2626; color:white; }
 .btn-add-peca { background:var(--bh-orange-light); color:var(--bh-orange-dark); border:2px dashed var(--bh-orange); border-radius:8px; padding:.5rem 1rem; font-size:.8rem; font-weight:700; cursor:pointer; width:100%; transition:all .15s; }
 .btn-add-peca:hover { background:var(--bh-orange); color:white; border-style:solid; }
+.btn-ccp { font-size:.68rem; font-weight:900; letter-spacing:.8px; background:#fff; color:#9CA3AF; border:1.5px solid #D1D5DB; border-left:none; padding:.2rem .55rem; border-radius:0 6px 6px 0; transition:all .2s; white-space:nowrap; }
+.btn-ccp:hover { background:#F3F4F6; color:#6B7280; }
+.btn-ccp.ccp-ativo { background:#DC2626; color:#fff; border-color:#DC2626; }
+.btn-ccp.ccp-ativo:hover { background:#B91C1C; border-color:#B91C1C; }
 
 /* ENTRADA ACCORDION na aba "Todas" */
 .entrada-card { background:#fff; border-radius:10px; border:1px solid var(--border); box-shadow:0 1px 4px rgba(0,0,0,.05); overflow:hidden; margin-bottom:.6rem; }
@@ -456,7 +460,10 @@ body { background:#F2F2F2; color:var(--bh-dark); }
           <div class="row g-3 mb-3">
             <div class="col-md-3">
               <label class="form-label">Código do Cliente *</label>
-              <input type="text" class="form-control" id="codigoCli" required placeholder="C001">
+              <div class="input-group">
+                <input type="text" class="form-control" id="codigoCli" required placeholder="C001" oninput="verificarCCP()">
+                <button type="button" class="btn-ccp" id="btnCCP" onclick="abrirCCP()" title="CCP — Clique para ver/editar observações deste cliente">CCP</button>
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Nome do Cliente *</label>
@@ -670,6 +677,35 @@ body { background:#F2F2F2; color:var(--bh-dark); }
   </div>
 </div>
 
+<div class="modal fade" id="modalCCP" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--bh-dark);color:white;border-radius:12px 12px 0 0">
+        <div>
+          <h6 class="modal-title fw-bold mb-0"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>CCP — Observações do Cliente</h6>
+          <div id="ccpClienteInfo" style="font-size:.75rem;opacity:.75;margin-top:.15rem"></div>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+        <textarea class="form-control" id="ccpObs" rows="5"
+          placeholder="Registre aqui observações importantes sobre este cliente (inadimplência, restrições, histórico de problemas, etc.)..."
+          style="font-size:.85rem;resize:vertical"></textarea>
+        <div id="ccpUltimaAlt" style="font-size:.68rem;color:var(--text-muted);margin-top:.4rem"></div>
+      </div>
+      <div class="modal-footer" style="background:#F8F8F8">
+        <button type="button" class="btn btn-sm btn-outline-danger me-auto" onclick="limparCCP()">
+          <i class="bi bi-trash me-1"></i>Remover Observação
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-bh btn-sm px-4" onclick="salvarCCP()">
+          <i class="bi bi-check-lg me-1"></i>Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -706,6 +742,20 @@ const save=d=>{
   const obj={};d.forEach(x=>{if(x.id)obj[x.id]=x;});
   _dbRef().set(Object.keys(obj).length?obj:null);
 };
+
+let _ccpCache={};
+const _ccpRef=()=>firebase.database().ref('ccp_bhcabines');
+const loadCCP=()=>_ccpCache;
+const saveCCPData=(cod,obs)=>{
+  if(obs){_ccpCache[cod]={obs,at:new Date().toISOString()};}
+  else{delete _ccpCache[cod];}
+  if(FIREBASE_CONFIG.apiKey!=='COLE_AQUI'){
+    _ccpRef().set(Object.keys(_ccpCache).length?_ccpCache:null);
+  }else{
+    try{localStorage.setItem('ccp_bh',JSON.stringify(_ccpCache));}catch{}
+  }
+};
+
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 const fmtR=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const fmtD=s=>{if(!s)return'—';const[y,m,d]=s.split('-');return d+'/'+m+'/'+y;};
@@ -1149,6 +1199,7 @@ function editarEnt(id){
   fotosTemp=[...(e.fotos||[])];
   renderFotoGrid();
   preencherListas();
+  setTimeout(verificarCCP,50);
   new bootstrap.Modal(document.getElementById('modalDevolucao')).show();
 }
 
@@ -1418,15 +1469,61 @@ function renderTudo(){
   if(document.getElementById('abaTodas').style.display!=='none')renderTabela();
 }
 
-// Listener em tempo real — atualiza para todos ao salvar
+// Listeners em tempo real
 if(FIREBASE_CONFIG.apiKey!=='COLE_AQUI'){
   _dbRef().on('value',snap=>{
     const val=snap.val();
     _cache=val?Object.values(val):[];
     renderTudo();
   });
+  _ccpRef().on('value',snap=>{
+    _ccpCache=snap.val()||{};
+    verificarCCP();
+  });
 }else{
+  try{_ccpCache=JSON.parse(localStorage.getItem('ccp_bh')||'{}');}catch{}
   renderTudo();
+}
+
+// ── CCP ───────────────────────────────────────────────────────────────────────
+function verificarCCP(){
+  const cod=(document.getElementById('codigoCli')?.value||'').trim();
+  const btn=document.getElementById('btnCCP');
+  if(!btn)return;
+  const tem=cod&&loadCCP()[cod]?.obs;
+  btn.classList.toggle('ccp-ativo',!!tem);
+  btn.title=tem?'CCP — Este cliente tem observação registrada! Clique para ver':'CCP — Sem observações para este cliente';
+}
+
+function abrirCCP(){
+  const cod=(document.getElementById('codigoCli')?.value||'').trim();
+  const nome=(document.getElementById('nomeCli')?.value||'').trim();
+  if(!cod){toast('Informe o Código do Cliente primeiro.','warning');return;}
+  const reg=loadCCP()[cod];
+  document.getElementById('ccpClienteInfo').textContent=cod+(nome?' — '+nome:'');
+  document.getElementById('ccpObs').value=reg?.obs||'';
+  const altEl=document.getElementById('ccpUltimaAlt');
+  if(reg?.at){const d=new Date(reg.at);altEl.textContent='Última atualização: '+d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+  else altEl.textContent='';
+  new bootstrap.Modal(document.getElementById('modalCCP')).show();
+}
+
+function salvarCCP(){
+  const cod=(document.getElementById('codigoCli')?.value||'').trim();
+  if(!cod)return;
+  const obs=document.getElementById('ccpObs').value.trim();
+  saveCCPData(cod,obs);
+  bootstrap.Modal.getInstance(document.getElementById('modalCCP')).hide();
+  verificarCCP();
+  toast(obs?'Observação CCP salva!':'Observação CCP removida.','success');
+}
+
+function limparCCP(){
+  const cod=(document.getElementById('codigoCli')?.value||'').trim();
+  if(cod)saveCCPData(cod,'');
+  bootstrap.Modal.getInstance(document.getElementById('modalCCP')).hide();
+  verificarCCP();
+  toast('Observação CCP removida.','secondary');
 }
 </script>
 </body>
