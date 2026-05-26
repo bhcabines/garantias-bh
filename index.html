@@ -1508,23 +1508,34 @@ function renderTudo(){
 
 // Listeners em tempo real
 if(FIREBASE_CONFIG.apiKey!=='COLE_AQUI'){
+  // Renderiza imediatamente com dados do backup local enquanto Firebase carrega
+  _cache=_bkLoad().map(_fixPecas);
+  renderTudo();
+
   _dbRef().on('value',snap=>{
     const val=snap.val();
     if(!val){
-      // Firebase vazio: usa backup local se existir
       const bk=_bkLoad();
       _cache=bk.length?bk.map(_fixPecas):[];
-      renderTudo();
-      return;
+    }else{
+      _cache=Object.values(val).map(_fixPecas);
+      _bkSave(_cache);
     }
-    _cache=Object.values(val).map(_fixPecas);
-    _bkSave(_cache); // mantém backup local sincronizado
     renderTudo();
+  },err=>{
+    // Permissão negada ou erro de conexão — usa backup local
+    console.warn('Firebase:',err.message);
+    _cache=_bkLoad().map(_fixPecas);
+    renderTudo();
+    if(err.code==='PERMISSION_DENIED'){
+      toast('Acesso negado pelo Firebase. Corrija as Regras do banco de dados.','danger');
+    }
   });
+
   _ccpRef().on('value',snap=>{
     _ccpCache=snap.val()||{};
     verificarCCP();
-  });
+  },()=>{});
 }else{
   try{_ccpCache=JSON.parse(localStorage.getItem('ccp_bh')||'{}');}catch{}
   _cache=_bkLoad().map(_fixPecas);
