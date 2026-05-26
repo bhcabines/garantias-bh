@@ -774,7 +774,10 @@ const stHTML=s=>{const m={pendente:['dot-pendente','status-pendente','Pendente']
 
 // ── NORMALIZAÇÃO (compatibilidade com dados antigos) ──────────────────────────
 function normalizarEntrada(e){
-  if(e.pecas&&e.pecas.length>0)return e;
+  // Firebase converte arrays em objetos {"0":..,"1":..} — converte de volta
+  let pecas=e.pecas;
+  if(pecas&&!Array.isArray(pecas))pecas=Object.values(pecas);
+  if(pecas&&pecas.length>0)return{...e,pecas};
   return{...e,pecas:[{
     pecaId:(e.id||'')+('_p0'),
     codigoPeca:e.codigoPeca||'',nomePeca:e.nomePeca||'',
@@ -1500,7 +1503,11 @@ function renderTudo(){
 if(FIREBASE_CONFIG.apiKey!=='COLE_AQUI'){
   _dbRef().on('value',snap=>{
     const val=snap.val();
-    _cache=val?Object.values(val):[];
+    if(!val){_cache=[];renderTudo();return;}
+    _cache=Object.values(val).map(e=>({
+      ...e,
+      pecas:Array.isArray(e.pecas)?e.pecas:(e.pecas?Object.values(e.pecas):[])
+    }));
     renderTudo();
   });
   _ccpRef().on('value',snap=>{
