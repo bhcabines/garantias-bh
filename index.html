@@ -743,12 +743,19 @@ if(FIREBASE_CONFIG.apiKey==='COLE_AQUI'){
 }
 
 let _cache=[];
+const _BK_KEY='garantias_bh_backup';
 const _dbRef=()=>firebase.database().ref('garantias_bhcabines');
 const load=()=>_cache;
+const _bkSave=d=>{try{localStorage.setItem(_BK_KEY,JSON.stringify(d));}catch{}};
+const _bkLoad=()=>{try{return JSON.parse(localStorage.getItem(_BK_KEY)||'[]');}catch{return[];}};
+const _fixPecas=e=>({...e,pecas:Array.isArray(e.pecas)?e.pecas:(e.pecas?Object.values(e.pecas):[])});
 const save=d=>{
   _cache=d;
+  _bkSave(d);
   const obj={};d.forEach(x=>{if(x.id)obj[x.id]=x;});
-  _dbRef().set(Object.keys(obj).length?obj:null);
+  _dbRef().set(Object.keys(obj).length?obj:null).catch(()=>{
+    toast('Dados salvos localmente. Verifique a conexão com o Firebase.','warning');
+  });
 };
 
 let _ccpCache={};
@@ -1503,11 +1510,15 @@ function renderTudo(){
 if(FIREBASE_CONFIG.apiKey!=='COLE_AQUI'){
   _dbRef().on('value',snap=>{
     const val=snap.val();
-    if(!val){_cache=[];renderTudo();return;}
-    _cache=Object.values(val).map(e=>({
-      ...e,
-      pecas:Array.isArray(e.pecas)?e.pecas:(e.pecas?Object.values(e.pecas):[])
-    }));
+    if(!val){
+      // Firebase vazio: usa backup local se existir
+      const bk=_bkLoad();
+      _cache=bk.length?bk.map(_fixPecas):[];
+      renderTudo();
+      return;
+    }
+    _cache=Object.values(val).map(_fixPecas);
+    _bkSave(_cache); // mantém backup local sincronizado
     renderTudo();
   });
   _ccpRef().on('value',snap=>{
@@ -1516,6 +1527,7 @@ if(FIREBASE_CONFIG.apiKey!=='COLE_AQUI'){
   });
 }else{
   try{_ccpCache=JSON.parse(localStorage.getItem('ccp_bh')||'{}');}catch{}
+  _cache=_bkLoad().map(_fixPecas);
   renderTudo();
 }
 
