@@ -475,6 +475,14 @@ body { background:#F2F2F2; color:var(--bh-dark); }
               <label class="form-label">Nº Nota Fiscal (Cliente) *</label>
               <input type="text" class="form-control" id="notaFiscal" required placeholder="000123">
             </div>
+            <div class="col-md-3">
+              <label class="form-label">Protocolo Vórtice</label>
+              <input type="text" class="form-control" id="protocoloVortico" placeholder="Ex: VRT-12345">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Protocolo Neppo</label>
+              <input type="text" class="form-control" id="protocoloNeppo" placeholder="Ex: NEP-67890">
+            </div>
           </div>
 
           <div class="form-sec-title"><i class="bi bi-box-seam me-1"></i>Peças Devolvidas <span style="font-weight:400;text-transform:none;font-size:.65rem">— informe o fornecedor de cada peça</span></div>
@@ -784,7 +792,8 @@ function flattenPecas(entries){
     (e.pecas||[]).forEach(p=>{
       flat.push({...p,entryId:e.id,codigoCli:e.codigoCli,nomeCli:e.nomeCli,
         notaFiscal:e.notaFiscal,dataEntrada:e.dataEntrada,
-        motivo:e.motivo,solucao:e.solucao,obs:e.obs,fotos:e.fotos});
+        motivo:e.motivo,solucao:e.solucao,obs:e.obs,fotos:e.fotos,
+        protocoloVortico:e.protocoloVortico||'',protocoloNeppo:e.protocoloNeppo||''});
     });
   });
   return flat;
@@ -840,7 +849,8 @@ function renderForn(){
   const ordem=document.getElementById('filtroOrdem')?.value||'valor';
   const grupos={};
   flat.forEach(p=>{
-    if(fs&&p.status!==fs)return;
+    // por padrão só mostra pendentes; se filtro de status selecionado, respeita o filtro
+    if(fs?p.status!==fs:p.status!=='pendente')return;
     const k=p.codigoForn||'SEM';
     if(!grupos[k])grupos[k]={cod:p.codigoForn,nome:p.nomeForn,ent:[]};
     grupos[k].ent.push(p);
@@ -893,11 +903,15 @@ function renderForn(){
       const solBadge=solucaoHTML(e.solucao);
       const envioInfo=e.nfGarantia?'<div style="font-size:.65rem;color:#059669;margin-top:.2rem"><i class="bi bi-send"></i> NF '+esc(e.nfGarantia)+(e.descarte?' <span class="badge-descarte">Descarte</span>':' — '+esc(e.formaEnvio||''))+'</div>':'';
       const checked=(selMap[g.cod]&&selMap[g.cod].has(e.pecaId))?'checked':'';
+      const vrtCell=e.protocoloVortico?'<span style="font-size:.68rem;font-weight:700;color:#1D4ED8;font-family:monospace">'+esc(e.protocoloVortico)+'</span>':'<span style="color:#ccc;font-size:.7rem">—</span>';
+      const nepCell=e.protocoloNeppo?'<span style="font-size:.68rem;font-weight:700;color:#6D28D9;font-family:monospace">'+esc(e.protocoloNeppo)+'</span>':'<span style="color:#ccc;font-size:.7rem">—</span>';
       return'<tr id="row_'+e.pecaId+'">'
         +'<td class="td-check"><input type="checkbox" class="row-check" '+checked+' onchange="toggleSel(\''+e.pecaId+'\',\''+g.cod+'\')" id="chk_'+e.pecaId+'"></td>'
         +'<td>'+fmtD(e.dataEntrada)+'</td>'
         +'<td><div style="font-weight:600">'+esc(e.nomeCli)+'</div><div style="font-size:.68rem;color:var(--text-muted)">'+esc(e.codigoCli)+'</div></td>'
         +'<td><span class="font-monospace" style="font-size:.76rem">'+esc(e.notaFiscal)+'</span></td>'
+        +'<td>'+vrtCell+'</td>'
+        +'<td>'+nepCell+'</td>'
         +'<td style="font-size:.72rem;color:var(--text-muted)">'+esc(e.codigoPeca)+'</td>'
         +'<td>'+esc(e.nomePeca)+'</td>'
         +'<td>'+esc(e.quantidade)+'</td>'
@@ -906,7 +920,6 @@ function renderForn(){
         +'<td style="max-width:130px"><span style="font-size:.73rem;font-weight:600;color:var(--bh-orange-dark)">'+motivoTxt+'</span>'+obsTxt+'</td>'
         +'<td>'+solBadge+'</td>'
         +'<td>'+fotosHTML(e.fotos)+'</td>'
-        +'<td><span style="cursor:pointer" onclick="abrirStPeca(\''+e.entryId+'\',\''+e.pecaId+'\')" title="Clique para alterar">'+stHTML(e.status)+'</span>'+envioInfo+'</td>'
         +'<td><button class="btn-action edit" onclick="editarEnt(\''+e.entryId+'\')" title="Editar entrada"><i class="bi bi-pencil"></i></button>'
         +'<button class="btn-action del" onclick="confirmarDelPeca(\''+e.entryId+'\',\''+e.pecaId+'\')" title="Excluir peça"><i class="bi bi-trash"></i></button></td>'
         +'</tr>';
@@ -935,8 +948,10 @@ function renderForn(){
         +'<div class="table-responsive">'
           +'<table class="entry-table"><thead><tr>'
             +'<th class="th-check"><input type="checkbox" class="row-check" title="Selecionar todos" onchange="selecionarTodos(this,\''+g.cod+'\','+JSON.stringify(g.ent.map(e=>e.pecaId))+')" id="chkAll_'+codSafe+'"></th>'
-            +'<th>Data</th><th>Cliente</th><th>NF</th><th>Cód. Peça</th><th>Descrição</th>'
-            +'<th>Qtd</th><th>Vlr Unit.</th><th>Total</th><th>Motivo</th><th>Solução Cliente</th><th>Fotos</th><th>Status / Envio</th><th></th>'
+            +'<th>Data</th><th>Cliente</th><th>NF</th>'
+            +'<th style="color:#1D4ED8">Vórtice</th><th style="color:#6D28D9">Neppo</th>'
+            +'<th>Cód. Peça</th><th>Descrição</th>'
+            +'<th>Qtd</th><th>Vlr Unit.</th><th>Total</th><th>Motivo</th><th>Solução Cliente</th><th>Fotos</th><th></th>'
           +'</tr></thead>'
           +'<tbody>'+rows+'</tbody>'
         +'</table></div>'
@@ -970,7 +985,7 @@ function renderTabela(){
     if(dd&&e.dataEntrada<dd)return false;
     if(da&&e.dataEntrada>da)return false;
     if(fs&&!e.pecas.some(p=>p.status===fs))return false;
-    if(fg){const t=[e.nomeCli,e.codigoCli,e.notaFiscal,...e.pecas.flatMap(p=>[p.nomePeca,p.codigoPeca,p.nomeForn,p.codigoForn])].join(' ').toLowerCase();if(!t.includes(fg))return false;}
+    if(fg){const t=[e.nomeCli,e.codigoCli,e.notaFiscal,e.protocoloVortico||'',e.protocoloNeppo||'',...e.pecas.flatMap(p=>[p.nomePeca,p.codigoPeca,p.nomeForn,p.codigoForn])].join(' ').toLowerCase();if(!t.includes(fg))return false;}
     return true;
   });
   d.sort((a,b)=>(b.dataEntrada||'').localeCompare(a.dataEntrada||''));
@@ -998,7 +1013,10 @@ function renderTabela(){
     return'<tr class="entrada-header-row" onclick="toggleAccT(\''+accTId+'\')" style="cursor:pointer;border-bottom:2px solid var(--border)">'
       +'<td>'+fmtD(e.dataEntrada)+'</td>'
       +'<td><div style="font-weight:600">'+esc(e.nomeCli)+'</div><div style="font-size:.68rem;color:var(--text-muted)">'+esc(e.codigoCli)+'</div></td>'
-      +'<td><span class="font-monospace">'+esc(e.notaFiscal)+'</span></td>'
+      +'<td><span class="font-monospace">'+esc(e.notaFiscal)+'</span>'
+        +(e.protocoloVortico?'<div style="font-size:.62rem;color:#1D4ED8;font-weight:700;margin-top:.1rem"><i class="bi bi-headset"></i> VRT: '+esc(e.protocoloVortico)+'</div>':'')
+        +(e.protocoloNeppo?'<div style="font-size:.62rem;color:#6D28D9;font-weight:700"><i class="bi bi-whatsapp"></i> NEP: '+esc(e.protocoloNeppo)+'</div>':'')
+      +'</td>'
       +'<td><span class="badge" style="background:var(--bh-orange-light);color:var(--bh-orange-dark);font-size:.7rem;font-weight:700">'+e.pecas.length+' peça(s)</span><br><span style="font-size:.75rem;color:#059669;font-weight:700">'+fmtR(vTotal)+'</span></td>'
       +'<td style="max-width:160px"><span style="font-size:.73rem;font-weight:600;color:var(--bh-orange-dark)">'+motivoTxt+'</span>'+obsTxt+'</td>'
       +'<td>'+solucaoHTML(e.solucao)+'</td>'
@@ -1164,16 +1182,18 @@ function salvar(){
   }));
   const en={
     id:eid||uid(),
-    codigoCli:  document.getElementById('codigoCli').value.trim(),
-    nomeCli:    document.getElementById('nomeCli').value.trim(),
-    notaFiscal: document.getElementById('notaFiscal').value.trim(),
-    dataEntrada:document.getElementById('dataEntrada').value,
-    motivo:     document.getElementById('motivo').value,
-    solucao:    document.getElementById('solucao').value,
-    obs:        document.getElementById('obs').value.trim(),
-    fotos:      [...fotosTemp],
-    pecas:      pecas,
-    criadoEm:  eid?(d.find(x=>x.id===eid)?.criadoEm||new Date().toISOString()):new Date().toISOString()
+    codigoCli:        document.getElementById('codigoCli').value.trim(),
+    nomeCli:          document.getElementById('nomeCli').value.trim(),
+    notaFiscal:       document.getElementById('notaFiscal').value.trim(),
+    protocoloVortico: document.getElementById('protocoloVortico').value.trim(),
+    protocoloNeppo:   document.getElementById('protocoloNeppo').value.trim(),
+    dataEntrada:      document.getElementById('dataEntrada').value,
+    motivo:           document.getElementById('motivo').value,
+    solucao:          document.getElementById('solucao').value,
+    obs:              document.getElementById('obs').value.trim(),
+    fotos:            [...fotosTemp],
+    pecas:            pecas,
+    criadoEm:        eid?(d.find(x=>x.id===eid)?.criadoEm||new Date().toISOString()):new Date().toISOString()
   };
   if(eid){const i=d.findIndex(x=>x.id===eid);if(i!==-1)d[i]=en;else d.push(en);}else d.push(en);
   save(d);
@@ -1190,6 +1210,8 @@ function editarEnt(id){
   document.getElementById('codigoCli').value=e.codigoCli||'';
   document.getElementById('nomeCli').value=e.nomeCli||'';
   document.getElementById('notaFiscal').value=e.notaFiscal||'';
+  document.getElementById('protocoloVortico').value=e.protocoloVortico||'';
+  document.getElementById('protocoloNeppo').value=e.protocoloNeppo||'';
   document.getElementById('dataEntrada').value=e.dataEntrada||'';
   document.getElementById('motivo').value=e.motivo||'';
   document.getElementById('solucao').value=e.solucao||'';
@@ -1354,9 +1376,14 @@ function abrirEnvio(cod){
   document.getElementById('camposEnvio').style.display='';
   document.getElementById('envioResumo').innerHTML=itens.map(p=>{
     const tot=Number(p.quantidade)*Number(p.valorUnit);
-    return'<div style="padding:.25rem 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;gap:.5rem">'
-      +'<span><strong>'+esc(p.codigoPeca)+'</strong> — '+esc(p.nomePeca)+' ('+p.quantidade+'x)</span>'
-      +'<span style="color:#059669;font-weight:700;white-space:nowrap">'+fmtR(tot)+'</span>'
+    const vrt=p.protocoloVortico?'<span style="font-size:.65rem;color:#1D4ED8;font-weight:700;margin-left:.5rem">Vórtice: '+esc(p.protocoloVortico)+'</span>':'';
+    const nep=p.protocoloNeppo?'<span style="font-size:.65rem;color:#6D28D9;font-weight:700;margin-left:.4rem">Neppo: '+esc(p.protocoloNeppo)+'</span>':'';
+    return'<div style="padding:.3rem 0;border-bottom:1px solid #eee">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem">'
+        +'<span><strong>'+esc(p.codigoPeca)+'</strong> — '+esc(p.nomePeca)+' ('+p.quantidade+'x)'+vrt+nep+'</span>'
+        +'<span style="color:#059669;font-weight:700;white-space:nowrap">'+fmtR(tot)+'</span>'
+      +'</div>'
+      +(p.protocoloVortico||p.protocoloNeppo?'<div style="font-size:.63rem;color:var(--text-muted)">Cliente: '+esc(p.nomeCli)+' — NF: '+esc(p.notaFiscal)+'</div>':'')
     +'</div>';
   }).join('');
   new bootstrap.Modal(document.getElementById('modalEnvio')).show();
