@@ -260,6 +260,10 @@ body { background:#F2F2F2; color:var(--bh-dark); }
       <button class="btn btn-sm btn-outline-light" onclick="importarArquivo()">
         <i class="bi bi-upload me-1"></i>Importar
       </button>
+      <button class="btn btn-sm" style="background:#1D4ED8;color:#fff;border:none;font-weight:700;border-radius:6px;padding:.25rem .7rem" onclick="document.getElementById('inputXML').click()" title="Gerar Espelho da NF de Devolução a partir do XML da venda">
+        <i class="bi bi-file-earmark-text me-1"></i>Espelho da Nota
+      </button>
+      <input type="file" id="inputXML" accept=".xml" style="display:none" onchange="processarXML(event)">
     </div>
   </div>
   <div class="fluxo-banner">
@@ -1806,6 +1810,331 @@ function limparCCP(){
   verificarCCP();
   toast('Observação CCP removida.','secondary');
 }
+
+// ── ESPELHO DA NOTA DE DEVOLUÇÃO ──────────────────────────────────────────────
+let _xmlNFe=null;
+
+function processarXML(ev){
+  const f=ev.target.files[0];if(!f)return;
+  ev.target.value='';
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      _xmlNFe=parseNFe(e.target.result);
+      renderModalEspelho(_xmlNFe);
+      new bootstrap.Modal(document.getElementById('modalEspelho')).show();
+    }catch(err){toast('Erro ao ler XML: verifique se é um arquivo NF-e válido.','danger');console.error(err);}
+  };
+  r.readAsText(f,'UTF-8');
+}
+
+function parseNFe(txt){
+  // Strip namespace declarations to allow querySelector
+  txt=txt.replace(/\sxmlns(:\w+)?="[^"]*"/g,'');
+  const doc=new DOMParser().parseFromString(txt,'application/xml');
+  if(doc.querySelector('parsererror'))throw new Error('XML inválido');
+  const g=(p,t)=>{if(!p)return'';const n=p.getElementsByTagName(t);return n.length?n[0].textContent.trim():''};
+  const emit=doc.getElementsByTagName('emit')[0];
+  const dest=doc.getElementsByTagName('dest')[0];
+  const ide=doc.getElementsByTagName('ide')[0];
+  const eEnd=emit?.getElementsByTagName('enderEmit')[0];
+  const dEnd=dest?.getElementsByTagName('enderDest')[0];
+  const mkAddr=p=>({cnpj:g(p,'CNPJ')||g(p,'CPF'),ie:g(p,'IE'),nome:g(p,'xNome'),fant:g(p,'xFant'),
+    logr:g(p?.parentNode?dEnd||eEnd:p,'xLgr'),num:g(p?.parentNode?dEnd||eEnd:p,'nro'),cpl:g(p?.parentNode?dEnd||eEnd:p,'xCpl'),
+    bairro:g(p?.parentNode?dEnd||eEnd:p,'xBairro'),mun:g(p?.parentNode?dEnd||eEnd:p,'xMun'),
+    uf:g(p?.parentNode?dEnd||eEnd:p,'UF'),cep:g(p?.parentNode?dEnd||eEnd:p,'CEP'),tel:g(p,'fone'),email:g(p,'email')});
+  const emitente={cnpj:g(emit,'CNPJ'),ie:g(emit,'IE'),nome:g(emit,'xNome'),fant:g(emit,'xFant'),
+    logr:g(eEnd,'xLgr'),num:g(eEnd,'nro'),cpl:g(eEnd,'xCpl'),bairro:g(eEnd,'xBairro'),
+    mun:g(eEnd,'xMun'),uf:g(eEnd,'UF'),cep:g(eEnd,'CEP'),tel:g(emit,'fone')};
+  const destinatario={cnpj:g(dest,'CNPJ')||g(dest,'CPF'),ie:g(dest,'IE'),nome:g(dest,'xNome'),
+    logr:g(dEnd,'xLgr'),num:g(dEnd,'nro'),cpl:g(dEnd,'xCpl'),bairro:g(dEnd,'xBairro'),
+    mun:g(dEnd,'xMun'),uf:g(dEnd,'UF'),cep:g(dEnd,'CEP'),tel:g(dest,'fone'),email:g(dest,'email')};
+  const nf={numero:g(ide,'nNF'),serie:g(ide,'serie'),dhEmi:g(ide,'dhEmi')||g(ide,'dEmi'),natOp:g(ide,'natOp')};
+  const icmsCst=['ICMS00','ICMS10','ICMS20','ICMS30','ICMS40','ICMS41','ICMS50','ICMS51','ICMS60','ICMS70','ICMS90','ICMSSN101','ICMSSN102','ICMSSN201','ICMSSN202','ICMSSN500','ICMSSN900'];
+  const pisCst=['PISAliq','PISQtde','PISNT','PISOutr'];
+  const cofCst=['COFINSAliq','COFINSQtde','COFINSNT','COFINSOutr'];
+  const items=[];
+  const dets=doc.getElementsByTagName('det');
+  for(let i=0;i<dets.length;i++){
+    const det=dets[i],prod=det.getElementsByTagName('prod')[0],imp=det.getElementsByTagName('imposto')[0];
+    let icN=null;for(const t of icmsCst){const n=imp?.getElementsByTagName(t)[0];if(n){icN=n;break;}}
+    let piN=null;for(const t of pisCst){const n=imp?.getElementsByTagName(t)[0];if(n){piN=n;break;}}
+    let coN=null;for(const t of cofCst){const n=imp?.getElementsByTagName(t)[0];if(n){coN=n;break;}}
+    const ipi=imp?.getElementsByTagName('IPITrib')[0];
+    const qCom=parseFloat(g(prod,'qCom'))||0,vUn=parseFloat(g(prod,'vUnCom'))||0;
+    items.push({nItem:det.getAttribute('nItem')||(i+1).toString(),cProd:g(prod,'cProd'),xProd:g(prod,'xProd'),
+      ncm:g(prod,'NCM'),cfop:g(prod,'CFOP'),uCom:g(prod,'uCom'),qCom,vUnCom:vUn,
+      vProd:parseFloat(g(prod,'vProd'))||qCom*vUn,
+      cstICMS:g(icN,'CST')||g(icN,'CSOSN'),bcICMS:parseFloat(g(icN,'vBC'))||0,
+      pICMS:parseFloat(g(icN,'pICMS'))||0,vICMS:parseFloat(g(icN,'vICMS'))||0,
+      pIPI:parseFloat(g(ipi,'pIPI'))||0,vIPI:parseFloat(g(ipi,'vIPI'))||0,bcIPI:parseFloat(g(ipi,'vBC'))||0,
+      pPIS:parseFloat(g(piN,'pPIS'))||0,vPIS:parseFloat(g(piN,'vPIS'))||0,
+      pCOFINS:parseFloat(g(coN,'pCOFINS'))||0,vCOFINS:parseFloat(g(coN,'vCOFINS'))||0});
+  }
+  return{emitente,destinatario,nf,items};
+}
+
+function renderModalEspelho(d){
+  const{nf,emitente,destinatario,items}=d;
+  const dtNF=nf.dhEmi?new Date(nf.dhEmi).toLocaleDateString('pt-BR'):'—';
+  document.getElementById('espNFRef').innerHTML=
+    '<strong>NF nº '+esc(nf.numero)+'</strong> | Série '+esc(nf.serie)+' | Emissão '+dtNF+' | <em>'+esc(nf.natOp)+'</em>';
+  document.getElementById('espParts').innerHTML=
+    '<span style="color:#059669;font-weight:700">Emitente (quem vende/emite a devolução):</span> '+esc(destinatario.nome)+
+    ' <span style="color:#6b7280">CNPJ: '+_fmtCNPJ(destinatario.cnpj)+'</span><br>'+
+    '<span style="color:#1D4ED8;font-weight:700">Destinatário (quem recebe):</span> '+esc(emitente.nome)+
+    ' <span style="color:#6b7280">CNPJ: '+_fmtCNPJ(emitente.cnpj)+'</span>';
+  document.getElementById('espItens').innerHTML=items.map((it,i)=>`
+    <tr>
+      <td class="text-center"><input type="checkbox" class="esp-chk form-check-input" id="ec_${i}" checked onchange="espTot()"></td>
+      <td style="font-size:.72rem;color:var(--text-muted)">${esc(it.cProd)}</td>
+      <td style="text-align:left;font-size:.78rem">${esc(it.xProd)}</td>
+      <td style="font-size:.7rem;color:var(--text-muted)">${esc(it.ncm)}</td>
+      <td style="font-size:.72rem;color:var(--text-muted)">${it.qCom} ${esc(it.uCom)}</td>
+      <td><input type="number" class="form-control form-control-sm" id="eq_${i}" value="${it.qCom}" min="0.001" max="${it.qCom}" step="any" style="width:80px;text-align:center" oninput="espTot()"></td>
+      <td style="text-align:right">${fmtR(it.vUnCom)}</td>
+      <td style="text-align:right;font-weight:600;color:#059669" id="et_${i}">${fmtR(it.vProd)}</td>
+    </tr>`).join('');
+  espTot();
+}
+
+function espTot(){
+  if(!_xmlNFe)return;
+  let t=0;
+  _xmlNFe.items.forEach((it,i)=>{
+    const chk=document.getElementById('ec_'+i),qEl=document.getElementById('eq_'+i),tEl=document.getElementById('et_'+i);
+    if(!chk||!qEl)return;
+    if(!chk.checked){if(tEl)tEl.textContent='—';return;}
+    const q=Math.min(parseFloat(qEl.value)||0,it.qCom);
+    qEl.value=q;t+=q*it.vUnCom;
+    if(tEl)tEl.textContent=fmtR(q*it.vUnCom);
+  });
+  document.getElementById('espGrandTotal').textContent=fmtR(t);
+}
+
+function _fmtCNPJ(v){if(!v)return'—';const c=v.replace(/\D/g,'');if(c.length===14)return c.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');if(c.length===11)return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');return v;}
+function _fmtCEP(v){if(!v)return'—';const c=v.replace(/\D/g,'');return c.length===8?c.replace(/(\d{5})(\d{3})/,'$1-$2'):v;}
+function _fR(v){return'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+function gerarEspelho(){
+  if(!_xmlNFe)return;
+  const{emitente,destinatario,nf,items}=_xmlNFe;
+  const sel=items.map((it,i)=>{
+    const chk=document.getElementById('ec_'+i),qEl=document.getElementById('eq_'+i);
+    if(!chk?.checked)return null;
+    const q=Math.min(parseFloat(qEl?.value)||0,it.qCom);
+    if(q<=0)return null;
+    const r=q/it.qCom;
+    const cfDev=(it.cfop||'').startsWith('6')||destinatario.uf!==emitente.uf?'6.202':'5.202';
+    return{...it,qRet:q,vPR:q*it.vUnCom,bcICr:(it.bcICMS||it.vProd)*r,vICr:it.vICMS*r,
+      bcIPr:it.bcIPI*r,vIPr:it.vIPI*r,vPISr:it.vPIS*r,vCOFr:it.vCOFINS*r,cfDev};
+  }).filter(Boolean);
+  if(!sel.length){toast('Selecione ao menos um item.','warning');return;}
+  const dtNF=nf.dhEmi?new Date(nf.dhEmi).toLocaleDateString('pt-BR'):'—';
+  const hoje=new Date().toLocaleDateString('pt-BR');
+  const S=a=>sel.reduce((s,i)=>s+i[a],0);
+  const sBCIC=S('bcICr'),sIC=S('vICr'),sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sTOT=sPR+sIP;
+  const emit=destinatario,dest=emitente; // papeis invertidos na devolução
+  const cfMain=sel[0].cfDev;
+  const rows=sel.map((it,i)=>`<tr>
+    <td>${i+1}</td><td>${esc(it.cProd)}</td><td style="text-align:left">${esc(it.xProd)}</td>
+    <td>${esc(it.ncm)}</td><td>${it.cfDev}</td><td>${esc(it.uCom)}</td>
+    <td>${it.qRet.toLocaleString('pt-BR',{maximumFractionDigits:4})}</td>
+    <td>${_fR(it.vUnCom)}</td><td>${_fR(it.vPR)}</td>
+    <td>${_fR(it.bcICr)}</td><td>${it.pICMS>0?it.pICMS+'%':'—'}</td><td>${it.pICMS>0?_fR(it.vICr):'—'}</td>
+    <td>${it.pIPI>0?it.pIPI+'%':'—'}</td><td>${it.pIPI>0?_fR(it.vIPr):'—'}</td>
+    <td>${it.pPIS>0?_fR(it.vPISr):'—'}</td><td>${it.pCOFINS>0?_fR(it.vCOFr):'—'}</td></tr>`).join('');
+  const w=window.open('','_blank','width=1100,height=800');
+  w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Espelho NF Devolução — NF ${esc(nf.numero)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+@page{size:A4 landscape;margin:.8cm}
+body{font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#000;background:#fff;padding:8px}
+h1{font-size:12pt;text-align:center;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+.sub{text-align:center;font-size:7pt;color:#555}
+.aviso{text-align:center;font-size:7pt;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:3px;padding:2px 8px;margin:4px auto;max-width:700px}
+.box{border:1px solid #555;margin-bottom:3px}
+.bt{background:#d1d5db;font-weight:700;font-size:6.5pt;text-transform:uppercase;letter-spacing:.5px;padding:2px 5px;border-bottom:1px solid #555}
+.row{display:flex}
+.row+.row{border-top:1px solid #ccc}
+.c{padding:2px 5px;flex:1;border-right:1px solid #ccc;min-height:20px}
+.c:last-child{border-right:none}
+.c label{display:block;font-size:5.5pt;color:#555;text-transform:uppercase;font-weight:700;letter-spacing:.3px;margin-bottom:1px}
+.c span{font-size:8pt;display:block}
+table{width:100%;border-collapse:collapse;font-size:7pt}
+th{background:#d1d5db;border:1px solid #999;padding:2px 3px;text-align:center;font-size:6pt;text-transform:uppercase}
+td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle}
+.tc{background:#fef9c3;font-weight:700;font-size:9pt}
+.btn-p{background:#C44008;color:#fff;border:none;padding:7px 20px;font-size:11pt;cursor:pointer;border-radius:5px;font-weight:700}
+@media print{.np{display:none!important}body{padding:0}}
+.tag{background:#fef9c3;border:1px solid #f59e0b;border-radius:3px;padding:1px 5px;font-size:6.5pt;font-weight:700;color:#92400e}
+</style></head><body>
+<div class="np" style="text-align:center;padding:8px;background:#f0f0f0;margin-bottom:8px;border-radius:5px">
+  <button class="btn-p" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
+  <span style="font-size:7.5pt;color:#666;margin-left:12px">Para salvar PDF: escolha "Salvar como PDF" como impressora</span>
+</div>
+<div style="border:2px solid #555;padding:6px 10px;margin-bottom:4px;text-align:center">
+  <h1>Espelho — Nota Fiscal de Devolução</h1>
+  <p class="sub">Documento auxiliar para orientação da emissão da NF de Devolução no sistema emissor</p>
+  <p class="aviso">⚠️ Este documento NÃO possui validade fiscal. É apenas um modelo para emissão da NF.</p>
+</div>
+<div class="box">
+  <div class="bt">Referência à Nota Fiscal Original</div>
+  <div class="row">
+    <div class="c"><label>Número NF Original</label><span>${esc(nf.numero)}</span></div>
+    <div class="c"><label>Série</label><span>${esc(nf.serie)}</span></div>
+    <div class="c" style="flex:2"><label>Data de Emissão Original</label><span>${dtNF}</span></div>
+    <div class="c" style="flex:4"><label>Natureza da Operação Original</label><span>${esc(nf.natOp)}</span></div>
+  </div>
+</div>
+<div class="box">
+  <div class="bt">Dados da Operação de Devolução</div>
+  <div class="row">
+    <div class="c" style="flex:3"><label>Natureza da Operação</label><span style="font-weight:700">DEVOLUÇÃO DE VENDA</span></div>
+    <div class="c"><label>CFOP</label><span style="font-weight:700">${cfMain}</span></div>
+    <div class="c"><label>Finalidade</label><span>4 — Devolução</span></div>
+    <div class="c"><label>Data Sugerida</label><span>${hoje}</span></div>
+    <div class="c" style="flex:4"><label>Informação Complementar (infCpl)</label><span>Devolução ref. NF nº ${esc(nf.numero)}, série ${esc(nf.serie)}, emitida em ${dtNF} por ${esc(dest.nome)}.</span></div>
+  </div>
+</div>
+<div class="box">
+  <div class="bt">Emitente (Remetente) — <span class="tag">Quem emite a NF de devolução</span></div>
+  <div class="row">
+    <div class="c" style="flex:4"><label>Razão Social</label><span style="font-weight:700">${esc(emit.nome)}</span></div>
+    <div class="c" style="flex:2"><label>CNPJ</label><span>${_fmtCNPJ(emit.cnpj)}</span></div>
+    <div class="c" style="flex:2"><label>Inscrição Estadual</label><span>${esc(emit.ie)||'—'}</span></div>
+    <div class="c"><label>Telefone</label><span>${esc(emit.tel)||'—'}</span></div>
+    <div class="c" style="flex:2"><label>E-mail</label><span>${esc(emit.email)||'—'}</span></div>
+  </div>
+  <div class="row">
+    <div class="c" style="flex:3"><label>Logradouro</label><span>${esc(emit.logr)||'—'}</span></div>
+    <div class="c"><label>Número</label><span>${esc(emit.num)||'—'}</span></div>
+    <div class="c" style="flex:2"><label>Complemento</label><span>${esc(emit.cpl)||'—'}</span></div>
+    <div class="c" style="flex:2"><label>Bairro</label><span>${esc(emit.bairro)||'—'}</span></div>
+    <div class="c" style="flex:2"><label>Município</label><span>${esc(emit.mun)||'—'}</span></div>
+    <div class="c" style="max-width:50px"><label>UF</label><span>${esc(emit.uf)||'—'}</span></div>
+    <div class="c"><label>CEP</label><span>${_fmtCEP(emit.cep)}</span></div>
+  </div>
+</div>
+<div class="box">
+  <div class="bt">Destinatário — <span class="tag">Quem recebe a devolução</span></div>
+  <div class="row">
+    <div class="c" style="flex:4"><label>Razão Social</label><span style="font-weight:700">${esc(dest.nome)}</span></div>
+    <div class="c" style="flex:2"><label>CNPJ</label><span>${_fmtCNPJ(dest.cnpj)}</span></div>
+    <div class="c" style="flex:2"><label>Inscrição Estadual</label><span>${esc(dest.ie)||'—'}</span></div>
+    <div class="c"><label>Telefone</label><span>${esc(dest.tel)||'—'}</span></div>
+  </div>
+  <div class="row">
+    <div class="c" style="flex:3"><label>Logradouro</label><span>${esc(dest.logr)||'—'}</span></div>
+    <div class="c"><label>Número</label><span>${esc(dest.num)||'—'}</span></div>
+    <div class="c" style="flex:2"><label>Complemento</label><span>${esc(dest.cpl)||'—'}</span></div>
+    <div class="c" style="flex:2"><label>Bairro</label><span>${esc(dest.bairro)||'—'}</span></div>
+    <div class="c" style="flex:2"><label>Município</label><span>${esc(dest.mun)||'—'}</span></div>
+    <div class="c" style="max-width:50px"><label>UF</label><span>${esc(dest.uf)||'—'}</span></div>
+    <div class="c"><label>CEP</label><span>${_fmtCEP(dest.cep)}</span></div>
+  </div>
+</div>
+<div class="box">
+  <div class="bt">Produtos / Serviços</div>
+  <table><thead>
+    <tr>
+      <th rowspan="2">N°</th><th rowspan="2">Código</th><th rowspan="2" style="min-width:120px;text-align:left">Descrição</th>
+      <th rowspan="2">NCM</th><th rowspan="2">CFOP</th><th rowspan="2">Un</th>
+      <th rowspan="2">Qtd Dev.</th><th rowspan="2">Vlr Unit.</th><th rowspan="2">Vlr Total</th>
+      <th colspan="3" style="background:#dbeafe">ICMS</th>
+      <th colspan="2" style="background:#dcfce7">IPI</th>
+      <th style="background:#fce7f3">PIS</th><th style="background:#fce7f3">COFINS</th>
+    </tr>
+    <tr>
+      <th style="background:#dbeafe">Base Cálc.</th><th style="background:#dbeafe">Alíq.</th><th style="background:#dbeafe">Valor</th>
+      <th style="background:#dcfce7">Alíq.</th><th style="background:#dcfce7">Valor</th>
+      <th style="background:#fce7f3">Valor</th><th style="background:#fce7f3">Valor</th>
+    </tr>
+  </thead><tbody>${rows}</tbody></table>
+</div>
+<div class="box">
+  <div class="bt">Cálculo do Imposto</div>
+  <div class="row">
+    <div class="c"><label>Base Cálc. ICMS</label><span>${_fR(sBCIC)}</span></div>
+    <div class="c"><label>Valor ICMS</label><span>${_fR(sIC)}</span></div>
+    <div class="c"><label>Base Cálc. IPI</label><span>${_fR(sBCIP)}</span></div>
+    <div class="c"><label>Valor IPI</label><span>${_fR(sIP)}</span></div>
+    <div class="c"><label>Valor PIS</label><span>${_fR(sPIS)}</span></div>
+    <div class="c"><label>Valor COFINS</label><span>${_fR(sCOF)}</span></div>
+  </div>
+  <div class="row">
+    <div class="c"><label>Valor Total Produtos</label><span>${_fR(sPR)}</span></div>
+    <div class="c"><label>Frete</label><span>R$ 0,00</span></div>
+    <div class="c"><label>Seguro</label><span>R$ 0,00</span></div>
+    <div class="c"><label>Outras Despesas</label><span>R$ 0,00</span></div>
+    <div class="c"><label>Valor IPI Total</label><span>${_fR(sIP)}</span></div>
+    <div class="c tc"><label>VALOR TOTAL DA NOTA FISCAL</label><span>${_fR(sTOT)}</span></div>
+  </div>
+</div>
+<div class="box">
+  <div class="bt">Informações Adicionais / Dados Adicionais</div>
+  <div style="padding:4px 6px;font-size:7.5pt;min-height:28px">
+    Devolução referente à Nota Fiscal nº <strong>${esc(nf.numero)}</strong>, série <strong>${esc(nf.serie)}</strong>, emitida em <strong>${dtNF}</strong> por <strong>${esc(dest.nome)}</strong> (CNPJ: ${_fmtCNPJ(dest.cnpj)}).
+    CFOP ${cfMain} — Devolução de Venda. Documento gerado pelo Sistema de Controle de Garantias — BH Cabines.
+  </div>
+</div>
+<div class="np" style="text-align:center;padding:6px;color:#999;font-size:7pt;margin-top:6px">
+  Gerado em ${hoje} · Sistema de Controle de Garantias BH Cabines
+</div>
+</body></html>`);
+  w.document.close();
+  bootstrap.Modal.getInstance(document.getElementById('modalEspelho'))?.hide();
+}
 </script>
+
+<!-- MODAL ESPELHO DA NOTA -->
+<div class="modal fade" id="modalEspelho" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1D4ED8;color:#fff">
+        <h5 class="modal-title"><i class="bi bi-file-earmark-text me-2"></i>Espelho da Nota de Devolução</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 mb-3" style="font-size:.82rem">
+          <i class="bi bi-info-circle me-1"></i>
+          <span id="espNFRef">—</span>
+        </div>
+        <div class="mb-3 p-2 border rounded" style="background:#f8f9fa;font-size:.8rem" id="espParts"></div>
+        <div style="font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:.4rem">
+          Selecione os itens que serão devolvidos e informe a quantidade:
+        </div>
+        <div class="table-responsive">
+          <table class="entry-table">
+            <thead><tr>
+              <th style="width:40px">Sel.</th>
+              <th>Código</th>
+              <th>Descrição</th>
+              <th>NCM</th>
+              <th>Qtd Original</th>
+              <th>Qtd a Devolver</th>
+              <th>Vlr Unit.</th>
+              <th>Total Devolução</th>
+            </tr></thead>
+            <tbody id="espItens"></tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-end align-items-center mt-2 gap-2">
+          <span style="font-size:.82rem;color:var(--text-muted)">Total selecionado:</span>
+          <span id="espGrandTotal" style="font-size:1rem;font-weight:700;color:#059669">R$ 0,00</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span style="font-size:.75rem;color:var(--text-muted);flex:1"><i class="bi bi-info-circle me-1"></i>O espelho abrirá em nova aba pronto para imprimir ou salvar como PDF.</span>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sm px-4" style="background:#1D4ED8;color:#fff;font-weight:700;border-radius:8px" onclick="gerarEspelho()">
+          <i class="bi bi-file-earmark-arrow-down me-1"></i>Gerar Espelho
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
