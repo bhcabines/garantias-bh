@@ -1460,16 +1460,26 @@ function abrirEnvio(cod){
   document.getElementById('envioForma').value='';
   document.getElementById('envioDescarte').checked=false;
   document.getElementById('camposEnvio').style.display='';
-  document.getElementById('envioResumo').innerHTML=itens.map(p=>{
-    const tot=Number(p.quantidade)*Number(p.valorUnit);
-    const vrt=p.protocoloVortico?'<span style="font-size:.65rem;color:#1D4ED8;font-weight:700;margin-left:.5rem">Vórtice: '+esc(p.protocoloVortico)+'</span>':'';
-    const nep=p.protocoloNeppo?'<span style="font-size:.65rem;color:#6D28D9;font-weight:700;margin-left:.4rem">Neppo: '+esc(p.protocoloNeppo)+'</span>':'';
+  const grpEnvio={};
+  itens.forEach(p=>{
+    const k=(p.codigoPeca||'SEM').toUpperCase();
+    if(!grpEnvio[k])grpEnvio[k]={codigoPeca:p.codigoPeca,nomePeca:p.nomePeca,qtdTotal:0,valTotal:0,entries:[]};
+    grpEnvio[k].qtdTotal+=Number(p.quantidade);
+    grpEnvio[k].valTotal+=Number(p.quantidade)*Number(p.valorUnit);
+    grpEnvio[k].entries.push(p);
+  });
+  document.getElementById('envioResumo').innerHTML=Object.values(grpEnvio).map(g=>{
+    const vrts=[...new Set(g.entries.map(e=>e.protocoloVortico).filter(Boolean))];
+    const neps=[...new Set(g.entries.map(e=>e.protocoloNeppo).filter(Boolean))];
+    const vrtTxt=vrts.length?'<span style="font-size:.65rem;color:#1D4ED8;font-weight:700;margin-left:.5rem">Vórtice: '+vrts.map(esc).join(', ')+'</span>':'';
+    const nepTxt=neps.length?'<span style="font-size:.65rem;color:#6D28D9;font-weight:700;margin-left:.4rem">Neppo: '+neps.map(esc).join(', ')+'</span>':'';
+    const subInfo=g.entries.map(e=>'<span style="color:var(--text-muted)">'+esc(e.nomeCli)+' — NF '+esc(e.notaFiscal)+' ('+e.quantidade+'un)</span>').join(' · ');
     return'<div style="padding:.3rem 0;border-bottom:1px solid #eee">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem">'
-        +'<span><strong>'+esc(p.codigoPeca)+'</strong> — '+esc(p.nomePeca)+' ('+p.quantidade+'x)'+vrt+nep+'</span>'
-        +'<span style="color:#059669;font-weight:700;white-space:nowrap">'+fmtR(tot)+'</span>'
+        +'<span><strong>'+esc(g.codigoPeca)+'</strong> — '+esc(g.nomePeca)+' ('+g.qtdTotal+'x)'+vrtTxt+nepTxt+'</span>'
+        +'<span style="color:#059669;font-weight:700;white-space:nowrap">'+fmtR(g.valTotal)+'</span>'
       +'</div>'
-      +(p.protocoloVortico||p.protocoloNeppo?'<div style="font-size:.63rem;color:var(--text-muted)">Cliente: '+esc(p.nomeCli)+' — NF: '+esc(p.notaFiscal)+'</div>':'')
+      +'<div style="font-size:.62rem;margin-top:.1rem">'+subInfo+'</div>'
     +'</div>';
   }).join('');
   new bootstrap.Modal(document.getElementById('modalEnvio')).show();
