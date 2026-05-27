@@ -421,9 +421,39 @@ body { background:#F2F2F2; color:var(--bh-dark); }
   <div id="abaRetorno" style="display:none">
     <div class="sec-header" style="background:linear-gradient(135deg,#1D4ED8,#3B82F6);color:#fff;border-color:#1D4ED8">
       <i class="bi bi-arrow-return-right"></i>
-      Acompanhamento de Retorno do Fornecedor — garantias enviadas aguardando resposta
+      Acompanhamento de Retorno do Fornecedor
     </div>
-    <div id="retornoList"></div>
+    <ul class="nav nav-tabs px-3 pt-2" id="retSubTabs" style="border-bottom:2px solid #e5e7eb;background:#f8fafc">
+      <li class="nav-item">
+        <button class="nav-link active" id="retSubBtnAguard" onclick="trocarRetSubTab('aguardando',this)" style="font-size:.85rem;font-weight:600">
+          <i class="bi bi-hourglass-split me-1"></i>Aguardando Retorno
+          <span id="badgeAguard" class="badge bg-danger ms-1" style="display:none;font-size:.65rem">0</span>
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" id="retSubBtnHist" onclick="trocarRetSubTab('historico',this)" style="font-size:.85rem;font-weight:600">
+          <i class="bi bi-clock-history me-1"></i>Histórico / Pesquisa
+        </button>
+      </li>
+    </ul>
+    <div id="retornoAguardando">
+      <div id="retornoList"></div>
+    </div>
+    <div id="retornoHistorico" style="display:none">
+      <div class="filter-bar mb-2 d-flex flex-wrap gap-2 align-items-center p-3 pb-2">
+        <input type="text" class="form-control form-control-sm" style="max-width:205px" placeholder="Fornecedor / NF..." id="histFiltroQ" oninput="renderHistorico()">
+        <select class="form-select form-select-sm" style="max-width:195px" id="histFiltroSt" onchange="renderHistorico()">
+          <option value="">Todos os status</option>
+          <option value="aguardando">Aguardando Retorno</option>
+          <option value="concluida">Concluída</option>
+          <option value="encerrada">Encerrada</option>
+          <option value="excluida">Excluída</option>
+        </select>
+        <input type="date" class="form-control form-control-sm" style="max-width:138px" id="histFiltroDe" onchange="renderHistorico()" title="De:">
+        <input type="date" class="form-control form-control-sm" style="max-width:138px" id="histFiltroAte" onchange="renderHistorico()" title="Até:">
+      </div>
+      <div id="retHistoricoList" class="px-3 pb-3"></div>
+    </div>
   </div>
 
   <!-- ABA: TODAS -->
@@ -1465,8 +1495,10 @@ function renderRetorno(){
   const el=document.getElementById('retornoList');if(!el)return;
   const flat=flattenPecas(loadNorm());
   const enviadas=flat.filter(p=>p.status==='enviada'&&p.nfGarantia&&p.nfGarantia!=='Descarte');
+  const badge=document.getElementById('badgeAguard');
   if(!enviadas.length){
     el.innerHTML='<div class="empty-state"><i class="bi bi-check-circle d-block mb-2" style="font-size:2rem;color:#059669"></i><p>Nenhuma garantia aguardando retorno do fornecedor.</p></div>';
+    if(badge){badge.style.display='none';}
     return;
   }
   const lotes={};
@@ -1490,7 +1522,6 @@ function renderRetorno(){
       :vencido?'<span class="badge-prazo-venc"><i class="bi bi-exclamation-triangle me-1"></i>Vencido há '+Math.abs(diasRest)+'d</span>'
       :alerta?'<span class="badge-prazo-alerta"><i class="bi bi-clock me-1"></i>'+diasRest+'d restantes</span>'
       :'<span class="badge-prazo-ok"><i class="bi bi-clock me-1"></i>'+diasRest+'d restantes</span>';
-    const isConcluida=lote.retornoStatus&&lote.retornoStatus.startsWith('Garantia concluída');
     const loteId='lote_'+li;
     const refs=JSON.stringify(lote.pecas.map(p=>({entryId:p.entryId,pecaId:p.pecaId})));
     const qtdTotal=lote.pecas.reduce((s,p)=>s+Number(p.quantidade),0);
@@ -1505,7 +1536,6 @@ function renderRetorno(){
         +'<span style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">Enviado: '+fmtD(lote.dataEnvio)+'</span>'
         +'<span style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">Prazo 60d: '+fmtD(envioTs?new Date(envioTs+60*86400000).toISOString().slice(0,10):'')+'</span>'
         +prazoTag
-        +(isConcluida?'<span class="badge-concluida"><i class="bi bi-check-circle me-1"></i>Concluída</span>':'')
       +'</div>'
       +'<div class="retorno-card-body">'
         +'<div style="margin-bottom:.7rem">'
@@ -1524,15 +1554,20 @@ function renderRetorno(){
         +'</div>'
         +'<div style="margin-top:.65rem;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap">'
           +'<button class="btn btn-sm btn-bh-ol px-3" onclick="salvarRetorno(\''+loteId+'\','+refs+')">'
-            +'<i class="bi bi-check2 me-1"></i>Salvar Retorno'
+            +'<i class="bi bi-check2 me-1"></i>Salvar'
           +'</button>'
-          +'<button class="btn btn-sm px-3" style="background:#6B7280;color:#fff;border-radius:8px;font-weight:700" onclick="encerrarGarantia(\''+loteId+'\','+refs+',\''+esc(lote.nfGarantia)+'\')">'
-            +'<i class="bi bi-lock me-1"></i>Encerrar Garantia'
+          +'<button class="btn btn-sm px-3" style="background:#DC2626;color:#fff;border-radius:8px;font-weight:700" onclick="prepExcluir(\''+loteId+'\','+refs+')">'
+            +'<i class="bi bi-trash me-1"></i>Excluir'
+          +'</button>'
+          +'<button class="btn btn-sm px-3" style="background:#059669;color:#fff;border-radius:8px;font-weight:700" onclick="prepEncerrar(\''+loteId+'\','+refs+',\''+esc(lote.nfGarantia)+'\')">'
+            +'<i class="bi bi-lock me-1"></i>Encerrar'
           +'</button>'
         +'</div>'
       +'</div>'
     +'</div>';
   }).join('');
+  const n=Object.keys(lotes).length;
+  if(badge){badge.textContent=n;badge.style.display=n?'':'none';}
   const alerta=venc>0?'<div style="background:#FEF2F2;border:1.5px solid #FECACA;border-radius:10px;padding:.7rem 1rem;margin-bottom:1rem;color:#991B1B;font-weight:600;font-size:.85rem"><i class="bi bi-exclamation-triangle-fill me-2"></i>'+venc+' garantia(s) com prazo de 60 dias vencido — entre em contato com o fornecedor imediatamente.</div>':'';
   el.innerHTML=alerta+html;
 }
@@ -1546,12 +1581,113 @@ function salvarRetorno(loteId,refs){
   toast(concluida?'Garantia concluída — status atualizado para Crédito!':'Retorno salvo com sucesso!','success');
 }
 
-function encerrarGarantia(loteId,refs,nfGar){
-  const st=document.getElementById('retSt_'+loteId)?.value||'Garantia encerrada';
-  const obs=document.getElementById('retObs_'+loteId)?.value||'';
-  refs.forEach(r=>salvarPeca(r.entryId,r.pecaId,{status:'encerrada',retornoStatus:st,retornoObs:obs}));
+let _exclData=null,_encerrData=null;
+function prepExcluir(loteId,refs){
+  _exclData={loteId,refs};
+  document.getElementById('excluirJust').value='';
+  new bootstrap.Modal(document.getElementById('modalExcluirGar')).show();
+}
+function confirmarExclusao(){
+  if(!_exclData)return;
+  const just=document.getElementById('excluirJust').value.trim();
+  if(!just){toast('Informe a justificativa para exclusão.','warning');return;}
+  _exclData.refs.forEach(r=>salvarPeca(r.entryId,r.pecaId,{status:'encerrada',retornoStatus:'Excluído',retornoObs:'EXCLUÍDO: '+just}));
+  bootstrap.Modal.getInstance(document.getElementById('modalExcluirGar'))?.hide();
   renderTudo();
-  toast('Garantia NF '+nfGar+' encerrada!','success');
+  toast('Garantia excluída — justificativa registrada.','success');
+  _exclData=null;
+}
+function prepEncerrar(loteId,refs,nfGar){
+  _encerrData={loteId,refs,nfGar};
+  document.getElementById('encerrResultado').value='';
+  document.getElementById('encerrObs').value='';
+  document.getElementById('encerrNF').textContent=nfGar;
+  new bootstrap.Modal(document.getElementById('modalEncerrarGar')).show();
+}
+function confirmarEncerramento(){
+  if(!_encerrData)return;
+  const resultado=document.getElementById('encerrResultado').value;
+  if(!resultado){toast('Selecione o resultado do encerramento.','warning');return;}
+  const obs=document.getElementById('encerrObs').value.trim();
+  const sucesso=resultado==='sucesso';
+  const stLabel=sucesso?'Encerrado com sucesso':resultado==='parcial'?'Encerrado parcialmente':'Encerrado sem resolução';
+  _encerrData.refs.forEach(r=>salvarPeca(r.entryId,r.pecaId,{status:sucesso?'credito':'encerrada',retornoStatus:stLabel,retornoObs:obs}));
+  bootstrap.Modal.getInstance(document.getElementById('modalEncerrarGar'))?.hide();
+  renderTudo();
+  toast('Garantia NF '+_encerrData.nfGar+' encerrada!','success');
+  _encerrData=null;
+}
+function trocarRetSubTab(tab,btn){
+  document.querySelectorAll('#retSubTabs .nav-link').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('retornoAguardando').style.display=tab==='aguardando'?'':'none';
+  document.getElementById('retornoHistorico').style.display=tab==='historico'?'':'none';
+  if(tab==='historico')renderHistorico();
+}
+function renderHistorico(){
+  const el=document.getElementById('retHistoricoList');if(!el)return;
+  const flat=flattenPecas(loadNorm());
+  const comNf=flat.filter(p=>p.nfGarantia&&p.nfGarantia!=='Descarte');
+  if(!comNf.length){el.innerHTML='<div class="empty-state"><i class="bi bi-clock-history d-block mb-2" style="font-size:2rem;color:#9CA3AF"></i><p>Nenhuma garantia de fornecedor registrada ainda.</p></div>';return;}
+  const lotes={};
+  comNf.forEach(p=>{
+    const k=(p.codigoForn||'SEM')+'||'+(p.nfGarantia||'');
+    if(!lotes[k])lotes[k]={codigoForn:p.codigoForn,nomeForn:p.nomeForn,nfGarantia:p.nfGarantia,dataEnvio:p.dataEnvio,retornoStatus:'',retornoObs:'',pecas:[]};
+    lotes[k].pecas.push(p);
+    if(p.retornoStatus&&!lotes[k].retornoStatus)lotes[k].retornoStatus=p.retornoStatus;
+    if(p.retornoObs&&!lotes[k].retornoObs)lotes[k].retornoObs=p.retornoObs;
+  });
+  const catOf=lote=>{
+    const rs=lote.retornoStatus||'';
+    if(rs==='Excluído')return'excluida';
+    if(rs.startsWith('Encerrado com sucesso')||rs.startsWith('Garantia concluída'))return'concluida';
+    if(rs.startsWith('Encerrado'))return'encerrada';
+    return'aguardando';
+  };
+  const catLabel={
+    aguardando:'<span style="background:#DBEAFE;color:#1E40AF;border-radius:5px;padding:.1rem .5rem;font-size:.72rem;font-weight:700"><i class="bi bi-hourglass-split me-1"></i>Aguardando</span>',
+    concluida:'<span style="background:#D1FAE5;color:#065F46;border-radius:5px;padding:.1rem .5rem;font-size:.72rem;font-weight:700"><i class="bi bi-check-circle me-1"></i>Concluída</span>',
+    encerrada:'<span style="background:#F3F4F6;color:#374151;border-radius:5px;padding:.1rem .5rem;font-size:.72rem;font-weight:700"><i class="bi bi-lock me-1"></i>Encerrada</span>',
+    excluida:'<span style="background:#FEE2E2;color:#991B1B;border-radius:5px;padding:.1rem .5rem;font-size:.72rem;font-weight:700"><i class="bi bi-trash me-1"></i>Excluída</span>'
+  };
+  const q=(document.getElementById('histFiltroQ')?.value||'').toLowerCase().trim();
+  const stFlt=document.getElementById('histFiltroSt')?.value||'';
+  const de=document.getElementById('histFiltroDe')?.value||'';
+  const ate=document.getElementById('histFiltroAte')?.value||'';
+  let rows=Object.values(lotes).filter(lote=>{
+    if(q&&!(lote.codigoForn||'').toLowerCase().includes(q)&&!(lote.nomeForn||'').toLowerCase().includes(q)&&!(lote.nfGarantia||'').toLowerCase().includes(q))return false;
+    if(stFlt&&catOf(lote)!==stFlt)return false;
+    if(de&&lote.dataEnvio&&lote.dataEnvio<de)return false;
+    if(ate&&lote.dataEnvio&&lote.dataEnvio>ate)return false;
+    return true;
+  }).sort((a,b)=>(b.dataEnvio||'').localeCompare(a.dataEnvio||''));
+  if(!rows.length){el.innerHTML='<div class="empty-state"><i class="bi bi-search d-block mb-2" style="font-size:1.5rem;color:#9CA3AF"></i><p>Nenhum resultado para os filtros aplicados.</p></div>';return;}
+  const hoje=Date.now();
+  const html='<div class="table-responsive"><table class="entry-table"><thead><tr>'
+    +'<th>Fornecedor</th><th>NF Garantia</th><th>Enviado</th><th>Prazo</th><th>Situação</th><th>Retorno / Obs</th>'
+    +'</tr></thead><tbody>'
+    +rows.map(lote=>{
+      const envioTs=lote.dataEnvio?new Date(lote.dataEnvio+'T00:00:00').getTime():null;
+      const diasRest=envioTs!==null?60-Math.floor((hoje-envioTs)/86400000):null;
+      const prazoTag=diasRest===null?'—'
+        :diasRest<0?'<span class="badge-prazo-venc" style="font-size:.65rem">Venc. '+Math.abs(diasRest)+'d</span>'
+        :diasRest<=10?'<span class="badge-prazo-alerta" style="font-size:.65rem">'+diasRest+'d rest.</span>'
+        :'<span class="badge-prazo-ok" style="font-size:.65rem">'+diasRest+'d rest.</span>';
+      const cat=catOf(lote);
+      const qtdTotal=lote.pecas.reduce((s,p)=>s+Number(p.quantidade),0);
+      return'<tr>'
+        +'<td><span class="supplier-code-badge" style="font-size:.68rem">'+esc(lote.codigoForn)+'</span> <span style="font-size:.82rem">'+esc(lote.nomeForn)+'</span></td>'
+        +'<td style="font-weight:700;font-size:.85rem">'+esc(lote.nfGarantia)+'</td>'
+        +'<td style="font-size:.78rem;white-space:nowrap">'+fmtD(lote.dataEnvio)+'</td>'
+        +'<td>'+prazoTag+'</td>'
+        +'<td>'+(catLabel[cat]||cat)+'</td>'
+        +'<td style="font-size:.75rem;max-width:260px"><div style="font-weight:600">'+esc(lote.retornoStatus||'—')+'</div>'
+          +(lote.retornoObs?'<div style="color:var(--text-muted);margin-top:.15rem;font-size:.7rem">'+esc(lote.retornoObs)+'</div>':'')
+        +'</td>'
+      +'</tr>';
+    }).join('')
+    +'</tbody></table></div>';
+  el.innerHTML='<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:.5rem">'+rows.length+' registro(s) encontrado(s)</div>'+html;
 }
 
 function toggleGrupoPeca(id){
@@ -1717,7 +1853,10 @@ function fotosHTML(fotos){
 function renderTudo(){
   atualizarKPIs();renderForn();
   if(document.getElementById('abaTodas')?.style.display!=='none')renderTabela();
-  if(document.getElementById('abaRetorno')?.style.display!=='none')renderRetorno();
+  if(document.getElementById('abaRetorno')?.style.display!=='none'){
+    renderRetorno();
+    if(document.getElementById('retornoHistorico')?.style.display!=='none')renderHistorico();
+  }
   _badgeRetorno();
 }
 
@@ -2130,6 +2269,70 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
         <button type="button" class="btn btn-sm px-4" style="background:#1D4ED8;color:#fff;font-weight:700;border-radius:8px" onclick="gerarEspelho()">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Gerar Espelho
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EXCLUIR GARANTIA FORNECEDOR -->
+<div class="modal fade" id="modalExcluirGar" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:460px">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#DC2626;color:#fff">
+        <h6 class="modal-title fw-bold"><i class="bi bi-trash me-2"></i>Excluir Garantia do Fornecedor</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="alert alert-danger py-2 mb-3" style="font-size:.82rem">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          Esta garantia será removida do painel ativo. O registro ficará disponível apenas no Histórico.
+        </div>
+        <label class="form-label fw-bold" style="font-size:.8rem">Justificativa para exclusão <span class="text-danger">*</span></label>
+        <textarea id="excluirJust" class="form-control" rows="3"
+          placeholder="Descreva o motivo da exclusão desta garantia..."
+          style="font-size:.85rem;resize:vertical"></textarea>
+      </div>
+      <div class="modal-footer" style="background:#F8F8F8">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sm btn-danger px-4 fw-bold" onclick="confirmarExclusao()">
+          <i class="bi bi-trash me-1"></i>Confirmar Exclusão
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ENCERRAR GARANTIA FORNECEDOR -->
+<div class="modal fade" id="modalEncerrarGar" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#059669;color:#fff">
+        <h6 class="modal-title fw-bold"><i class="bi bi-lock me-2"></i>Encerrar Garantia — NF <span id="encerrNF"></span></h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="mb-3" style="font-size:.88rem;font-weight:600">Esta garantia foi concluída com sucesso?</p>
+        <div class="mb-3">
+          <label class="form-label fw-bold" style="font-size:.8rem">Resultado do encerramento <span class="text-danger">*</span></label>
+          <select id="encerrResultado" class="form-select form-select-sm">
+            <option value="">— Selecione —</option>
+            <option value="sucesso">✅ Sim — encerrada com sucesso</option>
+            <option value="parcial">⚠️ Encerrada parcialmente</option>
+            <option value="sem_resolucao">❌ Encerrada sem resolução</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label fw-bold" style="font-size:.8rem">Observação</label>
+          <textarea id="encerrObs" class="form-control form-control-sm" rows="2"
+            placeholder="Detalhes do encerramento (opcional)..."
+            style="resize:vertical"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer" style="background:#F8F8F8">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sm px-4 fw-bold" style="background:#059669;color:#fff" onclick="confirmarEncerramento()">
+          <i class="bi bi-lock me-1"></i>Confirmar Encerramento
         </button>
       </div>
     </div>
