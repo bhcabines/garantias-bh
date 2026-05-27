@@ -2009,6 +2009,7 @@ function parseNFe(txt){
       cstICMS:g(icN,'CST')||g(icN,'CSOSN'),bcICMS:parseFloat(g(icN,'vBC'))||0,
       pICMS:parseFloat(g(icN,'pICMS'))||0,vICMS:parseFloat(g(icN,'vICMS'))||0,
       bcICMSST:parseFloat(g(icN,'vBCST'))||0,vICMSST:parseFloat(g(icN,'vICMSST'))||0,
+      pFCPST:parseFloat(g(icN,'pFCPST'))||0,vFCPST:parseFloat(g(icN,'vFCPST'))||0,vBCFCPST:parseFloat(g(icN,'vBCFCPST'))||0,
       pIPI:parseFloat(g(ipi,'pIPI'))||0,vIPI:parseFloat(g(ipi,'vIPI'))||0,bcIPI:parseFloat(g(ipi,'vBC'))||0,
       pPIS:parseFloat(g(piN,'pPIS'))||0,vPIS:parseFloat(g(piN,'vPIS'))||0,
       pCOFINS:parseFloat(g(coN,'pCOFINS'))||0,vCOFINS:parseFloat(g(coN,'vCOFINS'))||0});
@@ -2070,6 +2071,7 @@ function gerarEspelho(){
     const cfDev=(it.cfop||'').startsWith('6')||destinatario.uf!==emitente.uf?'6.202':'5.202';
     return{...it,qRet:q,vPR:q*it.vUnCom,bcICr:(it.bcICMS||it.vProd)*r,vICr:it.vICMS*r,
       bcICSTr:(it.bcICMSST||0)*r,vICSTr:(it.vICMSST||0)*r,
+      vFCPSTr:(it.vFCPST||0)*r,vBCFCPSTr:(it.vBCFCPST||0)*r,pFCPST:it.pFCPST||0,
       bcIPr:it.bcIPI*r,vIPr:it.vIPI*r,vPISr:it.vPIS*r,vCOFr:it.vCOFINS*r,cfDev};
   }).filter(Boolean);
   if(!sel.length){toast('Selecione ao menos um item.','warning');return;}
@@ -2077,7 +2079,9 @@ function gerarEspelho(){
   const hoje=new Date().toLocaleDateString('pt-BR');
   const S=a=>sel.reduce((s,i)=>s+i[a],0);
   const sBCIC=S('bcICr'),sIC=S('vICr'),sBCST=S('bcICSTr'),sST=S('vICSTr'),
-    sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sTOT=sPR+sIP+sST;
+    sFCPST=S('vFCPSTr'),sBCFCPST=S('vBCFCPSTr'),
+    pFCPSTmax=sel.reduce((mx,i)=>Math.max(mx,i.pFCPST||0),0),
+    sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sTOT=sPR+sIP+sST+sFCPST;
   const emit=destinatario,dest=emitente; // papeis invertidos na devolução
   const cfMain=sel[0].cfDev;
   const rows=sel.map((it,i)=>`<tr>
@@ -2205,6 +2209,7 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
     <div class="c"><label>Valor ICMS</label><span>${_fR(sIC)}</span></div>
     <div class="c"><label>Base Cálc. ICMS ST</label><span>${_fR(sBCST)}</span></div>
     <div class="c"><label>Valor ICMS ST</label><span>${_fR(sST)}</span></div>
+    ${sFCPST>0?`<div class="c" style="background:#fffbeb;border-left:2px solid #f59e0b"><label>Base Cálc. FCP ST</label><span>${_fR(sBCFCPST)}</span></div><div class="c" style="background:#fffbeb;border-left:2px solid #f59e0b"><label>Valor FCP ST (${pFCPSTmax}%)</label><span style="font-weight:700;color:#b45309">${_fR(sFCPST)}</span></div>`:''}
     <div class="c"><label>Base Cálc. IPI</label><span>${_fR(sBCIP)}</span></div>
     <div class="c"><label>Valor IPI</label><span>${_fR(sIP)}</span></div>
     <div class="c"><label>Valor PIS</label><span>${_fR(sPIS)}</span></div>
@@ -2223,7 +2228,8 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
   <div class="bt">Informações Adicionais / Dados Adicionais</div>
   <div style="padding:4px 6px;font-size:7.5pt;min-height:28px">
     Devolução referente à Nota Fiscal nº <strong>${esc(nf.numero)}</strong>, série <strong>${esc(nf.serie)}</strong>, emitida em <strong>${dtNF}</strong> por <strong>${esc(dest.nome)}</strong> (CNPJ: ${_fmtCNPJ(dest.cnpj)}).
-    CFOP ${cfMain} — Devolução de Venda. Documento gerado pelo Sistema de Controle de Garantias — BH Cabines.
+    CFOP ${cfMain} — Devolução de Venda.${sFCPST>0?` Valor do Fundo de Combate à Pobreza (FCP ST) incidente sobre a operação: ${_fR(sFCPST)} — alíquota ${pFCPSTmax}% sobre BC ST de ${_fR(sBCFCPST)}.`:''}
+    Documento gerado pelo Sistema de Controle de Garantias — BH Cabines.
   </div>
 </div>
 <div class="np" style="text-align:center;padding:6px;color:#999;font-size:7pt;margin-top:6px">
