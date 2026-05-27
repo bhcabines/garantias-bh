@@ -2008,6 +2008,7 @@ function parseNFe(txt){
       vProd:parseFloat(g(prod,'vProd'))||qCom*vUn,
       cstICMS:g(icN,'CST')||g(icN,'CSOSN'),bcICMS:parseFloat(g(icN,'vBC'))||0,
       pICMS:parseFloat(g(icN,'pICMS'))||0,vICMS:parseFloat(g(icN,'vICMS'))||0,
+      bcICMSST:parseFloat(g(icN,'vBCST'))||0,vICMSST:parseFloat(g(icN,'vICMSST'))||0,
       pIPI:parseFloat(g(ipi,'pIPI'))||0,vIPI:parseFloat(g(ipi,'vIPI'))||0,bcIPI:parseFloat(g(ipi,'vBC'))||0,
       pPIS:parseFloat(g(piN,'pPIS'))||0,vPIS:parseFloat(g(piN,'vPIS'))||0,
       pCOFINS:parseFloat(g(coN,'pCOFINS'))||0,vCOFINS:parseFloat(g(coN,'vCOFINS'))||0});
@@ -2068,21 +2069,24 @@ function gerarEspelho(){
     const r=q/it.qCom;
     const cfDev=(it.cfop||'').startsWith('6')||destinatario.uf!==emitente.uf?'6.202':'5.202';
     return{...it,qRet:q,vPR:q*it.vUnCom,bcICr:(it.bcICMS||it.vProd)*r,vICr:it.vICMS*r,
+      bcICSTr:(it.bcICMSST||0)*r,vICSTr:(it.vICMSST||0)*r,
       bcIPr:it.bcIPI*r,vIPr:it.vIPI*r,vPISr:it.vPIS*r,vCOFr:it.vCOFINS*r,cfDev};
   }).filter(Boolean);
   if(!sel.length){toast('Selecione ao menos um item.','warning');return;}
   const dtNF=nf.dhEmi?new Date(nf.dhEmi).toLocaleDateString('pt-BR'):'—';
   const hoje=new Date().toLocaleDateString('pt-BR');
   const S=a=>sel.reduce((s,i)=>s+i[a],0);
-  const sBCIC=S('bcICr'),sIC=S('vICr'),sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sTOT=sPR+sIP;
+  const sBCIC=S('bcICr'),sIC=S('vICr'),sBCST=S('bcICSTr'),sST=S('vICSTr'),
+    sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sTOT=sPR+sIP+sST;
   const emit=destinatario,dest=emitente; // papeis invertidos na devolução
   const cfMain=sel[0].cfDev;
   const rows=sel.map((it,i)=>`<tr>
     <td>${i+1}</td><td>${esc(it.cProd)}</td><td style="text-align:left">${esc(it.xProd)}</td>
-    <td>${esc(it.ncm)}</td><td>${it.cfDev}</td><td>${esc(it.uCom)}</td>
+    <td>${esc(it.ncm)}</td><td>${it.cfDev}</td><td>${esc(it.cstICMS)||'—'}</td><td>${esc(it.uCom)}</td>
     <td>${it.qRet.toLocaleString('pt-BR',{maximumFractionDigits:4})}</td>
     <td>${_fR(it.vUnCom)}</td><td>${_fR(it.vPR)}</td>
     <td>${_fR(it.bcICr)}</td><td>${it.pICMS>0?it.pICMS+'%':'—'}</td><td>${it.pICMS>0?_fR(it.vICr):'—'}</td>
+    <td>${it.bcICSTr>0?_fR(it.bcICSTr):'—'}</td><td>${it.vICSTr>0?_fR(it.vICSTr):'—'}</td>
     <td>${it.pIPI>0?it.pIPI+'%':'—'}</td><td>${it.pIPI>0?_fR(it.vIPr):'—'}</td>
     <td>${it.pPIS>0?_fR(it.vPISr):'—'}</td><td>${it.pCOFINS>0?_fR(it.vCOFr):'—'}</td></tr>`).join('');
   const w=window.open('','_blank','width=1100,height=800');
@@ -2136,7 +2140,6 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
     <div class="c"><label>CFOP</label><span style="font-weight:700">${cfMain}</span></div>
     <div class="c"><label>Finalidade</label><span>4 — Devolução</span></div>
     <div class="c"><label>Data Sugerida</label><span>${hoje}</span></div>
-    <div class="c" style="flex:4"><label>Informação Complementar (infCpl)</label><span>Devolução ref. NF nº ${esc(nf.numero)}, série ${esc(nf.serie)}, emitida em ${dtNF} por ${esc(dest.nome)}.</span></div>
   </div>
 </div>
 <div class="box">
@@ -2181,14 +2184,15 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
   <table><thead>
     <tr>
       <th rowspan="2">N°</th><th rowspan="2">Código</th><th rowspan="2" style="min-width:120px;text-align:left">Descrição</th>
-      <th rowspan="2">NCM</th><th rowspan="2">CFOP</th><th rowspan="2">Un</th>
+      <th rowspan="2">NCM</th><th rowspan="2">CFOP</th><th rowspan="2">CST</th><th rowspan="2">Un</th>
       <th rowspan="2">Qtd Dev.</th><th rowspan="2">Vlr Unit.</th><th rowspan="2">Vlr Total</th>
-      <th colspan="3" style="background:#dbeafe">ICMS</th>
+      <th colspan="5" style="background:#dbeafe">ICMS</th>
       <th colspan="2" style="background:#dcfce7">IPI</th>
       <th style="background:#fce7f3">PIS</th><th style="background:#fce7f3">COFINS</th>
     </tr>
     <tr>
       <th style="background:#dbeafe">Base Cálc.</th><th style="background:#dbeafe">Alíq.</th><th style="background:#dbeafe">Valor</th>
+      <th style="background:#93c5fd">BC ST</th><th style="background:#93c5fd">Vlr ST</th>
       <th style="background:#dcfce7">Alíq.</th><th style="background:#dcfce7">Valor</th>
       <th style="background:#fce7f3">Valor</th><th style="background:#fce7f3">Valor</th>
     </tr>
@@ -2199,6 +2203,8 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
   <div class="row">
     <div class="c"><label>Base Cálc. ICMS</label><span>${_fR(sBCIC)}</span></div>
     <div class="c"><label>Valor ICMS</label><span>${_fR(sIC)}</span></div>
+    <div class="c"><label>Base Cálc. ICMS ST</label><span>${_fR(sBCST)}</span></div>
+    <div class="c"><label>Valor ICMS ST</label><span>${_fR(sST)}</span></div>
     <div class="c"><label>Base Cálc. IPI</label><span>${_fR(sBCIP)}</span></div>
     <div class="c"><label>Valor IPI</label><span>${_fR(sIP)}</span></div>
     <div class="c"><label>Valor PIS</label><span>${_fR(sPIS)}</span></div>
