@@ -1523,7 +1523,8 @@ function renderRetorno(){
       :alerta?'<span class="badge-prazo-alerta"><i class="bi bi-clock me-1"></i>'+diasRest+'d restantes</span>'
       :'<span class="badge-prazo-ok"><i class="bi bi-clock me-1"></i>'+diasRest+'d restantes</span>';
     const loteId='lote_'+li;
-    const refs=JSON.stringify(lote.pecas.map(p=>({entryId:p.entryId,pecaId:p.pecaId})));
+    window._retLotes=window._retLotes||{};
+    window._retLotes[loteId]=lote.pecas.map(p=>({entryId:p.entryId,pecaId:p.pecaId}));
     const qtdTotal=lote.pecas.reduce((s,p)=>s+Number(p.quantidade),0);
     const valTotal=lote.pecas.reduce((s,p)=>s+Number(p.quantidade)*Number(p.valorUnit),0);
     const pecasList=lote.pecas.map(p=>'<span style="font-size:.7rem;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:.1rem .4rem;display:inline-block;margin:.1rem">'+esc(p.codigoPeca)+' — '+esc(p.nomePeca)+' ('+p.quantidade+'x)</span>').join(' ');
@@ -1553,13 +1554,13 @@ function renderRetorno(){
           +'</div>'
         +'</div>'
         +'<div style="margin-top:.65rem;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap">'
-          +'<button class="btn btn-sm btn-bh-ol px-3" onclick="salvarRetorno(\''+loteId+'\','+refs+')">'
+          +'<button class="btn btn-sm btn-bh-ol px-3" onclick="salvarRetorno(\''+loteId+'\')">'
             +'<i class="bi bi-check2 me-1"></i>Salvar'
           +'</button>'
-          +'<button class="btn btn-sm px-3" style="background:#DC2626;color:#fff;border-radius:8px;font-weight:700" onclick="prepExcluir(\''+loteId+'\','+refs+')">'
+          +'<button class="btn btn-sm px-3" style="background:#DC2626;color:#fff;border-radius:8px;font-weight:700" onclick="prepExcluir(\''+loteId+'\')">'
             +'<i class="bi bi-trash me-1"></i>Excluir'
           +'</button>'
-          +'<button class="btn btn-sm px-3" style="background:#059669;color:#fff;border-radius:8px;font-weight:700" onclick="prepEncerrar(\''+loteId+'\','+refs+',\''+esc(lote.nfGarantia)+'\')">'
+          +'<button class="btn btn-sm px-3" style="background:#059669;color:#fff;border-radius:8px;font-weight:700" onclick="prepEncerrar(\''+loteId+'\',\''+esc(lote.nfGarantia)+'\')">'
             +'<i class="bi bi-lock me-1"></i>Encerrar'
           +'</button>'
         +'</div>'
@@ -1572,7 +1573,8 @@ function renderRetorno(){
   el.innerHTML=alerta+html;
 }
 
-function salvarRetorno(loteId,refs){
+function salvarRetorno(loteId){
+  const refs=(window._retLotes||{})[loteId]||[];
   const st=document.getElementById('retSt_'+loteId)?.value||'';
   const obs=document.getElementById('retObs_'+loteId)?.value||'';
   const concluida=st.startsWith('Garantia concluída');
@@ -1582,8 +1584,8 @@ function salvarRetorno(loteId,refs){
 }
 
 let _exclData=null,_encerrData=null;
-function prepExcluir(loteId,refs){
-  _exclData={loteId,refs};
+function prepExcluir(loteId){
+  _exclData={loteId,refs:(window._retLotes||{})[loteId]||[]};
   document.getElementById('excluirJust').value='';
   new bootstrap.Modal(document.getElementById('modalExcluirGar')).show();
 }
@@ -1597,8 +1599,8 @@ function confirmarExclusao(){
   toast('Garantia excluída — justificativa registrada.','success');
   _exclData=null;
 }
-function prepEncerrar(loteId,refs,nfGar){
-  _encerrData={loteId,refs,nfGar};
+function prepEncerrar(loteId,nfGar){
+  _encerrData={loteId,refs:(window._retLotes||{})[loteId]||[],nfGar};
   document.getElementById('encerrResultado').value='';
   document.getElementById('encerrObs').value='';
   document.getElementById('encerrNF').textContent=nfGar;
