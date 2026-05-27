@@ -95,6 +95,18 @@ body { background:#F2F2F2; color:var(--bh-dark); }
 .grupo-peca-row:hover td { background:#fff0e6; }
 .sub-grupo-row { display:none; }
 .sub-grupo-row td { border-bottom:2px solid var(--border); }
+/* RETORNO FORNECEDOR */
+.retorno-card { background:#fff; border-radius:10px; border:1.5px solid var(--border); box-shadow:0 1px 5px rgba(0,0,0,.06); overflow:hidden; margin-bottom:1rem; }
+.retorno-card.vencido { border-color:#DC2626; border-width:2px; }
+.retorno-card-header { padding:.7rem 1.1rem; background:#f9fafb; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.55rem; flex-wrap:wrap; }
+.retorno-card-body { padding:.75rem 1.1rem; }
+.badge-prazo-ok  { background:#059669; color:#fff; border-radius:20px; padding:.1rem .55rem; font-size:.65rem; font-weight:700; white-space:nowrap; }
+.badge-prazo-alerta { background:#D97706; color:#fff; border-radius:20px; padding:.1rem .55rem; font-size:.65rem; font-weight:700; white-space:nowrap; }
+.badge-prazo-venc { background:#DC2626; color:#fff; border-radius:20px; padding:.1rem .55rem; font-size:.65rem; font-weight:700; white-space:nowrap; }
+.badge-concluida { background:#059669; color:#fff; border-radius:20px; padding:.1rem .55rem; font-size:.65rem; font-weight:700; }
+.retorno-status-sel { font-size:.8rem; border:1.5px solid var(--border); border-radius:7px; padding:.3rem .6rem; width:100%; background:#fff; }
+.retorno-obs-ta { font-size:.8rem; border:1.5px solid var(--border); border-radius:7px; padding:.35rem .6rem; width:100%; resize:vertical; min-height:54px; font-family:inherit; }
+.retorno-status-sel:focus,.retorno-obs-ta:focus { outline:none; border-color:var(--bh-orange); box-shadow:0 0 0 3px rgba(196,64,8,.12); }
 
 /* STATUS */
 .badge-status { display:inline-flex; align-items:center; gap:.25rem; padding:.18rem .52rem; border-radius:999px; font-size:.67rem; font-weight:700; white-space:nowrap; }
@@ -359,6 +371,12 @@ body { background:#F2F2F2; color:var(--bh-dark); }
         <i class="bi bi-list-ul me-1"></i>Todas as Devoluções
       </button>
     </li>
+    <li class="nav-item">
+      <button class="nav-link" onclick="trocarAba('retorno',this)" id="tabRetorno">
+        <i class="bi bi-arrow-return-right me-1"></i>Retorno do Fornecedor
+        <span class="badge bg-danger ms-1" id="badgeRetornoVenc" style="display:none;font-size:.6rem;vertical-align:middle"></span>
+      </button>
+    </li>
   </ul>
 
   <!-- ABA: PAINEL FORNECEDOR -->
@@ -393,6 +411,15 @@ body { background:#F2F2F2; color:var(--bh-dark); }
       </button>
     </div>
     <div id="fornList"></div>
+  </div>
+
+  <!-- ABA: RETORNO FORNECEDOR -->
+  <div id="abaRetorno" style="display:none">
+    <div class="sec-header" style="background:linear-gradient(135deg,#1D4ED8,#3B82F6);color:#fff;border-color:#1D4ED8">
+      <i class="bi bi-arrow-return-right"></i>
+      Acompanhamento de Retorno do Fornecedor — garantias enviadas aguardando resposta
+    </div>
+    <div id="retornoList"></div>
   </div>
 
   <!-- ABA: TODAS -->
@@ -831,7 +858,9 @@ function trocarAba(a,btn){
   btn.classList.add('active');
   document.getElementById('abaForn').style.display=a==='forn'?'':'none';
   document.getElementById('abaTodas').style.display=a==='todas'?'':'none';
+  document.getElementById('abaRetorno').style.display=a==='retorno'?'':'none';
   if(a==='todas')renderTabela();
+  if(a==='retorno')renderRetorno();
 }
 
 // KPIs
@@ -1427,6 +1456,100 @@ function toggleSelGrupo(forn,chk){
   atualizarBarra(forn);
 }
 
+// ── PAINEL RETORNO DO FORNECEDOR ──────────────────────────────────────────────
+function renderRetorno(){
+  const el=document.getElementById('retornoList');if(!el)return;
+  const flat=flattenPecas(loadNorm());
+  const enviadas=flat.filter(p=>p.status==='enviada'&&p.nfGarantia&&p.nfGarantia!=='Descarte');
+  if(!enviadas.length){
+    el.innerHTML='<div class="empty-state"><i class="bi bi-check-circle d-block mb-2" style="font-size:2rem;color:#059669"></i><p>Nenhuma garantia aguardando retorno do fornecedor.</p></div>';
+    return;
+  }
+  const lotes={};
+  enviadas.forEach(p=>{
+    const k=(p.codigoForn||'SEM')+'||'+(p.nfGarantia||'');
+    if(!lotes[k])lotes[k]={codigoForn:p.codigoForn,nomeForn:p.nomeForn,nfGarantia:p.nfGarantia,dataEnvio:p.dataEnvio,retornoStatus:p.retornoStatus||'',retornoObs:p.retornoObs||'',pecas:[]};
+    lotes[k].pecas.push(p);
+    if(p.retornoStatus&&!lotes[k].retornoStatus)lotes[k].retornoStatus=p.retornoStatus;
+    if(p.retornoObs&&!lotes[k].retornoObs)lotes[k].retornoObs=p.retornoObs;
+  });
+  const hoje=Date.now();let venc=0;
+  const statusOpts=['','Garantia concluída / Envio de produto','Garantia concluída / Reembolso','Garantia concluída / Abatimento em boleto','Garantia pendente de envio de produto','Garantia pendente de reembolso','Outros'];
+  const html=Object.values(lotes).map((lote,li)=>{
+    const envioTs=lote.dataEnvio?new Date(lote.dataEnvio+'T00:00:00').getTime():null;
+    const diasPassados=envioTs!==null?Math.floor((hoje-envioTs)/86400000):null;
+    const diasRest=diasPassados!==null?60-diasPassados:null;
+    const vencido=diasRest!==null&&diasRest<0;
+    const alerta=diasRest!==null&&diasRest>=0&&diasRest<=10;
+    if(vencido)venc++;
+    const prazoTag=diasRest===null?''
+      :vencido?'<span class="badge-prazo-venc"><i class="bi bi-exclamation-triangle me-1"></i>Vencido há '+Math.abs(diasRest)+'d</span>'
+      :alerta?'<span class="badge-prazo-alerta"><i class="bi bi-clock me-1"></i>'+diasRest+'d restantes</span>'
+      :'<span class="badge-prazo-ok"><i class="bi bi-clock me-1"></i>'+diasRest+'d restantes</span>';
+    const isConcluida=lote.retornoStatus&&lote.retornoStatus.startsWith('Garantia concluída');
+    const loteId='lote_'+li;
+    const refs=JSON.stringify(lote.pecas.map(p=>({entryId:p.entryId,pecaId:p.pecaId})));
+    const qtdTotal=lote.pecas.reduce((s,p)=>s+Number(p.quantidade),0);
+    const valTotal=lote.pecas.reduce((s,p)=>s+Number(p.quantidade)*Number(p.valorUnit),0);
+    const pecasList=lote.pecas.map(p=>'<span style="font-size:.7rem;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:5px;padding:.1rem .4rem;display:inline-block;margin:.1rem">'+esc(p.codigoPeca)+' — '+esc(p.nomePeca)+' ('+p.quantidade+'x)</span>').join(' ');
+    const selOpts=statusOpts.map(o=>'<option value="'+esc(o)+'" '+(lote.retornoStatus===o?'selected':'')+'>'+esc(o||'— Selecione o status —')+'</option>').join('');
+    return'<div class="retorno-card'+(vencido?' vencido':'')+'">'
+      +'<div class="retorno-card-header">'
+        +'<span class="supplier-code-badge">'+esc(lote.codigoForn)+'</span>'
+        +'<span style="font-weight:700;font-size:.9rem;flex:1">'+esc(lote.nomeForn)+'</span>'
+        +'<span style="font-size:.75rem;color:var(--text-muted)">NF Garantia: <strong style="color:var(--bh-dark)">'+esc(lote.nfGarantia)+'</strong></span>'
+        +'<span style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">Enviado: '+fmtD(lote.dataEnvio)+'</span>'
+        +'<span style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">Prazo 60d: '+fmtD(envioTs?new Date(envioTs+60*86400000).toISOString().slice(0,10):'')+'</span>'
+        +prazoTag
+        +(isConcluida?'<span class="badge-concluida"><i class="bi bi-check-circle me-1"></i>Concluída</span>':'')
+      +'</div>'
+      +'<div class="retorno-card-body">'
+        +'<div style="margin-bottom:.7rem">'
+          +'<span style="font-size:.67rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px">Peças enviadas neste lote — '+qtdTotal+' un · '+fmtR(valTotal)+'</span>'
+          +'<div style="margin-top:.3rem">'+pecasList+'</div>'
+        +'</div>'
+        +'<div class="row g-2">'
+          +'<div class="col-md-5">'
+            +'<label style="font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px">Status do Retorno *</label>'
+            +'<select class="retorno-status-sel" id="retSt_'+loteId+'">'+selOpts+'</select>'
+          +'</div>'
+          +'<div class="col-md-7">'
+            +'<label style="font-size:.7rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px">Observação</label>'
+            +'<textarea class="retorno-obs-ta" id="retObs_'+loteId+'" rows="2" placeholder="Anotações sobre o retorno do fornecedor...">'+esc(lote.retornoObs)+'</textarea>'
+          +'</div>'
+        +'</div>'
+        +'<div style="margin-top:.65rem;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap">'
+          +'<button class="btn btn-sm btn-bh-ol px-3" onclick="salvarRetorno(\''+loteId+'\','+refs+')">'
+            +'<i class="bi bi-check2 me-1"></i>Salvar Retorno'
+          +'</button>'
+          +'<button class="btn btn-sm px-3" style="background:#6B7280;color:#fff;border-radius:8px;font-weight:700" onclick="encerrarGarantia(\''+loteId+'\','+refs+',\''+esc(lote.nfGarantia)+'\')">'
+            +'<i class="bi bi-lock me-1"></i>Encerrar Garantia'
+          +'</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+  const alerta=venc>0?'<div style="background:#FEF2F2;border:1.5px solid #FECACA;border-radius:10px;padding:.7rem 1rem;margin-bottom:1rem;color:#991B1B;font-weight:600;font-size:.85rem"><i class="bi bi-exclamation-triangle-fill me-2"></i>'+venc+' garantia(s) com prazo de 60 dias vencido — entre em contato com o fornecedor imediatamente.</div>':'';
+  el.innerHTML=alerta+html;
+}
+
+function salvarRetorno(loteId,refs){
+  const st=document.getElementById('retSt_'+loteId)?.value||'';
+  const obs=document.getElementById('retObs_'+loteId)?.value||'';
+  const concluida=st.startsWith('Garantia concluída');
+  refs.forEach(r=>salvarPeca(r.entryId,r.pecaId,{retornoStatus:st,retornoObs:obs,...(concluida?{status:'credito'}:{})}));
+  renderTudo();
+  toast(concluida?'Garantia concluída — status atualizado para Crédito!':'Retorno salvo com sucesso!','success');
+}
+
+function encerrarGarantia(loteId,refs,nfGar){
+  const st=document.getElementById('retSt_'+loteId)?.value||'Garantia encerrada';
+  const obs=document.getElementById('retObs_'+loteId)?.value||'';
+  refs.forEach(r=>salvarPeca(r.entryId,r.pecaId,{status:'encerrada',retornoStatus:st,retornoObs:obs}));
+  renderTudo();
+  toast('Garantia NF '+nfGar+' encerrada!','success');
+}
+
 function toggleGrupoPeca(id){
   const el=document.getElementById(id),chev=document.getElementById('chev_'+id);
   if(!el)return;
@@ -1589,7 +1712,22 @@ function fotosHTML(fotos){
 
 function renderTudo(){
   atualizarKPIs();renderForn();
-  if(document.getElementById('abaTodas').style.display!=='none')renderTabela();
+  if(document.getElementById('abaTodas')?.style.display!=='none')renderTabela();
+  if(document.getElementById('abaRetorno')?.style.display!=='none')renderRetorno();
+  _badgeRetorno();
+}
+
+function _badgeRetorno(){
+  const flat=flattenPecas(loadNorm());
+  const hoje=Date.now();
+  const lotes=new Set();let v=0;
+  flat.filter(p=>p.status==='enviada'&&p.nfGarantia&&p.nfGarantia!=='Descarte').forEach(p=>{
+    const k=(p.codigoForn||'')+'||'+(p.nfGarantia||'');
+    if(lotes.has(k))return;lotes.add(k);
+    if(p.dataEnvio&&Math.floor((hoje-new Date(p.dataEnvio+'T00:00:00').getTime())/86400000)>60)v++;
+  });
+  const b=document.getElementById('badgeRetornoVenc');
+  if(b){b.style.display=v>0?'':'none';b.textContent=v;}
 }
 
 // Listeners em tempo real
