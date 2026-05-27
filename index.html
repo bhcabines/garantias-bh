@@ -91,6 +91,10 @@ body { background:#F2F2F2; color:var(--bh-dark); }
 .entry-table td { padding:.5rem .8rem; border-bottom:1px solid #F5F5F5; vertical-align:middle; }
 .entry-table tr:last-child td { border-bottom:none; }
 .entry-table tr:hover td { background:#FDFAF8; }
+.grupo-peca-row td { background:#fff8f5; border-bottom:1px solid #ffe0cc; font-size:.8rem; }
+.grupo-peca-row:hover td { background:#fff0e6; }
+.sub-grupo-row { display:none; }
+.sub-grupo-row td { border-bottom:2px solid var(--border); }
 
 /* STATUS */
 .badge-status { display:inline-flex; align-items:center; gap:.25rem; padding:.18rem .52rem; border-radius:999px; font-size:.67rem; font-weight:700; white-space:nowrap; }
@@ -487,6 +491,7 @@ body { background:#F2F2F2; color:var(--bh-dark); }
 
           <div class="form-sec-title"><i class="bi bi-box-seam me-1"></i>Peças Devolvidas <span style="font-weight:400;text-transform:none;font-size:.65rem">— informe o fornecedor de cada peça</span></div>
           <datalist id="listForn"></datalist>
+          <datalist id="listPecas"></datalist>
           <div id="pecasContainer"></div>
           <button type="button" class="btn-add-peca mt-1" onclick="adicionarLinhaPeca()">
             <i class="bi bi-plus-circle me-1"></i>Adicionar outra peça
@@ -720,7 +725,7 @@ body { background:#F2F2F2; color:var(--bh-dark); }
 <script>
 // ── FIREBASE CONFIG ── Cole aqui as configurações do seu projeto ──────────────
 const FIREBASE_CONFIG={
-   apiKey:            "AIzaSyAjke41KH4L6IKUdcsJutkzZP39cVp2N4U",
+  apiKey:            "AIzaSyAjke41KH4L6IKUdcsJutkzZP39cVp2N4U",
   authDomain:        "bh-garantias.firebaseapp.com",
   databaseURL:       "https://bh-garantias-default-rtdb.firebaseio.com",
   projectId:         "bh-garantias",
@@ -906,33 +911,67 @@ function renderForn(){
     const sc={};g.ent.forEach(e=>{sc[e.status]=(sc[e.status]||0)+1;});
     const sp=Object.entries(sc).map(([s,c])=>{const lb={pendente:'Pendente',enviada:'Enviada',credito:'Crédito',encerrada:'Encerrada'};return'<span class="badge-status status-'+s+'" style="font-size:.6rem">'+c+' '+lb[s]+'</span>';}).join('');
     const codSafe=g.cod.replace(/\W/g,'_');
-    const rows=g.ent.map(e=>{
-      const tot=Number(e.quantidade)*Number(e.valorUnit);
-      const motivoTxt=esc(e.motivo||'—');
-      const obsTxt=e.obs?'<br><span style="font-size:.66rem;color:var(--text-muted)">'+esc(e.obs)+'</span>':'';
-      const solBadge=solucaoHTML(e.solucao);
-      const envioInfo=e.nfGarantia?'<div style="font-size:.65rem;color:#059669;margin-top:.2rem"><i class="bi bi-send"></i> NF '+esc(e.nfGarantia)+(e.descarte?' <span class="badge-descarte">Descarte</span>':' — '+esc(e.formaEnvio||''))+'</div>':'';
-      const checked=(selMap[g.cod]&&selMap[g.cod].has(e.pecaId))?'checked':'';
-      const vrtCell=e.protocoloVortico?'<span style="font-size:.68rem;font-weight:700;color:#1D4ED8;font-family:monospace">'+esc(e.protocoloVortico)+'</span>':'<span style="color:#ccc;font-size:.7rem">—</span>';
-      const nepCell=e.protocoloNeppo?'<span style="font-size:.68rem;font-weight:700;color:#6D28D9;font-family:monospace">'+esc(e.protocoloNeppo)+'</span>':'<span style="color:#ccc;font-size:.7rem">—</span>';
-      return'<tr id="row_'+e.pecaId+'">'
-        +'<td class="td-check"><input type="checkbox" class="row-check" '+checked+' onchange="toggleSel(\''+e.pecaId+'\',\''+g.cod+'\')" id="chk_'+e.pecaId+'"></td>'
-        +'<td>'+fmtD(e.dataEntrada)+'</td>'
-        +'<td><div style="font-weight:600">'+esc(e.nomeCli)+'</div><div style="font-size:.68rem;color:var(--text-muted)">'+esc(e.codigoCli)+'</div></td>'
-        +'<td><span class="font-monospace" style="font-size:.76rem">'+esc(e.notaFiscal)+'</span></td>'
-        +'<td>'+vrtCell+'</td>'
-        +'<td>'+nepCell+'</td>'
-        +'<td style="font-size:.72rem;color:var(--text-muted)">'+esc(e.codigoPeca)+'</td>'
-        +'<td>'+esc(e.nomePeca)+'</td>'
-        +'<td>'+esc(e.quantidade)+'</td>'
-        +'<td>'+fmtR(Number(e.valorUnit))+'</td>'
-        +'<td style="color:#059669;font-weight:700">'+fmtR(tot)+'</td>'
-        +'<td style="max-width:130px"><span style="font-size:.73rem;font-weight:600;color:var(--bh-orange-dark)">'+motivoTxt+'</span>'+obsTxt+'</td>'
-        +'<td>'+solBadge+'</td>'
-        +'<td>'+fotosHTML(e.fotos)+'</td>'
-        +'<td><button class="btn-action edit" onclick="editarEnt(\''+e.entryId+'\')" title="Editar entrada"><i class="bi bi-pencil"></i></button>'
-        +'<button class="btn-action del" onclick="confirmarDelPeca(\''+e.entryId+'\',\''+e.pecaId+'\')" title="Excluir peça"><i class="bi bi-trash"></i></button></td>'
+    const allPecaIds=g.ent.map(e=>e.pecaId);
+    const agrupados={};
+    g.ent.forEach(e=>{
+      const k=(e.codigoPeca||'SEM').toUpperCase();
+      if(!agrupados[k])agrupados[k]={codigoPeca:e.codigoPeca,nomePeca:e.nomePeca,valorUnit:e.valorUnit,qtdTotal:0,valTotal:0,pecaIds:[],entries:[]};
+      agrupados[k].qtdTotal+=Number(e.quantidade);
+      agrupados[k].valTotal+=Number(e.quantidade)*Number(e.valorUnit);
+      agrupados[k].pecaIds.push(e.pecaId);
+      agrupados[k].entries.push(e);
+    });
+    const rows=Object.values(agrupados).map((ag,gi)=>{
+      const grpId=codSafe+'_g'+gi;
+      const allChk=ag.pecaIds.length>0&&ag.pecaIds.every(pid=>selMap[g.cod]?.has(pid));
+      const subRows=ag.entries.map(e=>{
+        const tot=Number(e.quantidade)*Number(e.valorUnit);
+        const vrtCell=e.protocoloVortico?'<span style="font-weight:700;color:#1D4ED8;font-family:monospace">'+esc(e.protocoloVortico)+'</span>':'<span style="color:#ccc">—</span>';
+        const nepCell=e.protocoloNeppo?'<span style="font-weight:700;color:#6D28D9;font-family:monospace">'+esc(e.protocoloNeppo)+'</span>':'<span style="color:#ccc">—</span>';
+        const envioInfo=e.nfGarantia?'<div style="font-size:.65rem;color:#059669"><i class="bi bi-send"></i> NF '+esc(e.nfGarantia)+(e.descarte?' <span class="badge-descarte">Descarte</span>':' — '+esc(e.formaEnvio||''))+'</div>':'';
+        const obsTxt=e.obs?'<br><span style="font-size:.65rem;color:var(--text-muted)">'+esc(e.obs)+'</span>':'';
+        return'<tr>'
+          +'<td>'+fmtD(e.dataEntrada)+'</td>'
+          +'<td><div style="font-weight:600">'+esc(e.nomeCli)+'</div><div style="font-size:.68rem;color:var(--text-muted)">'+esc(e.codigoCli)+'</div></td>'
+          +'<td><span class="font-monospace">'+esc(e.notaFiscal)+'</span></td>'
+          +'<td>'+vrtCell+'</td>'
+          +'<td>'+nepCell+'</td>'
+          +'<td style="text-align:center">'+esc(e.quantidade)+'</td>'
+          +'<td style="color:#059669">'+fmtR(tot)+'</td>'
+          +'<td><span style="font-weight:600;color:var(--bh-orange-dark)">'+esc(e.motivo||'—')+'</span>'+obsTxt+'</td>'
+          +'<td>'+solucaoHTML(e.solucao)+'</td>'
+          +'<td>'+fotosHTML(e.fotos)+'</td>'
+          +'<td>'+envioInfo+'</td>'
+          +'<td>'
+            +'<button class="btn-action edit" onclick="editarEnt(\''+e.entryId+'\')" title="Editar"><i class="bi bi-pencil"></i></button>'
+            +'<button class="btn-action del" onclick="confirmarDelPeca(\''+e.entryId+'\',\''+e.pecaId+'\')" title="Excluir"><i class="bi bi-trash"></i></button>'
+          +'</td>'
         +'</tr>';
+      }).join('');
+      return'<tr class="grupo-peca-row">'
+        +'<td class="td-check"><input type="checkbox" class="row-check grp-chk" id="chkGrp_'+grpId+'" '+(allChk?'checked':'')+' data-forn="'+esc(g.cod)+'" data-ids="'+esc(JSON.stringify(ag.pecaIds))+'" onchange="toggleSelGrupo(\''+g.cod+'\',this)"></td>'
+        +'<td><span class="font-monospace" style="font-size:.76rem;color:var(--text-muted)">'+esc(ag.codigoPeca)+'</span></td>'
+        +'<td><strong>'+esc(ag.nomePeca)+'</strong></td>'
+        +'<td style="text-align:center;font-weight:700;font-size:.95rem">'+ag.qtdTotal+'</td>'
+        +'<td>'+fmtR(Number(ag.valorUnit))+'</td>'
+        +'<td style="color:#059669;font-weight:700">'+fmtR(ag.valTotal)+'</td>'
+        +'<td><span style="font-size:.7rem;color:var(--text-muted)">'+ag.entries.length+' entrada'+(ag.entries.length>1?'s':'')+'</span></td>'
+        +'<td><button class="btn-action" style="background:#eee;color:#555" onclick="toggleGrupoPeca(\'sub_'+grpId+'\')" title="Ver entradas"><i class="bi bi-chevron-down" id="chev_sub_'+grpId+'"></i></button></td>'
+      +'</tr>'
+      +'<tr class="sub-grupo-row" id="sub_'+grpId+'">'
+        +'<td colspan="8" style="padding:0">'
+          +'<div style="background:#f8f9fa;padding:.4rem .75rem .6rem 1.5rem;border-left:3px solid var(--bh-orange)">'
+            +'<table class="entry-table" style="font-size:.72rem">'
+              +'<thead><tr>'
+                +'<th>Data</th><th>Cliente</th><th>NF</th>'
+                +'<th style="color:#1D4ED8">Vórtice</th><th style="color:#6D28D9">Neppo</th>'
+                +'<th>Qtd</th><th>Total</th><th>Motivo</th><th>Solução</th><th>Fotos</th><th>Envio</th><th></th>'
+              +'</tr></thead>'
+              +'<tbody>'+subRows+'</tbody>'
+            +'</table>'
+          +'</div>'
+        +'</td>'
+      +'</tr>';
     }).join('');
     const accId='acc_'+codSafe;
     const barId='bar_'+codSafe;
@@ -957,11 +996,9 @@ function renderForn(){
       +'<div class="supplier-entries" id="'+accId+'">'
         +'<div class="table-responsive">'
           +'<table class="entry-table"><thead><tr>'
-            +'<th class="th-check"><input type="checkbox" class="row-check" title="Selecionar todos" onchange="selecionarTodos(this,\''+g.cod+'\','+JSON.stringify(g.ent.map(e=>e.pecaId))+')" id="chkAll_'+codSafe+'"></th>'
-            +'<th>Data</th><th>Cliente</th><th>NF</th>'
-            +'<th style="color:#1D4ED8">Vórtice</th><th style="color:#6D28D9">Neppo</th>'
+            +'<th class="th-check"><input type="checkbox" class="row-check" title="Selecionar todos" onchange="selecionarTodos(this,\''+g.cod+'\','+JSON.stringify(allPecaIds)+')" id="chkAll_'+codSafe+'"></th>'
             +'<th>Cód. Peça</th><th>Descrição</th>'
-            +'<th>Qtd</th><th>Vlr Unit.</th><th>Total</th><th>Motivo</th><th>Solução Cliente</th><th>Fotos</th><th></th>'
+            +'<th>Qtd Total</th><th>Vlr Unit.</th><th>Total</th><th>Entradas</th><th></th>'
           +'</tr></thead>'
           +'<tbody>'+rows+'</tbody>'
         +'</table></div>'
@@ -1073,7 +1110,7 @@ function renderPecasForm(){
       +'<div class="row g-2">'
         +'<div class="col-6 col-md-2">'
           +'<label class="form-label" style="font-size:.72rem">Cód. Peça *</label>'
-          +'<input type="text" class="form-control form-control-sm" id="pfCod_'+i+'" value="'+v(p.codigoPeca)+'" placeholder="P-001" required>'
+          +'<input type="text" class="form-control form-control-sm" id="pfCod_'+i+'" value="'+v(p.codigoPeca)+'" placeholder="P-001" required oninput="autoDescPeca('+i+')" list="listPecas">'
         +'</div>'
         +'<div class="col-6 col-md-4">'
           +'<label class="form-label" style="font-size:.72rem">Descrição *</label>'
@@ -1140,6 +1177,24 @@ function preencherListas(){
   document.getElementById('listForn').innerHTML=fns.map(([,n])=>'<option value="'+esc(n)+'">').join('');
   const cls=[...new Set(d.map(x=>x.nomeCli))];
   document.getElementById('listCli').innerHTML=cls.map(c=>'<option value="'+esc(c)+'">').join('');
+  const pecs=[...new Map(flat.filter(p=>p.codigoPeca).map(p=>[p.codigoPeca.toUpperCase(),p])).values()];
+  const lp=document.getElementById('listPecas');
+  if(lp)lp.innerHTML=pecs.map(p=>'<option value="'+esc(p.codigoPeca)+'">'+esc(p.nomePeca)+'</option>').join('');
+}
+
+function autoDescPeca(i){
+  const codEl=document.getElementById('pfCod_'+i);
+  const nomeEl=document.getElementById('pfNome_'+i);
+  const valEl=document.getElementById('pfVal_'+i);
+  if(!codEl||!nomeEl)return;
+  const cod=(codEl.value||'').trim().toUpperCase();
+  if(!cod)return;
+  const flat=flattenPecas(loadNorm());
+  const m=flat.find(p=>(p.codigoPeca||'').toUpperCase()===cod);
+  if(m){
+    if(!nomeEl.value.trim())nomeEl.value=m.nomePeca||'';
+    if(valEl&&!valEl.value)valEl.value=m.valorUnit||'';
+  }
 }
 
 function autoFornPeca(idx){
@@ -1355,8 +1410,29 @@ function selecionarTodos(chkAll,cod,ids){
   if(!selMap[cod])selMap[cod]=new Set();
   if(chkAll.checked)ids.forEach(id=>selMap[cod].add(id));
   else selMap[cod].clear();
-  ids.forEach(id=>{const c=document.getElementById('chk_'+id);if(c)c.checked=chkAll.checked;});
+  document.querySelectorAll('.grp-chk').forEach(chk=>{
+    if(chk.dataset.forn!==cod)return;
+    const gids=JSON.parse(chk.dataset.ids||'[]');
+    chk.checked=gids.length>0&&gids.every(pid=>selMap[cod]?.has(pid));
+    chk.indeterminate=!chk.checked&&gids.some(pid=>selMap[cod]?.has(pid));
+  });
   atualizarBarra(cod);
+}
+
+function toggleSelGrupo(forn,chk){
+  if(!selMap[forn])selMap[forn]=new Set();
+  const ids=JSON.parse(chk.dataset.ids||'[]');
+  if(chk.checked)ids.forEach(pid=>selMap[forn].add(pid));
+  else ids.forEach(pid=>selMap[forn].delete(pid));
+  atualizarBarra(forn);
+}
+
+function toggleGrupoPeca(id){
+  const el=document.getElementById(id),chev=document.getElementById('chev_'+id);
+  if(!el)return;
+  const vis=el.style.display==='table-row';
+  el.style.display=vis?'none':'table-row';
+  if(chev)chev.style.transform=vis?'':'rotate(180deg)';
 }
 
 function atualizarBarra(cod){
