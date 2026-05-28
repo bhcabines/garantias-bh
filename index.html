@@ -2005,7 +2005,7 @@ function parseNFe(txt){
     const qCom=parseFloat(g(prod,'qCom'))||0,vUn=parseFloat(g(prod,'vUnCom'))||0;
     items.push({nItem:det.getAttribute('nItem')||(i+1).toString(),cProd:g(prod,'cProd'),xProd:g(prod,'xProd'),
       ncm:g(prod,'NCM'),cfop:g(prod,'CFOP'),uCom:g(prod,'uCom'),qCom,vUnCom:vUn,
-      vProd:parseFloat(g(prod,'vProd'))||qCom*vUn,
+      vProd:parseFloat(g(prod,'vProd'))||qCom*vUn,vDesc:parseFloat(g(prod,'vDesc'))||0,
       cstICMS:g(icN,'CST')?(g(icN,'orig')||'0')+g(icN,'CST'):g(icN,'CSOSN')||'',bcICMS:parseFloat(g(icN,'vBC'))||0,
       pICMS:parseFloat(g(icN,'pICMS'))||0,vICMS:parseFloat(g(icN,'vICMS'))||0,
       bcICMSST:parseFloat(g(icN,'vBCST'))||0,vICMSST:parseFloat(g(icN,'vICMSST'))||0,
@@ -2069,7 +2069,7 @@ function gerarEspelho(){
     if(q<=0)return null;
     const r=q/it.qCom;
     const cfDev=(it.cfop||'').startsWith('6')||destinatario.uf!==emitente.uf?'6.202':'5.202';
-    return{...it,qRet:q,vPR:q*it.vUnCom,bcICr:(it.bcICMS||it.vProd)*r,vICr:it.vICMS*r,
+    return{...it,qRet:q,vPR:q*it.vUnCom,vDescr:(it.vDesc||0)*r,bcICr:(it.bcICMS||it.vProd)*r,vICr:it.vICMS*r,
       bcICSTr:(it.bcICMSST||0)*r,vICSTr:(it.vICMSST||0)*r,
       vFCPSTr:(it.vFCPST||0)*r,vBCFCPSTr:(it.vBCFCPST||0)*r,pFCPST:it.pFCPST||0,
       bcIPr:it.bcIPI*r,vIPr:it.vIPI*r,vPISr:it.vPIS*r,vCOFr:it.vCOFINS*r,cfDev};
@@ -2081,14 +2081,15 @@ function gerarEspelho(){
   const sBCIC=S('bcICr'),sIC=S('vICr'),sBCST=S('bcICSTr'),sST=S('vICSTr'),
     sFCPST=S('vFCPSTr'),sBCFCPST=S('vBCFCPSTr'),
     pFCPSTmax=sel.reduce((mx,i)=>Math.max(mx,i.pFCPST||0),0),
-    sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sTOT=sPR+sIP+sST+sFCPST;
+    sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sDesc=S('vDescr'),
+    sTOT=sPR-sDesc+sIP+sST+sFCPST;
   const emit=destinatario,dest=emitente; // papeis invertidos na devolução
   const cfMain=sel[0].cfDev;
   const rows=sel.map((it,i)=>`<tr>
     <td>${i+1}</td><td>${esc(it.cProd)}</td><td style="text-align:left">${esc(it.xProd)}</td>
     <td>${esc(it.ncm)}</td><td>${esc(it.cstICMS)||'—'}</td><td>${it.cfDev}</td><td>${esc(it.uCom)}</td>
     <td>${it.qRet.toLocaleString('pt-BR',{maximumFractionDigits:4})}</td>
-    <td>${_fR(it.vUnCom)}</td><td>${_fR(it.vPR)}</td>
+    <td>${_fR(it.vUnCom)}</td><td>${_fR(it.vPR)}</td><td style="background:#fef9c3">${it.vDescr>0?_fR(it.vDescr):'—'}</td>
     <td>${_fR(it.bcICr)}</td><td>${it.pICMS>0?it.pICMS+'%':'—'}</td><td>${it.pICMS>0?_fR(it.vICr):'—'}</td>
     <td>${it.bcICSTr>0?_fR(it.bcICSTr):'—'}</td><td>${it.vICSTr>0?_fR(it.vICSTr):'—'}</td>
     <td>${it.pIPI>0?it.pIPI+'%':'—'}</td><td>${it.pIPI>0?_fR(it.vIPr):'—'}</td>
@@ -2189,7 +2190,7 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
     <tr>
       <th rowspan="2">N°</th><th rowspan="2">Código</th><th rowspan="2" style="min-width:120px;text-align:left">Descrição</th>
       <th rowspan="2">NCM</th><th rowspan="2">CST</th><th rowspan="2">CFOP</th><th rowspan="2">Un</th>
-      <th rowspan="2">Qtd Dev.</th><th rowspan="2">Vlr Unit.</th><th rowspan="2">Vlr Total</th>
+      <th rowspan="2">Qtd Dev.</th><th rowspan="2">Vlr Unit.</th><th rowspan="2">Vlr Total</th><th rowspan="2" style="background:#fef9c3">Desconto</th>
       <th colspan="5" style="background:#dbeafe">ICMS</th>
       <th colspan="2" style="background:#dcfce7">IPI</th>
       <th style="background:#fce7f3">PIS</th><th style="background:#fce7f3">COFINS</th>
@@ -2216,6 +2217,7 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
   </div>
   <div class="row">
     <div class="c"><label>Valor Total Produtos</label><span>${_fR(sPR)}</span></div>
+    <div class="c" style="background:#fef9c3"><label>Desconto Total</label><span style="font-weight:700;color:#92400e">${sDesc>0?_fR(sDesc):'R$ 0,00'}</span></div>
     <div class="c"><label>Frete</label><span>R$ 0,00</span></div>
     <div class="c"><label>Seguro</label><span>R$ 0,00</span></div>
     <div class="c"><label>Outras Despesas</label><span>R$ 0,00</span></div>
