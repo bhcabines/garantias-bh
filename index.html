@@ -901,16 +901,16 @@ function trocarAba(a,btn){
 function atualizarKPIs(){
   const entries=loadNorm();
   const flat=flattenPecas(entries);
-  const ativos=flat.filter(p=>p.status!=='encerrada');
-  const tp=ativos.reduce((s,p)=>s+Number(p.quantidade),0);
-  const tv=ativos.reduce((s,p)=>s+Number(p.quantidade)*Number(p.valorUnit),0);
-  const fn=new Set(ativos.map(p=>p.codigoForn)).size;
+  const pendentes=flat.filter(p=>p.status==='pendente');
+  const tp=pendentes.reduce((s,p)=>s+Number(p.quantidade),0);
+  const tv=pendentes.reduce((s,p)=>s+Number(p.quantidade)*Number(p.valorUnit),0);
+  const fn=new Set(pendentes.map(p=>p.codigoForn)).size;
   let md=null,mf='';
-  ativos.forEach(p=>{const di=dias(p.dataEntrada);if(di!==null&&(md===null||di>md)){md=di;mf=p.nomeForn;}});
+  pendentes.forEach(p=>{const di=dias(p.dataEntrada);if(di!==null&&(md===null||di>md)){md=di;mf=p.nomeForn;}});
   document.getElementById('kpiPecas').textContent=tp.toLocaleString('pt-BR');
   document.getElementById('kpiPecasSub').textContent=entries.length?entries.length+' entrada(s) registrada(s)':'Nenhum registro';
   document.getElementById('kpiValor').textContent=fmtR(tv);
-  document.getElementById('kpiValorSub').textContent=ativos.length?ativos.length+' peça(s) ativas':'Sem pendências';
+  document.getElementById('kpiValorSub').textContent=pendentes.length?pendentes.length+' peça(s) pendentes':'Sem pendências';
   document.getElementById('kpiForn').textContent=fn;
   document.getElementById('kpiFornSub').textContent=fn?'com peças pendentes':'Tudo em dia';
   document.getElementById('kpiAntiga').textContent=md!==null?md+'d':'—';
@@ -2086,7 +2086,7 @@ function gerarEspelho(){
   const cfMain=sel[0].cfDev;
   const rows=sel.map((it,i)=>`<tr>
     <td>${i+1}</td><td>${esc(it.cProd)}</td><td style="text-align:left">${esc(it.xProd)}</td>
-    <td>${esc(it.ncm)}</td><td>${it.cfDev}</td><td>${esc(it.cstICMS)||'—'}</td><td>${esc(it.uCom)}</td>
+    <td>${esc(it.ncm)}</td><td>${esc(it.cstICMS)||'—'}</td><td>${it.cfDev}</td><td>${esc(it.uCom)}</td>
     <td>${it.qRet.toLocaleString('pt-BR',{maximumFractionDigits:4})}</td>
     <td>${_fR(it.vUnCom)}</td><td>${_fR(it.vPR)}</td>
     <td>${_fR(it.bcICr)}</td><td>${it.pICMS>0?it.pICMS+'%':'—'}</td><td>${it.pICMS>0?_fR(it.vICr):'—'}</td>
@@ -2188,7 +2188,7 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
   <table><thead>
     <tr>
       <th rowspan="2">N°</th><th rowspan="2">Código</th><th rowspan="2" style="min-width:120px;text-align:left">Descrição</th>
-      <th rowspan="2">NCM</th><th rowspan="2">CFOP</th><th rowspan="2">CST</th><th rowspan="2">Un</th>
+      <th rowspan="2">NCM</th><th rowspan="2">CST</th><th rowspan="2">CFOP</th><th rowspan="2">Un</th>
       <th rowspan="2">Qtd Dev.</th><th rowspan="2">Vlr Unit.</th><th rowspan="2">Vlr Total</th>
       <th colspan="5" style="background:#dbeafe">ICMS</th>
       <th colspan="2" style="background:#dcfce7">IPI</th>
