@@ -2006,7 +2006,7 @@ function parseNFe(txt){
     items.push({nItem:det.getAttribute('nItem')||(i+1).toString(),cProd:g(prod,'cProd'),xProd:g(prod,'xProd'),
       ncm:g(prod,'NCM'),cfop:g(prod,'CFOP'),uCom:g(prod,'uCom'),qCom,vUnCom:vUn,
       vProd:parseFloat(g(prod,'vProd'))||qCom*vUn,
-      cstICMS:(g(icN,'CST')||g(icN,'CSOSN')||'').padStart(3,'0'),bcICMS:parseFloat(g(icN,'vBC'))||0,
+      cstICMS:g(icN,'CST')?(g(icN,'orig')||'0')+g(icN,'CST'):g(icN,'CSOSN')||'',bcICMS:parseFloat(g(icN,'vBC'))||0,
       pICMS:parseFloat(g(icN,'pICMS'))||0,vICMS:parseFloat(g(icN,'vICMS'))||0,
       bcICMSST:parseFloat(g(icN,'vBCST'))||0,vICMSST:parseFloat(g(icN,'vICMSST'))||0,
       pFCPST:parseFloat(g(icN,'pFCPST'))||0,vFCPST:parseFloat(g(icN,'vFCPST'))||0,vBCFCPST:parseFloat(g(icN,'vBCFCPST'))||0,
