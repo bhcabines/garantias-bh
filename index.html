@@ -2006,7 +2006,7 @@ function parseNFe(txt){
     items.push({nItem:det.getAttribute('nItem')||(i+1).toString(),cProd:g(prod,'cProd'),xProd:g(prod,'xProd'),
       ncm:g(prod,'NCM'),cfop:g(prod,'CFOP'),uCom:g(prod,'uCom'),qCom,vUnCom:vUn,
       vProd:parseFloat(g(prod,'vProd'))||qCom*vUn,
-      cstICMS:g(icN,'CST')||g(icN,'CSOSN'),bcICMS:parseFloat(g(icN,'vBC'))||0,
+      cstICMS:(g(icN,'CST')||g(icN,'CSOSN')||'').padStart(3,'0'),bcICMS:parseFloat(g(icN,'vBC'))||0,
       pICMS:parseFloat(g(icN,'pICMS'))||0,vICMS:parseFloat(g(icN,'vICMS'))||0,
       bcICMSST:parseFloat(g(icN,'vBCST'))||0,vICMSST:parseFloat(g(icN,'vICMSST'))||0,
       pFCPST:parseFloat(g(icN,'pFCPST'))||0,vFCPST:parseFloat(g(icN,'vFCPST'))||0,vBCFCPST:parseFloat(g(icN,'vBCFCPST'))||0,
@@ -2209,7 +2209,6 @@ td{border:1px solid #ccc;padding:2px 3px;text-align:center;vertical-align:middle
     <div class="c"><label>Valor ICMS</label><span>${_fR(sIC)}</span></div>
     <div class="c"><label>Base Cálc. ICMS ST</label><span>${_fR(sBCST)}</span></div>
     <div class="c"><label>Valor ICMS ST</label><span>${_fR(sST)}</span></div>
-    ${sFCPST>0?`<div class="c" style="background:#fffbeb;border-left:2px solid #f59e0b"><label>Base Cálc. FCP ST</label><span>${_fR(sBCFCPST)}</span></div><div class="c" style="background:#fffbeb;border-left:2px solid #f59e0b"><label>Valor FCP ST (${pFCPSTmax}%)</label><span style="font-weight:700;color:#b45309">${_fR(sFCPST)}</span></div>`:''}
     <div class="c"><label>Base Cálc. IPI</label><span>${_fR(sBCIP)}</span></div>
     <div class="c"><label>Valor IPI</label><span>${_fR(sIP)}</span></div>
     <div class="c"><label>Valor PIS</label><span>${_fR(sPIS)}</span></div>
