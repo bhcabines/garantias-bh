@@ -2082,7 +2082,7 @@ function gerarEspelho(){
     sFCPST=S('vFCPSTr'),sBCFCPST=S('vBCFCPSTr'),
     pFCPSTmax=sel.reduce((mx,i)=>Math.max(mx,i.pFCPST||0),0),
     sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sDesc=S('vDescr'),
-    sTOT=sPR-sDesc+sIP+sST+sFCPST;
+    sTOT=sPR+sIP+sST+sFCPST;
   const emit=destinatario,dest=emitente; // papeis invertidos na devolução
   const cfMain=sel[0].cfDev;
   const rows=sel.map((it,i)=>`<tr>
