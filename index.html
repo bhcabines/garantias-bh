@@ -2006,8 +2006,8 @@ function parseNFe(txt){
     items.push({nItem:det.getAttribute('nItem')||(i+1).toString(),cProd:g(prod,'cProd'),xProd:g(prod,'xProd'),
       ncm:g(prod,'NCM'),cfop:g(prod,'CFOP'),uCom:g(prod,'uCom'),qCom,vUnCom:vUn,
       vProd:parseFloat(g(prod,'vProd'))||qCom*vUn,vDesc:parseFloat(g(prod,'vDesc'))||0,
-      cstICMS:g(icN,'CST')?(g(icN,'orig')||'0')+g(icN,'CST'):g(icN,'CSOSN')||'',bcICMS:parseFloat(g(icN,'vBC'))||0,
-      pICMS:parseFloat(g(icN,'pICMS'))||0,vICMS:parseFloat(g(icN,'vICMS'))||0,
+      cstICMS:g(icN,'CST')?(g(icN,'orig')||'0')+g(icN,'CST'):g(icN,'CSOSN')||'',bcICMS:g(icN,'CST')==='60'?0:parseFloat(g(icN,'vBC'))||0,
+      pICMS:g(icN,'CST')==='60'?0:parseFloat(g(icN,'pICMS'))||0,vICMS:g(icN,'CST')==='60'?0:parseFloat(g(icN,'vICMS'))||0,
       bcICMSST:parseFloat(g(icN,'vBCST'))||0,vICMSST:parseFloat(g(icN,'vICMSST'))||0,
       pFCPST:parseFloat(g(icN,'pFCPST'))||0,vFCPST:parseFloat(g(icN,'vFCPST'))||0,vBCFCPST:parseFloat(g(icN,'vBCFCPST'))||0,
       pIPI:parseFloat(g(ipi,'pIPI'))||0,vIPI:parseFloat(g(ipi,'vIPI'))||0,bcIPI:parseFloat(g(ipi,'vBC'))||0,
@@ -2069,7 +2069,7 @@ function gerarEspelho(){
     if(q<=0)return null;
     const r=q/it.qCom;
     const cfDev=(it.cfop||'').startsWith('6')||destinatario.uf!==emitente.uf?'6.202':'5.202';
-    return{...it,qRet:q,vPR:q*it.vUnCom,vDescr:(it.vDesc||0)*r,bcICr:(it.bcICMS||it.vProd)*r,vICr:it.vICMS*r,
+    return{...it,qRet:q,vPR:q*it.vUnCom,vDescr:(it.vDesc||0)*r,bcICr:it.bcICMS*r,vICr:it.vICMS*r,
       bcICSTr:(it.bcICMSST||0)*r,vICSTr:(it.vICMSST||0)*r,
       vFCPSTr:(it.vFCPST||0)*r,vBCFCPSTr:(it.vBCFCPST||0)*r,pFCPST:it.pFCPST||0,
       bcIPr:it.bcIPI*r,vIPr:it.vIPI*r,vPISr:it.vPIS*r,vCOFr:it.vCOFINS*r,cfDev};
