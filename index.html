@@ -2082,14 +2082,14 @@ function gerarEspelho(){
     sFCPST=S('vFCPSTr'),sBCFCPST=S('vBCFCPSTr'),
     pFCPSTmax=sel.reduce((mx,i)=>Math.max(mx,i.pFCPST||0),0),
     sBCIP=S('bcIPr'),sIP=S('vIPr'),sPIS=S('vPISr'),sCOF=S('vCOFr'),sPR=S('vPR'),sDesc=S('vDescr'),
-    sTOT=sPR+sIP+sST+sFCPST;
+    sTOT=sPR-sDesc+sIP+sST+sFCPST;
   const emit=destinatario,dest=emitente; // papeis invertidos na devolução
   const cfMain=sel[0].cfDev;
   const rows=sel.map((it,i)=>`<tr>
     <td>${i+1}</td><td>${esc(it.cProd)}</td><td style="text-align:left">${esc(it.xProd)}</td>
     <td>${esc(it.ncm)}</td><td>${esc(it.cstICMS)||'—'}</td><td>${it.cfDev}</td><td>${esc(it.uCom)}</td>
     <td>${it.qRet.toLocaleString('pt-BR',{maximumFractionDigits:4})}</td>
-    <td>${_fR(it.vUnCom)}</td><td>${_fR(it.vPR)}</td><td style="background:#fef9c3">${it.vDescr>0?_fR(it.vDescr):'—'}</td>
+    <td>${_fR(it.vUnCom)}</td><td>${_fR(it.vPR-it.vDescr)}</td><td style="background:#fef9c3">${it.vDescr>0?_fR(it.vDescr):'—'}</td>
     <td>${_fR(it.bcICr)}</td><td>${it.pICMS>0?it.pICMS+'%':'—'}</td><td>${it.pICMS>0?_fR(it.vICr):'—'}</td>
     <td>${it.bcICSTr>0?_fR(it.bcICSTr):'—'}</td><td>${it.vICSTr>0?_fR(it.vICSTr):'—'}</td>
     <td>${it.pIPI>0?it.pIPI+'%':'—'}</td><td>${it.pIPI>0?_fR(it.vIPr):'—'}</td>
