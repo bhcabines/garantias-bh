@@ -11,10 +11,11 @@
 <style>
 :root{--or:#E84800;--dk:#1a1a2e;--bg:#f4f4f6;--wh:#fff;--bd:#e0e0e0;--gr:#16a34a}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:#333;min-height:100vh}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:#333;min-height:100vh;position:relative}
+body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:70vmin;height:70vmin;background-image:url('logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png');background-repeat:no-repeat;background-position:center;background-size:contain;opacity:.05;pointer-events:none;z-index:0}
 
 /* ── Header ── */
-.hdr{background:var(--dk);box-shadow:0 3px 14px rgba(0,0,0,.4);position:sticky;top:0;z-index:200}
+.hdr{background:var(--dk);border-bottom:3px solid var(--or);box-shadow:0 3px 14px rgba(0,0,0,.4);position:sticky;top:0;z-index:200}
 .hdr-in{display:flex;align-items:center;gap:1rem;padding:.65rem 2rem;flex-wrap:wrap}
 .hdr-in img{height:36px}
 .hdr-in h1{font-size:.88rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px}
@@ -707,13 +708,12 @@ async function gerarPDF(btn){
     const sf=(sz,st='normal')=>{doc.setFontSize(sz);doc.setFont('helvetica',st);};
 
     try{
-      const img=await new Promise((res,rej)=>{
-        const im=new Image();im.crossOrigin='anonymous';
-        im.onload=()=>{const cv=document.createElement('canvas');cv.width=im.width;cv.height=im.height;cv.getContext('2d').drawImage(im,0,0);res(cv.toDataURL('image/png'));};
-        im.onerror=rej;
-        im.src='logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png';
-      });
-      doc.addImage(img,'PNG',ml,y,30,22);
+      const resp=await fetch('logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png');
+      if(resp.ok){
+        const blob=await resp.blob();
+        const b64=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(blob);});
+        doc.addImage(b64,'PNG',ml,y,30,22);
+      }
     }catch(_){}
 
     sf(11,'bold');doc.setTextColor(0,0,0);doc.text('BH CABINES',ml+34,y+5);
