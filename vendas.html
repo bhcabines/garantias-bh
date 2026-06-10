@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BH Cabines — DIFAL</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--or:#E84800;--dk:#1a1a2e;--bg:#f4f4f6;--wh:#fff;--bd:#e0e0e0;--gr:#16a34a}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:#333;min-height:100vh}
+
+/* ── Header ── */
+.hdr{background:var(--dk);box-shadow:0 3px 14px rgba(0,0,0,.4);position:sticky;top:0;z-index:200}
+.hdr-in{display:flex;align-items:center;gap:1rem;padding:.65rem 2rem;flex-wrap:wrap}
+.hdr-in img{height:36px}
+.hdr-in h1{font-size:.88rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px}
+.hdr-in small{font-size:.65rem;color:rgba(255,255,255,.45);display:block}
+.ml{margin-left:auto}
+
+.main{max-width:1400px;margin:0 auto;padding:20px}
+
+/* ── Cards ── */
+.card{background:var(--wh);border-radius:12px;border:1px solid var(--bd);padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.ct{font-size:12px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px}
+
+/* ── Upload ── */
+.drop{border:2px dashed var(--bd);border-radius:12px;padding:56px 24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--wh);margin-top:18px}
+.drop:hover,.drop.on{border-color:var(--or);background:rgba(232,72,0,.03)}
+.drop svg{width:48px;height:48px;color:#ccc;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto}
+.drop h3{font-size:15px;color:#555;margin-bottom:6px}
+.drop p{font-size:12px;color:#aaa;margin-bottom:4px}
+.drop input{display:none}
+.fmt-badge{display:inline-block;background:#f0f0f0;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;color:#666;margin:2px}
+
+/* ── Loading ── */
+.ld{text-align:center;padding:48px;color:#999;margin-top:18px}
+.sp{display:inline-block;width:24px;height:24px;border:3px solid #eee;border-top-color:var(--or);border-radius:50%;animation:sp .8s linear infinite;vertical-align:middle;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── Working layout ── */
+.wlayout{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start;margin-top:18px}
+.lpanel{display:flex;flex-direction:column;gap:14px;position:sticky;top:70px}
+.rpanel{min-width:0}
+
+/* ── UF grid ── */
+.uf-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.uf-btn{padding:5px 2px;border:1.5px solid var(--bd);border-radius:7px;background:var(--wh);cursor:pointer;font-size:11.5px;font-weight:700;color:#555;transition:all .15s;text-align:center}
+.uf-btn:hover{border-color:var(--or);color:var(--or);background:rgba(232,72,0,.04)}
+.uf-btn.sel{background:var(--or);border-color:var(--or);color:#fff;box-shadow:0 2px 8px rgba(232,72,0,.3)}
+.uf-detalhe{font-size:10.5px;color:#888;min-height:14px;line-height:1.4}
+
+/* ── DIFAL ao vivo ── */
+.res-placeholder{text-align:center;padding:20px 0;color:#bbb;font-size:12px}
+.res-bloco{border-radius:8px;padding:12px;margin-bottom:10px}
+.res-bloco.nac{border:1px solid #bfdbfe;background:#eff6ff}
+.res-bloco.bhc{border:1px solid #fed7aa;background:#fff7ed}
+.res-bloco h4{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.res-bloco.nac h4{color:#1d4ed8}
+.res-bloco.bhc h4{color:#c2410c}
+.res-row{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px solid rgba(0,0,0,.05)}
+.res-row:last-child{border:none;font-weight:700;font-size:12px;padding-top:5px}
+.res-row label{color:#666}
+.res-total{border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;padding:12px;margin-top:4px}
+.res-total h4{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;color:#15803d}
+
+/* ── Info orçamento ── */
+.ig{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.ig label{font-size:9.5px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:1px}
+.ig span{font-size:12px;color:#333;font-weight:500}
+
+/* ── Items table ── */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+thead th{background:#f7f7f7;border:1px solid #eee;padding:6px 8px;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;white-space:nowrap}
+thead th.novo{background:#fff3ec;color:var(--or)}
+tbody td{border:1px solid #eee;padding:5px 8px;vertical-align:middle}
+tbody tr:nth-child(even){background:#fafafa}
+tr.bhc{background:#fff8f2!important}
+tr.bhc td:first-child{border-left:3px solid var(--or)}
+tfoot td{background:#f0f0f0;border:1px solid #ddd;padding:5px 8px;font-weight:700}
+.tr{text-align:right}.tc{text-align:center}
+.tag{background:var(--or);color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700}
+.novo-val{color:var(--or);font-weight:700}
+.sem-uf{color:#ccc;font-style:italic}
+
+/* ── Toggle BHC ── */
+.toggle{width:36px;height:19px;background:#ddd;border-radius:19px;border:none;cursor:pointer;position:relative;transition:.2s;flex-shrink:0;display:inline-block}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.toggle.on{background:var(--or)}
+.toggle.on::after{left:19px}
+
+/* ── Buttons ── */
+.btn{padding:.4rem .85rem;border-radius:7px;border:none;cursor:pointer;font-size:.77rem;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;justify-content:center;gap:.35rem;text-decoration:none;white-space:nowrap;width:100%}
+.bg{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3)}.bg:hover{background:rgba(255,255,255,.22)}
+.bo{background:var(--or);color:#fff}.bo:hover{background:#c43d00}
+.bb{background:#1D4ED8;color:#fff}.bb:hover{background:#1639a8}
+.bk{background:var(--gr);color:#fff}.bk:hover{background:#127a39}
+.bgray{background:#6b7280;color:#fff}.bgray:hover{background:#4b5563}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-row{display:flex;flex-direction:column;gap:8px}
+
+.al{padding:8px 12px;border-radius:6px;font-size:11.5px;margin-bottom:10px}
+.ali{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8}
+.ae{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+
+.dbg{background:#1e1e1e;color:#d4d4d4;font-size:10px;font-family:monospace;padding:12px;border-radius:8px;max-height:200px;overflow-y:auto;white-space:pre-wrap;margin-top:8px;line-height:1.5}
+
+@media(max-width:900px){
+  .wlayout{grid-template-columns:1fr}
+  .lpanel{position:static}
+  .uf-grid{grid-template-columns:repeat(6,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-in">
+    <img src="logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH">
+    <div><h1>Controle de Vendas — DIFAL</h1><small>Orçamento SS Sistemas · Cálculo instantâneo · Excel + PDF</small></div>
+    <div class="ml"><a href="index.html" class="btn bg" style="width:auto">🏠 Menu</a></div>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ══ S1: UPLOAD ══ -->
+<div id="s1">
+  <div class="drop" id="dz" onclick="document.getElementById('fi').click()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="12" y1="12" x2="12" y2="18"/><polyline points="9 15 12 18 15 15"/>
+    </svg>
+    <h3>Enviar o Orçamento SS Sistemas</h3>
+    <p>Arraste ou clique para selecionar</p>
+    <p><span class="fmt-badge">PDF</span><span class="fmt-badge">XLSX</span><span class="fmt-badge">XLS</span></p>
+    <input type="file" id="fi" accept=".pdf,.xlsx,.xls" onchange="step1(this.files[0])">
+  </div>
+</div>
+
+<!-- ══ LOADING ══ -->
+<div id="sLd" style="display:none" class="ld"><span class="sp"></span><span id="ldMsg">Lendo o arquivo...</span></div>
+
+<!-- ══ SW: TELA DE TRABALHO ══ -->
+<div id="sw" style="display:none">
+
+  <!-- Info do orçamento -->
+  <div class="card">
+    <div class="ig" id="ig"></div>
+  </div>
+
+  <div class="wlayout">
+
+    <!-- ── Painel esquerdo ── -->
+    <div class="lpanel">
+
+      <!-- UF -->
+      <div class="card">
+        <div class="ct">📍 Estado de Destino</div>
+        <div class="uf-grid" id="ufGrid"></div>
+        <div class="uf-detalhe" id="ufDetalhe">Selecione o estado do cliente</div>
+      </div>
+
+      <!-- DIFAL ao vivo -->
+      <div class="card">
+        <div class="ct">🧮 DIFAL — Resultado</div>
+        <div id="resArea">
+          <div class="res-placeholder">Selecione um estado<br>para ver o cálculo</div>
+        </div>
+      </div>
+
+      <!-- Exportar -->
+      <div class="card">
+        <div class="ct">📥 Exportar</div>
+        <div class="btn-row">
+          <button class="btn bk" id="btnXls" onclick="xls(this)" disabled>📊 Planilha DIFAL (.xlsx)</button>
+          <button class="btn bo" id="btnPdf" onclick="gerarPDF(this)" disabled>📄 Orçamento com DIFAL (.pdf)</button>
+          <button class="btn bgray" onclick="reiniciar()">🔄 Novo arquivo</button>
+        </div>
+      </div>
+
+    </div><!-- /lpanel -->
+
+    <!-- ── Painel direito: tabela de itens ── -->
+    <div class="rpanel">
+      <div class="card">
+        <div class="ct">📦 Itens do Orçamento</div>
+        <div class="al ali" id="instrucoes">
+          Itens com <span class="tag">BHC</span> = <b>importados</b> (alíquota 4%). Use o toggle para corrigir. Os novos preços atualizam instantaneamente ao mudar o estado ou o toggle.
+        </div>
+        <div id="semItens" class="al ae" style="display:none">
+          Nenhum item encontrado.
+          <div id="dbgWrap" style="display:none"><div class="dbg" id="dbgTxt"></div></div>
+          <button id="btnDbg" onclick="document.getElementById('dbgWrap').style.display='';this.style.display='none'"
+            style="margin-top:6px;background:none;border:1px solid #fca5a5;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;color:#991b1b">
+            Ver diagnóstico
+          </button>
+        </div>
+        <div class="tw">
+          <table id="tbl" style="display:none">
+            <thead>
+              <tr>
+                <th>Local</th>
+                <th>Qtd</th>
+                <th>Código</th>
+                <th>Descrição</th>
+                <th class="tc">Importado</th>
+                <th class="tr">Vlr.Líq. <small style="font-weight:400;text-transform:none">(orig.)</small></th>
+                <th class="tr novo">Novo Vlr.Líq.</th>
+                <th class="tr novo">Novo Total</th>
+              </tr>
+            </thead>
+            <tbody id="tb"></tbody>
+            <tfoot id="tf"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div><!-- /rpanel -->
+
+  </div><!-- /wlayout -->
+</div><!-- /sw -->
+
+</div><!-- /main -->
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── DIFAL table ──────────────────────────────────────────────
+const DT={
+  PR:{ai:19.50,ii:12,nome:'Paraná'},         RS:{ai:17.00,ii:12,nome:'Rio Grande do Sul'},
+  RJ:{ai:22.00,ii:12,nome:'Rio de Janeiro'}, SC:{ai:17.00,ii:12,nome:'Santa Catarina'},
+  SP:{ai:18.00,ii:12,nome:'São Paulo'},       AC:{ai:19.00,ii:7, nome:'Acre'},
+  AL:{ai:20.00,ii:7, nome:'Alagoas'},         AM:{ai:20.00,ii:7, nome:'Amazonas'},
+  AP:{ai:18.00,ii:7, nome:'Amapá'},           BA:{ai:20.50,ii:7, nome:'Bahia'},
+  CE:{ai:20.00,ii:7, nome:'Ceará'},           DF:{ai:20.00,ii:7, nome:'Distrito Federal'},
+  ES:{ai:17.00,ii:7, nome:'Espírito Santo'},  GO:{ai:19.00,ii:7, nome:'Goiás'},
+  MA:{ai:23.00,ii:7, nome:'Maranhão'},        MT:{ai:17.00,ii:7, nome:'Mato Grosso'},
+  MS:{ai:17.00,ii:7, nome:'Mato Grosso do Sul'},PA:{ai:19.00,ii:7,nome:'Pará'},
+  PB:{ai:20.00,ii:7, nome:'Paraíba'},         PE:{ai:20.50,ii:7, nome:'Pernambuco'},
+  PI:{ai:22.50,ii:7, nome:'Piauí'},           RN:{ai:20.00,ii:7, nome:'Rio Grande do Norte'},
+  RO:{ai:19.50,ii:7, nome:'Rondônia'},        RR:{ai:20.00,ii:7, nome:'Roraima'},
+  SE:{ai:20.00,ii:7, nome:'Sergipe'},         TO:{ai:20.00,ii:7, nome:'Tocantins'}
+};
+const UFS=Object.keys(DT).sort();
+function calcJ(u,uf,bhc){const b=DT[uf];if(!b)return u;return r2(u*(1+(b.ai-(bhc?4:b.ii))/100*1.2));}
+
+// ── Helpers ──────────────────────────────────────────────────
+const r2=v=>Math.round(v*100)/100;
+const fBR=v=>v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function pBR(s){
+  if(typeof s==='number') return r2(s);
+  const t=String(s||'').trim().replace(/\s/g,'');
+  if(!t) return 0;
+  if(/^\d{1,3}(\.\d{3})*,\d+$/.test(t)) return parseFloat(t.replace(/\./g,'').replace(',','.'))||0;
+  if(/^\d+,\d+$/.test(t)) return parseFloat(t.replace(',','.'))||0;
+  if(/^\d+\.\d+$/.test(t)) return parseFloat(t)||0;
+  return 0;
+}
+const isMoney=v=>/^\d{1,3}(\.\d{3})*,\d{2}$/.test(String(v||'').trim())||/^\d+,\d{2}$/.test(String(v||'').trim());
+const isQty  =v=>/^\d+,\d{3}$/.test(String(v||'').trim());
+const isCode =v=>/^\d{6}$/.test(String(v||'').trim());
+
+let DATA=null, UF_SEL=null;
+
+// ── Drag & Drop ──────────────────────────────────────────────
+const dz=document.getElementById('dz');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('on')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('on'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('on');step1(e.dataTransfer.files[0])});
+
+// ── STEP 1: upload ────────────────────────────────────────────
+async function step1(f){
+  if(!f) return;
+  const ext=f.name.split('.').pop().toLowerCase();
+  if(!['pdf','xlsx','xls'].includes(ext)){alert('Selecione um PDF, XLSX ou XLS.');return;}
+  show('sLd');hide('s1');
+  try{
+    const buf=await f.arrayBuffer();
+    document.getElementById('ldMsg').textContent=ext==='pdf'?'Lendo o PDF...':'Lendo o Excel...';
+    DATA=ext==='pdf'?await lerPDF(buf):lerExcel(buf);
+    montarTela();
+    show('sw');hide('sLd');
+  }catch(e){
+    console.error(e);
+    alert('Erro ao ler arquivo:\n'+e.message);
+    show('s1');hide('sLd');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PARSER PDF
+// ══════════════════════════════════════════════════════════════
+async function lerPDF(buf){
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const all=[];
+  const dbg=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const vp=page.getViewport({scale:1});
+    const tc=await page.getTextContent();
+    for(const it of tc.items){
+      const s=(it.str||'').trim();
+      if(!s) continue;
+      all.push({s,x:r2(it.transform[4]),y:r2(vp.height-it.transform[5]),p});
+    }
+  }
+  all.sort((a,b)=>a.p-b.p||a.y-b.y||a.x-b.x);
+  const linhas=[];
+  let cur=null,ulY=-9999,ulP=-1;
+  for(const it of all){
+    if(it.p!==ulP||Math.abs(it.y-ulY)>5){cur={y:it.y,p:it.p,c:[]};linhas.push(cur);ulY=it.y;ulP=it.p;}
+    cur.c.push(it);
+  }
+  dbg.push(`Páginas:${pdf.numPages} | Itens:${all.length} | Linhas:${linhas.length}`);
+  const txt=l=>l.c.map(i=>i.s).join(' ');
+  const h={nr:'',emissao:'',impressao:'',valido:'',cliente:'',cidade:'',cep:'',bairro:'',end:'',email:'',vendedor:'',fone1:''};
+  for(const l of linhas){
+    const t=txt(l);let m;
+    if(!h.nr       &&(m=t.match(/(?:Or[çc]amento|N[ro]\.?)[^:]*:?\s*#?\s*(\d[\d\-\/]+)/i))) h.nr=m[1];
+    if(!h.emissao  &&(m=t.match(/Emiss[aã]o[^:]*:\s*(\d{2}\/\d{2}\/\d{4})/i)))             h.emissao=m[1];
+    if(!h.impressao&&(m=t.match(/Impress[aã]o[^:]*:\s*(\d{2}\/\d{2}\/\d{4})/i)))           h.impressao=m[1];
+    if(!h.valido   &&(m=t.match(/V[aá]lid[oa][^:]*:\s*(\d{2}\/\d{2}\/\d{4})/i)))           h.valido=m[1];
+    if(!h.cliente  &&(m=t.match(/Cliente[^:]*:\s*\d+\s+(.+?)(?:\s{2,}|C\.?E|$)/i)))        h.cliente=m[1].trim();
+    if(!h.cidade   &&(m=t.match(/Cidade[^:]*:\s+(.+?)(?:\s{2,}|C\.?E|$)/i)))               h.cidade=m[1].trim();
+    if(!h.cep      &&(m=t.match(/C\.?E\.?P[^:]*:\s*([\d\-]+)/i)))                          h.cep=m[1];
+    if(!h.bairro   &&(m=t.match(/Bairro[^:]*:\s+(.+?)(?:\s{2,}|$)/i)))                     h.bairro=m[1].trim();
+    if(!h.end      &&(m=t.match(/Endere[cç]o[^:]*:\s+(.+?)(?:\s{2,}|Bairro|$)/i)))        h.end=m[1].trim();
+    if(!h.email    &&(m=t.match(/e?mail[^:]*:\s+(\S+@\S+)/i)))                              h.email=m[1];
+    if(!h.vendedor &&(m=t.match(/Vendedor[^:]*:\s*\d+\s+(.+?)(?:\s{2,}|$)/i)))             h.vendedor=m[1].trim();
+    if(!h.fone1    &&(m=t.match(/Fone\s*1[^:]*:\s+([\(\)\d\s\-]+)/i)))                     h.fone1=m[1].trim();
+  }
+  dbg.push(`Nr=${h.nr} | Emissão=${h.emissao} | Cliente=${h.cliente}`);
+  let iStart=-1,iEnd=linhas.length;
+  for(let i=0;i<linhas.length;i++){
+    const t=txt(linhas[i]);
+    if(iStart===-1){
+      if((/c[oó]d(igo)?/i.test(t)&&/descri[cç][aã]o/i.test(t))||/vlr\.?\s*l[ií]quido/i.test(t)) iStart=i;
+    }else{
+      if(/total\s+(produto|geral)/i.test(t)){iEnd=i;break;}
+    }
+  }
+  dbg.push(`iStart=${iStart} | iEnd=${iEnd}`);
+  const linhasTab=iStart>=0?linhas.slice(iStart+1,iEnd):linhas;
+  dbg.push(`Linhas na tabela: ${linhasTab.length}`);
+  let xMoneyStart=9999;
+  if(iStart>=0){const li=linhas[iStart].c.find(c=>/l[ií]quido/i.test(c.s));if(li)xMoneyStart=li.x-4;}
+  if(xMoneyStart===9999){
+    const xs=[];
+    for(const l of linhasTab.slice(0,20)){const mv=l.c.filter(c=>isMoney(c.s));if(mv.length>=3)xs.push(Math.min(...mv.map(c=>c.x)));}
+    if(xs.length)xMoneyStart=Math.min(...xs)-5;
+  }
+  dbg.push(`xMoneyStart=${xMoneyStart}`);
+  const itens=[];let ci=null;
+  const finalizar=()=>{
+    if(!ci)return;
+    ci.mv.sort((a,b)=>a.x-b.x);
+    ci.vlrLiq=ci.mv.length>0?ci.mv[0].v:0;
+    ci.vlrTot=ci.mv.length>1?ci.mv[ci.mv.length-1].v:ci.vlrLiq;
+    const ipiTot=ci.mv.length>=3?ci.mv[2].v:0;
+    ci.ipiUnit=ci.qty>0?r2(ipiTot/ci.qty):0;
+    ci.ipiPct=ci.vlrLiq>0?ci.ipiUnit/ci.vlrLiq:0;
+    delete ci.mv; itens.push(ci); ci=null;
+  };
+  for(const l of linhasTab){
+    const codC=l.c.find(c=>isCode(c.s));
+    const qtC =l.c.find(c=>isQty(c.s));
+    const monCs=l.c.filter(c=>isMoney(c.s)).sort((a,b)=>a.x-b.x);
+    if(codC&&qtC){
+      finalizar();
+      const local=l.c.filter(c=>c.x<qtC.x-2&&!isCode(c.s)&&!isQty(c.s)&&!isMoney(c.s)).map(c=>c.s).join(' ').trim();
+      const desc=l.c.filter(c=>c.x>codC.x+2&&c.x<xMoneyStart&&!isCode(c.s)&&!isQty(c.s)&&!isMoney(c.s)).map(c=>c.s).join(' ').trim();
+      ci={local,qty:pBR(qtC.s),cod:codC.s,desc,bhc:/\bBHC\b/i.test(desc+' '+local),mv:monCs.map(c=>({x:c.x,v:pBR(c.s)}))};
+      dbg.push(`  ITEM: ${codC.s} | "${desc.slice(0,28)}" | moneys:${monCs.length}`);
+    }else if(ci){
+      monCs.forEach(c=>ci.mv.push({x:c.x,v:pBR(c.s)}));
+      const extra=l.c.filter(c=>c.x<xMoneyStart&&!isCode(c.s)&&!isQty(c.s)&&!isMoney(c.s)&&c.s.length>1).map(c=>c.s).join(' ').trim();
+      if(extra){ci.desc=(ci.desc+' '+extra).trim();if(/\bBHC\b/i.test(extra))ci.bhc=true;}
+    }
+  }
+  finalizar();
+  dbg.push(`\nTotal itens: ${itens.length}`);
+  dbg.push('\n--- Primeiras 8 linhas da tabela ---');
+  linhasTab.slice(0,8).forEach((l,i)=>dbg.push(`L${i}: ${txt(l).slice(0,100)}`));
+  return {h,itens,dbg:dbg.join('\n')};
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PARSER EXCEL
+// ══════════════════════════════════════════════════════════════
+function lerExcel(buf){
+  const wb=XLSX.read(new Uint8Array(buf),{type:'array',raw:false});
+  let wsName=wb.SheetNames[0],maxR=0;
+  for(const sn of wb.SheetNames){const rng=wb.Sheets[sn]['!ref'];if(!rng)continue;const r=XLSX.utils.decode_range(rng);if(r.e.r>maxR){maxR=r.e.r;wsName=sn;}}
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[wsName],{header:1,defval:'',raw:false}).map(r=>(Array.isArray(r)?r:[]).map(c=>String(c==null?'':c).trim()));
+  const dbg=[`Planilha:"${wsName}" | Linhas:${rows.length}`];
+  const h={nr:'',emissao:'',impressao:'',valido:'',cliente:'',cidade:'',cep:'',bairro:'',end:'',email:'',vendedor:'',fone1:''};
+  for(let i=0;i<Math.min(rows.length,40);i++){
+    const t=rows[i].join(' ');let m;
+    if(!h.nr       &&(m=t.match(/(?:Or[çc]amento|N[ro]\.?)[^:]*:?\s*#?\s*(\d[\d\-\/]+)/i))) h.nr=m[1];
+    if(!h.emissao  &&(m=t.match(/Emiss[aã]o[^:]*:\s*(\d{2}\/\d{2}\/\d{4})/i)))             h.emissao=m[1];
+    if(!h.valido   &&(m=t.match(/V[aá]lid[oa][^:]*:\s*(\d{2}\/\d{2}\/\d{4})/i)))           h.valido=m[1];
+    if(!h.cliente  &&(m=t.match(/Cliente[^:]*:\s*\d+\s+(.+?)(?:\s{2,}|C\.?E|$)/i)))        h.cliente=m[1].trim();
+    if(!h.cidade   &&(m=t.match(/Cidade[^:]*:\s+(.+?)(?:\s{2,}|C\.?E|$)/i)))               h.cidade=m[1].trim();
+    if(!h.cep      &&(m=t.match(/C\.?E\.?P[^:]*:\s*([\d\-]+)/i)))                          h.cep=m[1];
+    if(!h.vendedor &&(m=t.match(/Vendedor[^:]*:\s*\d+\s+(.+?)(?:\s{2,}|$)/i)))             h.vendedor=m[1].trim();
+  }
+  let hRow=-1;
+  const cols={local:-1,qty:-1,cod:-1,desc:-1,liq:-1,dsc:-1,ipi:-1,st:-1,tot:-1};
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i];
+    if(r.findIndex(c=>/^c[oó]d(igo)?\.?$/i.test(c))>=0&&r.findIndex(c=>/^descri/i.test(c))>=0){
+      hRow=i;
+      r.forEach((c,j)=>{
+        if(/^local$/i.test(c))cols.local=j;
+        else if(/^(qua|qtd)/i.test(c))cols.qty=j;
+        else if(/^c[oó]d/i.test(c))cols.cod=j;
+        else if(/^descri/i.test(c))cols.desc=j;
+        else if(/l[ií]quido/i.test(c))cols.liq=j;
+        else if(/desconto/i.test(c))cols.dsc=j;
+        else if(/\bipi\b/i.test(c))cols.ipi=j;
+        else if(/\bst\b/i.test(c))cols.st=j;
+        else if(/total/i.test(c))cols.tot=j;
+      });break;
+    }
+  }
+  dbg.push(`Header:${hRow} | cols:${JSON.stringify(cols)}`);
+  const itens=[];
+  const STOP=/total\s+(produto|geral|desconto)|subtotal/i;
+  if(hRow>=0&&cols.cod>=0){
+    for(let i=hRow+1;i<rows.length;i++){
+      const r=rows[i];
+      if(r.every(c=>!c))continue;
+      if(STOP.test(r.join(' ')))break;
+      const codVal=(r[cols.cod]||'').trim();
+      if(!isCode(codVal))continue;
+      const qty=cols.qty>=0?pBR(r[cols.qty])||1:1;
+      const desc=cols.desc>=0?r[cols.desc]||'':'';
+      const local=cols.local>=0?r[cols.local]||'':'';
+      const liq=cols.liq>=0?pBR(r[cols.liq]):0;
+      const ipiTot=cols.ipi>=0?pBR(r[cols.ipi]):0;
+      const tot=cols.tot>=0?pBR(r[cols.tot]):r2(liq*qty);
+      const bhc=/\bBHC\b/i.test(desc+' '+local);
+      const ipiUnit=qty>0?r2(ipiTot/qty):0;
+      itens.push({local,qty,cod:codVal,desc,bhc,vlrLiq:liq,ipiUnit,ipiPct:liq>0?ipiUnit/liq:0,vlrTot:tot});
+    }
+  }
+  if(!itens.length){
+    for(const r of rows){
+      if(STOP.test(r.join(' ')))break;
+      const cIdx=r.findIndex(c=>isCode(c));
+      if(cIdx<0)continue;
+      const moneys=r.map((c,j)=>({j,v:pBR(c),s:c})).filter(m=>isMoney(m.s)&&m.v>0);
+      if(!moneys.length)continue;
+      let qty=1;for(let k=cIdx-1;k>=Math.max(0,cIdx-3);k--){if(isQty(r[k])){qty=pBR(r[k])||1;break;}}
+      const desc=r.slice(cIdx+1).find(c=>c&&!isMoney(c)&&!isCode(c)&&/[A-Za-z]/.test(c))||'';
+      const local=r.slice(0,cIdx).find(c=>c&&!isMoney(c)&&!isCode(c)&&/[A-Za-z]/.test(c))||'';
+      const liq=moneys[0].v,tot=moneys[moneys.length-1].v;
+      const ipiTot=moneys.length>=3?moneys[2].v:0;
+      const bhc=/\bBHC\b/i.test(desc+' '+local);
+      const ipiUnit=qty>0?r2(ipiTot/qty):0;
+      itens.push({local,qty,cod:r[cIdx],desc,bhc,vlrLiq:liq,ipiUnit,ipiPct:liq>0?ipiUnit/liq:0,vlrTot:tot});
+    }
+  }
+  dbg.push(`Total itens: ${itens.length}`);
+  return {h,itens,dbg:dbg.join('\n')};
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MONTAR TELA DE TRABALHO
+// ══════════════════════════════════════════════════════════════
+function montarTela(){
+  const {h,itens,dbg}=DATA;
+  UF_SEL=null;
+
+  // Info orçamento
+  document.getElementById('ig').innerHTML=`
+    <div><label>Nº Orçamento</label><span>${h.nr||'—'}</span></div>
+    <div><label>Cliente</label><span>${h.cliente||'—'}</span></div>
+    <div><label>Cidade</label><span>${h.cidade||'—'}</span></div>
+    <div><label>Emissão</label><span>${h.emissao||'—'}</span></div>
+    <div><label>Vendedor</label><span>${h.vendedor||'—'}</span></div>
+    <div><label>Válido até</label><span>${h.valido||'—'}</span></div>`;
+
+  // UF grid
+  document.getElementById('ufGrid').innerHTML=UFS.map(uf=>
+    `<button class="uf-btn" id="uf-${uf}" onclick="selUF('${uf}')">${uf}</button>`
+  ).join('');
+
+  // Tabela de itens
+  if(!itens.length){
+    document.getElementById('semItens').style.display='';
+    document.getElementById('tbl').style.display='none';
+    document.getElementById('dbgTxt').textContent=dbg||'';
+  }else{
+    document.getElementById('semItens').style.display='none';
+    document.getElementById('tbl').style.display='';
+    document.getElementById('tb').innerHTML=itens.map((it,i)=>`
+      <tr id="tr-${i}" class="${it.bhc?'bhc':''}">
+        <td>${it.local}</td>
+        <td class="tc">${it.qty.toLocaleString('pt-BR',{minimumFractionDigits:3})}</td>
+        <td>${it.cod}</td>
+        <td>${it.desc}${it.bhc?' <span class="tag">BHC</span>':''}</td>
+        <td class="tc">
+          <div style="display:flex;align-items:center;justify-content:center;gap:5px">
+            <button class="toggle${it.bhc?' on':''}" id="tog-${i}" onclick="toggleBHC(${i})"></button>
+            <span id="bhclbl-${i}" style="font-size:10px;color:${it.bhc?'var(--or)':'#aaa'}">${it.bhc?'BHC':'—'}</span>
+          </div>
+        </td>
+        <td class="tr">${fBR(it.vlrLiq)}</td>
+        <td class="tr" id="nLiq-${i}"><span class="sem-uf">—</span></td>
+        <td class="tr" id="nTot-${i}"><span class="sem-uf">—</span></td>
+      </tr>`).join('');
+
+    // Rodapé totais
+    const sL=r2(itens.reduce((s,it)=>s+r2(it.vlrLiq*it.qty),0));
+    document.getElementById('tf').innerHTML=`<tr>
+      <td colspan="5" class="tr" style="font-size:10px">TOTAL ORIGINAL</td>
+      <td class="tr">${fBR(sL)}</td>
+      <td class="tr" id="tfNL"><span class="sem-uf">—</span></td>
+      <td class="tr" id="tfNT"><span class="sem-uf">—</span></td>
+    </tr>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SELEÇÃO UF → cálculo instantâneo
+// ══════════════════════════════════════════════════════════════
+function selUF(uf){
+  if(UF_SEL) document.getElementById('uf-'+UF_SEL)?.classList.remove('sel');
+  UF_SEL=uf;
+  document.getElementById('uf-'+uf).classList.add('sel');
+  const b=DT[uf];
+  document.getElementById('ufDetalhe').textContent=`${b.nome}  ·  Ali. Interna: ${b.ai}%  ·  Interestadual: ${b.ii}%`;
+  recalcular();
+}
+
+function toggleBHC(i){
+  DATA.itens[i].bhc=!DATA.itens[i].bhc;
+  const it=DATA.itens[i];
+  document.getElementById('tr-'+i).className=it.bhc?'bhc':'';
+  document.getElementById('tog-'+i).className='toggle'+(it.bhc?' on':'');
+  const lbl=document.getElementById('bhclbl-'+i);
+  lbl.textContent=it.bhc?'BHC':'—';
+  lbl.style.color=it.bhc?'var(--or)':'#aaa';
+  recalcular();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RECALCULAR (chamado ao mudar UF ou toggle)
+// ══════════════════════════════════════════════════════════════
+function recalcular(){
+  if(!DATA||!UF_SEL) return;
+  const {itens}=DATA; const uf=UF_SEL;
+
+  let totNL=0, totNT=0;
+
+  for(let i=0;i<itens.length;i++){
+    const it=itens[i];
+    const nL=calcJ(it.vlrLiq,uf,it.bhc);
+    const nI2=it.ipiPct>0?r2(nL*it.ipiPct):0;
+    const nT=r2((nL+nI2)*it.qty);
+    totNL+=r2(nL*it.qty); totNT+=nT;
+    const mudou=Math.abs(nL-it.vlrLiq)>0.005;
+    const liqEl=document.getElementById(`nLiq-${i}`);
+    const totEl=document.getElementById(`nTot-${i}`);
+    if(liqEl) liqEl.innerHTML=`<span class="${mudou?'novo-val':''}">${fBR(nL)}</span>`;
+    if(totEl) totEl.innerHTML=`<span class="${mudou?'novo-val':''}">${fBR(nT)}</span>`;
+  }
+
+  // Atualizar rodapé
+  const tfNL=document.getElementById('tfNL');
+  const tfNT=document.getElementById('tfNT');
+  if(tfNL) tfNL.innerHTML=`<span class="novo-val">${fBR(r2(totNL))}</span>`;
+  if(tfNT) tfNT.innerHTML=`<span class="novo-val">${fBR(r2(totNT))}</span>`;
+
+  // Atualizar painel de resultados
+  renderSummary();
+
+  // Habilitar downloads
+  document.getElementById('btnXls').disabled=false;
+  document.getElementById('btnPdf').disabled=false;
+}
+
+function renderSummary(){
+  const {itens}=DATA; const uf=UF_SEL;
+  const nac=itens.filter(i=>!i.bhc), bhcL=itens.filter(i=>i.bhc);
+  let html='';
+
+  const bloco=(titulo,list,isbhc,cls)=>{
+    if(!list.length) return '';
+    const b=DT[uf];const ii=isbhc?4:b.ii;const g=(b.ai-ii)/100;
+    const C=r2(list.reduce((s,it)=>s+r2(it.vlrLiq*it.qty),0));
+    const H=r2(g*C),I=r2(H*1.2),J=r2(I+C);
+    return `<div class="res-bloco ${cls}">
+      <h4>${titulo}</h4>
+      <div class="res-row"><label>Ali. Interna (E)</label><span>${b.ai.toFixed(2)}%</span></div>
+      <div class="res-row"><label>Ali. Interestadual (F)</label><span><b>${ii.toFixed(2)}%</b></span></div>
+      <div class="res-row"><label>G = (E−F)/100</label><span>${(g*100).toFixed(2)}%</span></div>
+      <div class="res-row"><label>Σ Liq×Qtd = C</label><span>R$ ${fBR(C)}</span></div>
+      <div class="res-row"><label>100% DIFAL H = G×C</label><span>R$ ${fBR(H)}</span></div>
+      <div class="res-row"><label>Valor Acrescido I = H×1,2</label><span>R$ ${fBR(I)}</span></div>
+      <div class="res-row"><label>Valor Final J = I+C</label><span>R$ ${fBR(J)}</span></div>
+    </div>`;
+  };
+
+  html+=bloco(`🔵 Nacionais (${nac.length})`,nac,false,'nac');
+  html+=bloco(`🟠 BHC / Importados (${bhcL.length})`,bhcL,true,'bhc');
+
+  if(nac.length&&bhcL.length){
+    const bN=DT[uf],gN=(bN.ai-bN.ii)/100,gB=(bN.ai-4)/100;
+    const CN=r2(nac.reduce((s,it)=>s+r2(it.vlrLiq*it.qty),0));
+    const CB=r2(bhcL.reduce((s,it)=>s+r2(it.vlrLiq*it.qty),0));
+    const totD=r2(gN*CN+gB*CB), totA=r2(totD*1.2), totF=r2(totA+CN+CB);
+    html+=`<div class="res-total">
+      <h4>✅ Total Consolidado</h4>
+      <div class="res-row"><label>Total 100% DIFAL</label><span>R$ ${fBR(totD)}</span></div>
+      <div class="res-row"><label>Total Valor Acrescido</label><span>R$ ${fBR(totA)}</span></div>
+      <div class="res-row"><label>Total Valor Final</label><span style="color:var(--gr)">R$ ${fBR(totF)}</span></div>
+    </div>`;
+  }
+
+  document.getElementById('resArea').innerHTML=html||'<div class="res-placeholder">Nenhum item</div>';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  DOWNLOAD HELPER
+// ══════════════════════════════════════════════════════════════
+function baixar(blob,nome){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=nome;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
+}
+
+function checarLibs(precisaPDF){
+  const falta=[];
+  if(typeof XLSX==='undefined') falta.push('XLSX');
+  if(precisaPDF&&typeof window.jspdf==='undefined') falta.push('jsPDF');
+  if(falta.length){
+    alert('Biblioteca não carregada: '+falta.join(', ')+'\n\nEssas libs precisam de internet (CDN).\nUse o Live Server do VS Code ou abra via http://, não via file://');
+    return false;
+  }
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EXCEL OUTPUT
+// ══════════════════════════════════════════════════════════════
+function xls(btn){
+  if(!checarLibs(false)) return;
+  const orig=btn.innerHTML;
+  btn.innerHTML='⏳ Gerando...'; btn.disabled=true;
+  try{
+    const {h,itens}=DATA; const uf=UF_SEL;
+    const wb=XLSX.utils.book_new();
+    const mk=(list,isbhc)=>{
+      if(!list.length) return null;
+      const b=DT[uf]; const ii=isbhc?4:b.ii; const g=(b.ai-ii)/100;
+      const d=[['ORIGEM','DESTINO','VALOR PRODUTO (C)','TOTAL ITEM','ALI.INT.(E)%','ALI.INTER.(F)%','G=(E-F)/100','H=G×C','I=H×1,2','J=I+C','CÓDIGO','DESCRIÇÃO','IMPORTADO']];
+      for(const it of list){
+        const vC=it.vlrLiq, vH=r2(g*vC), vI=r2(vH*1.2), vJ=r2(vI+vC);
+        d.push(['MG',uf,vC,vC,b.ai,ii,g,vH,vI,vJ,it.cod,it.desc,isbhc?'SIM':'NÃO']);
+      }
+      const tot=r2(list.reduce((s,it)=>s+r2(it.vlrLiq*it.qty),0));
+      const tH=r2(g*tot), tI=r2(tH*1.2), tJ=r2(tI+tot);
+      d.push(['','TOTAL (Σ Liq×Qtd)',tot,tot,b.ai,ii,g,tH,tI,tJ,'','','']);
+      const ws=XLSX.utils.aoa_to_sheet(d);
+      ws['!cols']=[7,10,16,14,12,12,13,14,14,18,10,44,10].map(w=>({wch:w}));
+      return ws;
+    };
+    const wN=mk(itens.filter(i=>!i.bhc),false);
+    const wB=mk(itens.filter(i=>i.bhc),true);
+    if(wN) XLSX.utils.book_append_sheet(wb,wN,'DIFAL Nacional');
+    if(wB) XLSX.utils.book_append_sheet(wb,wB,'DIFAL BHC Importado');
+    if(!wb.SheetNames.length) throw new Error('Nenhum dado.');
+    const bytes=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    baixar(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),
+      `DIFAL_${h.nr||'ORC'}_${uf}.xlsx`);
+    btn.innerHTML='✅ Baixado!';
+  }catch(e){
+    console.error(e); alert('Erro:\n'+e.message);
+    btn.innerHTML=orig;
+  }finally{
+    setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},3000);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PDF OUTPUT
+// ══════════════════════════════════════════════════════════════
+async function gerarPDF(btn){
+  if(!checarLibs(true)) return;
+  const orig=btn.innerHTML;
+  btn.innerHTML='⏳ Gerando...'; btn.disabled=true;
+  try{
+    const {h,itens}=DATA; const uf=UF_SEL;
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    const W=210,PH=297,ml=8,mr=8,cw=W-ml-mr;
+    let y=8;
+    const sf=(sz,st='normal')=>{doc.setFontSize(sz);doc.setFont('helvetica',st);};
+
+    try{
+      const img=await new Promise((res,rej)=>{
+        const im=new Image();im.crossOrigin='anonymous';
+        im.onload=()=>{const cv=document.createElement('canvas');cv.width=im.width;cv.height=im.height;cv.getContext('2d').drawImage(im,0,0);res(cv.toDataURL('image/png'));};
+        im.onerror=rej;
+        im.src='logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png';
+      });
+      doc.addImage(img,'PNG',ml,y,30,22);
+    }catch(_){}
+
+    sf(11,'bold');doc.setTextColor(0,0,0);doc.text('BH CABINES',ml+34,y+5);
+    sf(7,'normal');
+    doc.text('RUA MARCELO COSTA TAVARES, 39 — BELO HORIZONTE - MG  |  CEP: 30610-240',ml+34,y+9);
+    doc.text('FONE: (31)2517-4200  |  EMAIL: nfe@bhcabines.com.br',ml+34,y+13);
+    doc.text(`Emissão: ${h.emissao||''}  |  Válido até: ${h.valido||''}`,W-mr,y+18,{align:'right'});
+    y+=26;
+
+    doc.setDrawColor(120);doc.rect(ml,y,cw,8,'S');
+    sf(10,'bold');doc.text('ORÇAMENTO',ml+2,y+5.5);
+    if(h.nr) doc.text(`Nr: ${h.nr}`,ml+32,y+5.5);
+    sf(8,'bold');doc.text('CONTROLE INTERNO - SEM VALOR FISCAL',W/2,y+5.5,{align:'center'});
+    y+=9;
+
+    doc.rect(ml,y,cw,20,'S');sf(7,'normal');
+    doc.text('Cliente:',ml+2,y+4);sf(7,'bold');doc.text((h.cliente||'').slice(0,50),ml+16,y+4);sf(7,'normal');
+    doc.text('C.E.P:',ml+82,y+4);doc.text(h.cep||'',ml+93,y+4);
+    doc.text('Endereço:',ml+2,y+8);doc.text((h.end||'').slice(0,44),ml+18,y+8);
+    doc.text('Bairro:',ml+82,y+8);doc.text((h.bairro||'').slice(0,24),ml+93,y+8);
+    doc.text('Cidade:',ml+2,y+12);sf(7,'bold');doc.text((h.cidade||'').slice(0,40),ml+15,y+12);sf(7,'normal');
+    doc.text('Vendedor:',ml+2,y+16);sf(7,'bold');doc.text((h.vendedor||'').slice(0,38),ml+18,y+16);sf(7,'normal');
+    doc.text('Email:',ml+82,y+16);doc.text((h.email||'').slice(0,30),ml+93,y+16);
+    y+=23;
+
+    let nP=0,nI=0,nG=0;
+    const tblRows=itens.map(it=>{
+      const nL=calcJ(it.vlrLiq,uf,it.bhc);
+      const nI2=it.ipiPct>0?r2(nL*it.ipiPct):0;
+      const nT=r2((nL+nI2)*it.qty);
+      nP+=r2(nL*it.qty);nI+=r2(nI2*it.qty);nG+=nT;
+      return{local:it.local,qty:it.qty.toLocaleString('pt-BR',{minimumFractionDigits:3}),
+        cod:it.cod,desc:it.desc,liq:fBR(nL),dsc:'0,00',ipi:fBR(nI2),st:'0,00',tot:fBR(nT),_b:it.bhc};
+    });
+
+    doc.autoTable({
+      startY:y,margin:{left:ml,right:mr},theme:'grid',
+      columns:[{header:'Local',dataKey:'local'},{header:'Quant.',dataKey:'qty'},
+        {header:'Código',dataKey:'cod'},{header:'Descrição',dataKey:'desc'},
+        {header:'Vlr.Liquido',dataKey:'liq'},{header:'Desconto',dataKey:'dsc'},
+        {header:'Vlr. IPI',dataKey:'ipi'},{header:'Vlr. ST',dataKey:'st'},
+        {header:'Vlr.Total',dataKey:'tot'}],
+      body:tblRows,
+      headStyles:{fontSize:6.5,fontStyle:'bold',fillColor:[255,255,255],textColor:[0,0,0],lineWidth:.3,lineColor:[150,150,150],halign:'center'},
+      bodyStyles:{fontSize:6.5,cellPadding:1.2,lineWidth:.2,lineColor:[200,200,200]},
+      columnStyles:{local:{cellWidth:14},qty:{cellWidth:12,halign:'center'},cod:{cellWidth:14,halign:'center'},
+        desc:{cellWidth:60},liq:{cellWidth:20,halign:'right'},dsc:{cellWidth:16,halign:'right'},
+        ipi:{cellWidth:14,halign:'right'},st:{cellWidth:12,halign:'right'},tot:{cellWidth:20,halign:'right'}},
+      didParseCell(d){if(d.section==='body'&&tblRows[d.row.index]?._b)d.cell.styles.fillColor=[255,248,242];}
+    });
+    y=doc.lastAutoTable.finalY+4;
+
+    [['Total Produtos',nP],['Total Descontos',0],['Total IPI',nI],['Total Geral',r2(nG),true]].forEach(([lb,v,bold])=>{
+      if(y+7>PH-22){doc.addPage();y=15;}
+      doc.setDrawColor(180);doc.rect(W-mr-68,y,68,6,'S');
+      sf(8,bold?'bold':'normal');
+      doc.setTextColor(bold?220:0,bold?50:0,0);
+      doc.text(lb,W-mr-66,y+4.2);doc.text(fBR(v),W-mr-2,y+4.2,{align:'right'});
+      doc.setTextColor(0,0,0);y+=6;
+    });
+    y+=8;
+    if(y+14>PH-12){doc.addPage();y=15;}
+    sf(7,'normal');doc.setTextColor(80,80,80);
+    doc.text('VALIDO POR 24 HS, SUJEITO A ALTERAÇÃO DE PREÇOS',ml,y);
+    y+=12;doc.setDrawColor(100);doc.line(W/2-38,y,W/2+38,y);
+    sf(7,'bold');doc.setTextColor(0,0,0);
+    doc.text((h.cliente||'').slice(0,38),W/2,y+4,{align:'center'});
+    y+=10;sf(6,'normal');doc.setTextColor(160,160,160);
+    doc.text('SS Sistemas - www.sssistemas.com',W-mr,y,{align:'right'});
+    const b=DT[uf];
+    doc.setTextColor(180,90,0);
+    doc.text(`* Preços com DIFAL incluso | UF: ${uf} | Nac ×${(1+(b.ai-b.ii)/100*1.2).toFixed(4)} | BHC ×${(1+(b.ai-4)/100*1.2).toFixed(4)}`,ml,PH-6);
+    doc.setTextColor(0,0,0);
+    const pdfBlob=doc.output('blob');
+    baixar(pdfBlob,`Orcamento_${h.nr||'ORC'}_${uf}_DIFAL.pdf`);
+    btn.innerHTML='✅ Baixado!';
+  }catch(e){
+    console.error(e); alert('Erro ao gerar PDF:\n'+e.message);
+    btn.innerHTML=orig;
+  }finally{
+    setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},3000);
+  }
+}
+
+function reiniciar(){['sw','sLd'].forEach(hide);DATA=null;UF_SEL=null;show('s1');document.getElementById('fi').value='';}
+function show(id){document.getElementById(id).style.display='';}
+function hide(id){document.getElementById(id).style.display='none';}
+</script>
+</body>
+</html>
