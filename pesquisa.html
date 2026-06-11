@@ -152,12 +152,12 @@ tbody td{padding:7px 10px;vertical-align:middle}
   <div style="margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start">
     <div>
       <label style="font-size:11.5px;font-weight:700;color:#555;display:block;margin-bottom:5px">
-        🔎 Termos adicionais <span style="font-weight:400;color:#aaa">(adicionados em toda busca para melhorar os resultados)</span>
+        🔎 Termos adicionais <span style="font-weight:400;color:#aaa">(opcional — só se quiser refinar mais)</span>
       </label>
-      <input type="text" id="termosExtras" placeholder='Ex: caminhão peças colisão VW'
+      <input type="text" id="termosExtras" placeholder='Opcional — ex: VW, Scania, original...'
         style="width:100%;border:1.5px solid var(--bd);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;transition:border .15s"
         onfocus="this.style.borderColor='var(--or)'" onblur="this.style.borderColor='var(--bd)'">
-      <div style="font-size:11px;color:#aaa;margin-top:4px">Sugerido: <b>caminhão colisão</b></div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">A busca já usa: <b>código + marca + descrição</b> automaticamente</div>
     </div>
     <div>
       <label style="font-size:11.5px;font-weight:700;color:#555;display:block;margin-bottom:5px">
@@ -235,8 +235,9 @@ tbody td{padding:7px 10px;vertical-align:middle}
             <th>Código · Descrição</th>
             <th>Status</th>
             <th class="td-center" style="color:#1D4ED8">Preço BHC</th>
-            <th class="td-center" style="color:var(--gr)">ML Menor Preço</th>
-            <th class="td-center">ML Anúncios</th>
+            <th class="td-center" style="color:var(--gr)">ML Menor</th>
+            <th class="td-center" style="color:#666">ML Médio</th>
+            <th class="td-center">Anúncios</th>
             <th class="td-center">Google CSE</th>
             <th class="td-center">Ações</th>
           </tr>
@@ -258,6 +259,7 @@ let itensBusca=[];   // [{termo, cod, marca, desc, preco}]
 let resultados=[];
 let cancelado=false;
 let googleUsado=0;
+let dadosExcel=false;
 
 function getNPalavras(){return parseInt(document.getElementById('nPalavras').value)||3;}
 
@@ -344,7 +346,7 @@ function lerExcel(f){
         itens.push({termo,cod,marca,desc,preco:precoRaw});
         linhas.push(termo);
       }
-      document.getElementById('termosExtras').value=document.getElementById('termosExtras').value||'caminhão colisão';
+      // Termos extras: não preenche automaticamente — o usuário decide
     }else{
       // Formato genérico: 1ª coluna como termos
       const termos=rows.map(r=>r[0]||'').filter(v=>v&&v.length>1);
@@ -352,6 +354,7 @@ function lerExcel(f){
     }
 
     itensBusca=itens;
+    dadosExcel=true;
     document.getElementById('txtLista').value=linhas.join('\n');
     document.getElementById('excelInfo').style.display='';
     document.getElementById('excelInfoTxt').textContent=
@@ -368,10 +371,11 @@ function lerExcel(f){
 
 // ── Contar itens ──────────────────────────────────────────────
 function contarItens(){
-  const parsed=parseLista();
-  // Só atualiza itensBusca do textarea se não veio de Excel (sem extra data)
-  itensBusca=parsed;
-  const n=parsed.length;
+  if(!dadosExcel){
+    // Dados vieram do textarea — atualiza itensBusca
+    itensBusca=parseLista();
+  }
+  const n=itensBusca.length;
   const ctr=document.getElementById('counter');
   ctr.style.display=n>0?'':'none';
   document.getElementById('nItens').textContent=n;
@@ -393,62 +397,110 @@ function getExtras(){
   return (document.getElementById('termosExtras').value||'').trim();
 }
 
-// item pode ser string (digitado) ou objeto {termo,cod,marca,desc}
-function buildQuery(item, usarDescFull=false){
-  const ex=getExtras();
+// Gera query para URLs de ação (botões ML, Google Shopping etc.)
+function buildQuery(item){
   const isObj=typeof item==='object'&&item!==null;
+  const ex=getExtras();
   const termo=isObj?item.termo:item;
   const marca=isObj&&item.marca?item.marca:'';
-  const descFull=isObj&&item.desc?item.desc:'';
-
-  // Monta as partes da query
+  const desc=isObj&&item.desc?item.desc:'';
+  const n=getNPalavras();
   let base='';
-  if(isObj&&item.cod&&item.desc){
-    if(usarDescFull){
-      // Fallback: só descrição + marca, sem código numérico
-      base=((marca?marca+' ':'')+truncarDesc(descFull,5)).trim();
-    }else{
-      // Principal: código + N palavras da desc + marca
-      base=(item.cod+' '+(marca?marca+' ':'')+truncarDesc(descFull,getNPalavras())).trim();
-    }
+  if(isObj&&(item.cod||item.desc)){
+    base=([item.cod, marca, truncarDesc(desc,n)].filter(Boolean).join(' ')).trim();
   }else{
     base=termo;
   }
   return (base+(ex?' '+ex:'')).trim()||termo;
 }
 
-// ── Busca Mercado Livre (com fallback sem código) ─────────────
+// Gera 3 queries distintas para busca em lote (multi-query)
+function buildQueries(item){
+  const isObj=typeof item==='object'&&item!==null;
+  if(!isObj||(!item.cod&&!item.desc)){
+    const t=isObj?item.termo:item;
+    return t?[t]:[];
+  }
+  const {cod,marca,desc}=item;
+  const n=getNPalavras();
+  const ex=getExtras();
+  const aE=s=>(s+(ex?' '+ex:'')).trim();
+  const qs=[];
+
+  // Q1: só código — encontra revendedores que listam pelo código original
+  if(cod) qs.push(aE(cod));
+
+  // Q2: marca + descrição mais longa — captura modelo do veículo (ex: Scania S5, Volvo FH)
+  if(desc){
+    const dLong=truncarDesc(desc,Math.min(n+3,8));
+    const q2=((marca?marca+' ':'')+dLong).trim();
+    if(q2) qs.push(aE(q2));
+  }
+
+  // Q3: código + descrição — combinação direta
+  if(cod&&desc){
+    const q3=(cod+' '+truncarDesc(desc,n)).trim();
+    qs.push(aE(q3));
+  }
+
+  // Deduplica
+  const seen=new Set();
+  return qs.filter(q=>{if(!q||seen.has(q))return false;seen.add(q);return true;});
+}
+
+// ── Busca Mercado Livre — 3 queries em paralelo, merge deduplificado ─────────
 async function buscarML(item){
-  const buscar=async(query)=>{
-    const resp=await fetch(`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(query)}&limit=6`);
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const data=await resp.json();
-    return{total:data.paging?.total||0,items:data.results||[]};
+  const buscarQ=async(q)=>{
+    try{
+      const r=await fetch(`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=8`);
+      if(!r.ok) return{total:0,items:[]};
+      const d=await r.json();
+      return{total:d.paging?.total||0,items:d.results||[]};
+    }catch{return{total:0,items:[]};}
   };
   try{
-    // 1ª tentativa: código + marca + descrição
-    const q1=buildQuery(item,false);
-    const r1=await buscar(q1);
-    if(r1.total>0) return r1;
-    // Fallback: só descrição + marca (sem código numérico)
-    const q2=buildQuery(item,true);
-    if(q2!==q1){const r2=await buscar(q2);if(r2.total>0) return r2;}
-    return r1;
+    const queries=buildQueries(item);
+    const parts=await Promise.all(queries.map(q=>buscarQ(q)));
+    const seen=new Set();
+    const merged=[];
+    let totalMax=0;
+    for(const p of parts){
+      totalMax=Math.max(totalMax,p.total);
+      for(const it of p.items){
+        if(!seen.has(it.id)){seen.add(it.id);merged.push(it);}
+      }
+    }
+    merged.sort((a,b)=>a.price-b.price);
+    return{total:Math.max(totalMax,merged.length),items:merged,queries,unicos:merged.length};
   }catch(e){
-    return{total:0,items:[],erro:e.message};
+    return{total:0,items:[],erro:e.message,queries:[]};
   }
 }
 
 
 // ── Busca Google CSE ──────────────────────────────────────────
-async function buscarGoogle(termo){
+async function buscarGoogle(item){
   if(googleUsado>=100) return{items:[],limite:true};
   try{
-    const q=encodeURIComponent(buildQuery(termo)+' preço comprar');
+    // Usa descrição + marca para Google (texto funciona melhor que código numérico)
+    const isObj=typeof item==='object'&&item!==null;
+    const marca=isObj&&item.marca?item.marca:'';
+    const desc=isObj&&item.desc?item.desc:'';
+    const n=getNPalavras();
+    let qBase='';
+    if(isObj&&desc){
+      qBase=((marca?marca+' ':'')+truncarDesc(desc,Math.min(n+3,8))).trim();
+    }else{
+      qBase=buildQuery(item);
+    }
+    const q=encodeURIComponent(qBase+' preço comprar');
     const url=`https://www.googleapis.com/customsearch/v1?key=${GAPI_KEY}&cx=${GAPI_CX}&q=${q}&num=5&gl=br&hl=pt-BR`;
     const resp=await fetch(url);
     const data=await resp.json();
-    if(data.error) return{items:[],erro:data.error.message};
+    if(!resp.ok||data.error){
+      const msg=(data.error&&data.error.message)||`HTTP ${resp.status}`;
+      return{items:[],erro:msg};
+    }
     googleUsado++;
     return{items:data.items||[]};
   }catch(e){
@@ -458,13 +510,13 @@ async function buscarGoogle(termo){
 
 // ── URLs de busca ─────────────────────────────────────────────
 function urlGoogle(item){
-  return`https://www.google.com.br/search?q=${encodeURIComponent(buildQuery(item,false)+' preço')}&gl=br&hl=pt-BR`;
+  return`https://www.google.com.br/search?q=${encodeURIComponent(buildQuery(item)+' preço')}&gl=br&hl=pt-BR`;
 }
 function urlGoogleShopping(item){
-  return`https://www.google.com.br/search?q=${encodeURIComponent(buildQuery(item,false))}&tbm=shop&gl=br&hl=pt-BR`;
+  return`https://www.google.com.br/search?q=${encodeURIComponent(buildQuery(item))}&tbm=shop&gl=br&hl=pt-BR`;
 }
 function urlML(item){
-  return`https://lista.mercadolivre.com.br/${encodeURIComponent(buildQuery(item,false))}`;
+  return`https://lista.mercadolivre.com.br/${encodeURIComponent(buildQuery(item))}`;
 }
 
 // ── Iniciar busca em lote ─────────────────────────────────────
@@ -493,10 +545,10 @@ async function iniciarBusca(){
     document.getElementById('progTxt').textContent=`Pesquisando: "${termo}" (${i+1} de ${total})`;
     document.getElementById('progDelay').textContent='';
 
-    // Busca ML e Google em paralelo
+    // Busca ML (3 queries paralelas) e Google em paralelo
     const [ml,goog]=await Promise.all([
       buscarML(item),
-      buscarGoogle(buildQuery(item,false))
+      buscarGoogle(item)
     ]);
 
     const r={termo,ml,goog,idx:i,extra:{cod:item.cod,marca:item.marca,desc:item.desc,preco:item.preco}};
@@ -535,13 +587,15 @@ function renderLinha(r,idx){
   const temML=ml.items&&ml.items.length>0;
   const temG=goog.items&&goog.items.length>0;
 
-  // Menor preço ML
-  let precoMin='—', precoMax='', totalML=ml.total||0;
+  // Preços ML
+  let precoMin='—', precoMed='—', totalML=ml.total||0, unicosML=ml.unicos||0;
+  let precosList=[];
   if(temML){
-    const precos=ml.items.map(i=>i.price).filter(p=>p>0).sort((a,b)=>a-b);
-    if(precos.length){
-      precoMin='R$ '+fBR(precos[0]);
-      if(precos.length>1) precoMax='até R$ '+fBR(precos[precos.length-1]);
+    precosList=ml.items.map(i=>i.price).filter(p=>p>0).sort((a,b)=>a-b);
+    if(precosList.length){
+      precoMin='R$ '+fBR(precosList[0]);
+      const avg=precosList.reduce((s,p)=>s+p,0)/precosList.length;
+      precoMed='R$ '+fBR(avg);
     }
   }
 
@@ -560,22 +614,19 @@ function renderLinha(r,idx){
   }else if(goog.limite){
     googleTop='<span style="font-size:10px;color:#aaa">Limite 100/dia</span>';
   }else if(goog.erro){
-    googleTop='<span style="font-size:10px;color:#aaa">—</span>';
+    googleTop=`<span style="font-size:10px;color:#dc2626" title="${goog.erro}">Erro API</span>`;
   }
 
   const ex=r.extra||{};
   const precoBHC=ex.preco;
   // Comparação preço BHC vs ML
   let diffHtml='';
-  if(precoBHC&&temML){
-    const precos=ml.items.map(i=>i.price).filter(p=>p>0).sort((a,b)=>a-b);
-    if(precos.length){
-      const menor=precos[0];
-      const diff=((menor-precoBHC)/precoBHC*100);
-      const cor=diff<-10?'#16a34a':diff>10?'#dc2626':'#f59e0b';
-      const sinal=diff>=0?'+':'';
-      diffHtml=`<div style="font-size:10px;color:${cor};font-weight:700">${sinal}${diff.toFixed(1)}% vs BHC</div>`;
-    }
+  if(precoBHC&&precosList.length){
+    const menor=precosList[0];
+    const diff=((menor-precoBHC)/precoBHC*100);
+    const cor=diff<-10?'#16a34a':diff>10?'#dc2626':'#f59e0b';
+    const sinal=diff>=0?'+':'';
+    diffHtml=`<div style="font-size:10px;color:${cor};font-weight:700">${sinal}${diff.toFixed(1)}% vs BHC</div>`;
   }
 
   const tr=document.createElement('tr');
@@ -599,11 +650,15 @@ function renderLinha(r,idx){
     </td>
     <td class="td-center">
       <div class="preco-min">${precoMin}</div>
-      <div class="preco-max">${precoMax}</div>
       ${diffHtml}
     </td>
     <td class="td-center">
-      ${totalML>0?`<span class="qtd-badge">${totalML.toLocaleString()}</span>`:'<span style="color:#ccc">0</span>'}
+      <div style="color:#555;font-size:12px;font-weight:600">${precoMed}</div>
+    </td>
+    <td class="td-center">
+      ${unicosML>0
+        ?`<span class="qtd-badge" title="${totalML.toLocaleString()} anúncios no total">${unicosML} únicos</span>`
+        :'<span style="color:#ccc">0</span>'}
     </td>
     <td class="td-center">${googleTop}</td>
     <td class="td-center" style="white-space:nowrap;display:flex;gap:3px;justify-content:center;flex-wrap:wrap;padding:6px 4px">
@@ -619,7 +674,7 @@ function renderLinha(r,idx){
   trDet.id='det-'+idx;
   trDet.style.display='none';
   const td=document.createElement('td');
-  td.colSpan=7;
+  td.colSpan=8;
   td.innerHTML=buildDet(r);
   trDet.appendChild(td);
   tb.appendChild(trDet);
@@ -628,6 +683,9 @@ function renderLinha(r,idx){
 function buildDet(r){
   const ml=r.ml,goog=r.goog;
   let mlHtml='<div class="det-titulo">🛒 Mercado Livre</div>';
+  if(ml.queries&&ml.queries.length){
+    mlHtml+=`<div style="font-size:10px;color:#aaa;margin-bottom:6px">Buscas: ${ml.queries.map(q=>`<code style="background:#f3f4f6;padding:1px 4px;border-radius:3px">${q}</code>`).join(' · ')}</div>`;
+  }
   if(ml.items&&ml.items.length){
     mlHtml+=ml.items.slice(0,5).map(it=>`
       <div class="ml-item">
@@ -696,7 +754,7 @@ function exportarExcel(){
   if(!resultados.length){alert('Nenhum resultado para exportar.');return;}
   const wb=XLSX.utils.book_new();
   const rows=[['CÓD.FABRICANTE','MARCA','DESCRIÇÃO COMPLETA','TERMO BUSCADO',
-    'PREÇO BHC','ML MENOR PREÇO','ML MAIOR PREÇO','ML MEDIA PREÇO','DIFERENÇA %','ML TOTAL ANÚNCIOS','ML LINK BUSCA',
+    'PREÇO BHC','ML MENOR PREÇO','ML PREÇO MÉDIO','ML MAIOR PREÇO','DIFERENÇA %','ML ÚNICOS','ML TOTAL ANÚNCIOS','ML QUERIES USADAS','ML LINK BUSCA',
     'GOOGLE SHOPPING LINK',
     'GOOGLE 1 TÍTULO','GOOGLE 1 SITE','GOOGLE 1 SNIPPET','GOOGLE 1 LINK',
     'LINK GOOGLE BUSCA']];
@@ -710,9 +768,10 @@ function exportarExcel(){
     const diff=(ex.preco&&pMin)?((pMin-ex.preco)/ex.preco*100).toFixed(1)+'%':'';
     const g0=goog.items&&goog.items[0];
     const itRef=ex.cod?ex:r.termo;
+    const queriesStr=(ml.queries||[]).join(' | ');
     rows.push([
       ex.cod||'', ex.marca||'', ex.desc||'', r.termo,
-      ex.preco||'', pMin, pMax, pMed, diff, ml.total||0, urlML(itRef),
+      ex.preco||'', pMin, pMed, pMax, diff, ml.unicos||0, ml.total||0, queriesStr, urlML(itRef),
       urlGoogleShopping(itRef),
       g0?g0.title:'', g0?g0.displayLink:'', g0?g0.snippet:'', g0?g0.link:'',
       urlGoogle(itRef)
@@ -739,6 +798,8 @@ function novaBusca(){
 }
 
 function limparTudo(){
+  dadosExcel=false;
+  itensBusca=[];
   document.getElementById('txtLista').value='';
   document.getElementById('excelInfo').style.display='none';
   contarItens();
