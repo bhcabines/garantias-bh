@@ -460,25 +460,29 @@ function buildQueries(item){
 async function buscarML(item){
   const buscarQ=async(q)=>{
     const mlUrl=`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=8`;
-    const tentar=async(url,parseWrapper)=>{
+    // Tenta direto + 2 proxies em paralelo — usa o primeiro que responder
+    const tentarUrl=async(url)=>{
+      const ctrl=new AbortController();
+      const t=setTimeout(()=>ctrl.abort(),9000);
       try{
-        const r=await fetch(url);
-        if(!r.ok) return{ok:false,status:r.status};
-        const raw=await r.json();
-        const d=parseWrapper?parseWrapper(raw):raw;
-        return{ok:true,data:d};
-      }catch(e){return{ok:false,erro:e.message};}
+        const r=await fetch(url,{signal:ctrl.signal});
+        clearTimeout(t);
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d=await r.json();
+        if(!Array.isArray(d.results)) throw new Error('sem results');
+        return d;
+      }catch(e){clearTimeout(t);throw e;}
     };
-    // 1ª tentativa: direto
-    let res=await tentar(mlUrl,null);
-    // 2ª tentativa: proxy CORS se bloqueado
-    if(!res.ok){
-      const proxy=`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`;
-      res=await tentar(proxy,null);
+    try{
+      const d=await Promise.any([
+        tentarUrl(mlUrl),
+        tentarUrl(`https://api.allorigins.win/raw?url=${encodeURIComponent(mlUrl)}`),
+        tentarUrl(`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`),
+      ]);
+      return{total:d.paging?.total||0,items:d.results||[]};
+    }catch(e){
+      return{total:0,items:[],erro:'API ML bloqueada (403)'};
     }
-    if(!res.ok) return{total:0,items:[],erro:res.erro||`HTTP ${res.status}`};
-    const d=res.data;
-    return{total:d.paging?.total||0,items:d.results||[]};
   };
   try{
     const queries=buildQueries(item);
@@ -550,36 +554,34 @@ async function testarML(){
   const res=document.getElementById('testeMLResult');
   btn.disabled=true;
   res.style.color='#888';
-  res.textContent='Testando direto...';
+  res.textContent='Testando (até 10s)...';
   const mlUrl='https://api.mercadolibre.com/sites/MLB/search?q=chapa+lateral+volvo+fh&limit=3';
-  const tentar=async(url,label)=>{
-    res.textContent=`Testando ${label}...`;
-    const r=await fetch(url);
-    if(!r.ok) return null;
-    return r.json();
+  const tentarUrl=async(url)=>{
+    const ctrl=new AbortController();
+    const t=setTimeout(()=>ctrl.abort(),9000);
+    try{
+      const r=await fetch(url,{signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d=await r.json();
+      if(!Array.isArray(d.results)) throw new Error('sem results');
+      return d;
+    }catch(e){clearTimeout(t);throw e;}
   };
   try{
-    let d=null;
-    try{ d=await tentar(mlUrl,'direto'); }catch(e){}
-    if(!d){
-      try{
-        const proxy=`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`;
-        d=await tentar(proxy,'proxy');
-      }catch(e){}
-    }
-    if(!d){
-      res.style.color='#dc2626';
-      res.textContent='❌ ML bloqueado (403). Verifique console para detalhes.';
-    }else{
-      const n=d.paging?.total||0;
-      res.style.color='#16a34a';
-      res.textContent=n>0
-        ?`✅ ML ok via proxy — "${d.results[0].title.slice(0,45)}..."`
-        :'⚠️ ML respondeu mas sem resultados para o teste.';
-    }
+    const d=await Promise.any([
+      tentarUrl(mlUrl).then(d=>({d,via:'direto'})),
+      tentarUrl(`https://api.allorigins.win/raw?url=${encodeURIComponent(mlUrl)}`).then(d=>({d,via:'allorigins'})),
+      tentarUrl(`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`).then(d=>({d,via:'corsproxy'})),
+    ]);
+    const n=d.d.paging?.total||0;
+    res.style.color='#16a34a';
+    res.textContent=n>0
+      ?`✅ ML ok (via ${d.via}) — "${d.d.results[0].title.slice(0,45)}..."`
+      :`⚠️ Conectou via ${d.via} mas 0 resultados para o teste.`;
   }catch(e){
     res.style.color='#dc2626';
-    res.textContent=`❌ ${e.message}`;
+    res.textContent='❌ Todos os proxies bloqueados. Necessário cadastro ML Developer.';
   }
   btn.disabled=false;
 }
