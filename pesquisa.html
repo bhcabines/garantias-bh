@@ -135,6 +135,11 @@ tbody td{padding:7px 10px;vertical-align:middle}
   </div>
 </div>
 
+<div id="avisoLocal" style="display:none;background:#7c2d12;color:#fef3c7;padding:10px 20px;font-size:12.5px;text-align:center;border-bottom:2px solid #dc2626">
+  ⚠️ <b>Arquivo aberto localmente.</b> As buscas no ML e Google não funcionam via <code>file://</code>.
+  Acesse pelo <a href="https://bhcabines.github.io/garantias-bh/pesquisa.html" target="_blank" style="color:#fde68a;font-weight:700">GitHub Pages</a> para usar a ferramenta.
+</div>
+
 <div class="main">
 
 <!-- ══ CONFIGURAÇÃO ══ -->
@@ -253,6 +258,7 @@ tbody td{padding:7px 10px;vertical-align:middle}
 </div><!-- /main -->
 
 <script>
+if(location.protocol==='file:') document.getElementById('avisoLocal').style.display='';
 const GAPI_KEY='AIzaSyCPlSthpf5TnjROVPsmVnlLR0F_XjHKmyU';
 const GAPI_CX='921c096823d9d4403';
 
@@ -533,7 +539,12 @@ async function testarML(){
   res.textContent='Testando...';
   try{
     const r=await fetch('https://api.mercadolibre.com/sites/MLB/search?q=chapa+lateral+volvo+fh&limit=3');
-    if(!r.ok){res.style.color='#dc2626';res.textContent=`❌ HTTP ${r.status}`;btn.disabled=false;return;}
+    if(!r.ok){
+      const msg=r.status===403&&location.protocol==='file:'
+        ?'❌ HTTP 403 — Abra pelo GitHub Pages (file:// é bloqueado pelo ML)'
+        :`❌ HTTP ${r.status}`;
+      res.style.color='#dc2626';res.textContent=msg;btn.disabled=false;return;
+    }
     const d=await r.json();
     const n=d.paging?.total||0;
     if(n>0){
