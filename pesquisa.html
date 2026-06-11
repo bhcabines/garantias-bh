@@ -823,7 +823,7 @@ function renderLinha(r,idx){
     </td>
     <td class="td-center">
       <div class="preco-min">${precoMin}</div>
-      ${!temML&&ml.erro?`<div style="font-size:9.5px;color:#dc2626" title="${ml.erro}">Erro rede</div>`:''}
+      ${!temML&&ml.erro?`<div style="font-size:9.5px;color:#dc2626">${ml.erro.slice(0,35)}</div>`:''}
       ${diffHtml}
     </td>
     <td class="td-center">
