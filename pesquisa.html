@@ -479,7 +479,7 @@ async function buscarML(item){
       clearTimeout(t);
       if(!r.ok) throw new Error(`HTTP ${r.status}`);
       const d=await r.json();
-      if(!Array.isArray(d.results)) throw new Error('sem results');
+      if(!Array.isArray(d.results)) throw new Error(d.message||d.error||'sem results');
       return{total:d.paging?.total||0,items:d.results||[]};
     }catch(e){
       clearTimeout(t);
@@ -533,7 +533,7 @@ async function testarML(){
     clearTimeout(t);
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const d=await r.json();
-    if(!Array.isArray(d.results)) throw new Error('sem results');
+    if(!Array.isArray(d.results)) throw new Error(d.message||d.error||'sem results');
     const n=d.paging?.total||0;
     res.style.color='#16a34a';
     res.textContent=n>0?`✅ Worker ML ok — "${d.results[0].title.slice(0,45)}..."`:
