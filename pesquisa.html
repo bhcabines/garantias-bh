@@ -210,7 +210,6 @@ tbody td{padding:7px 10px;vertical-align:middle}
 
   <div class="counter" id="counter" style="display:none">
     <b id="nItens">0</b> itens na lista
-    <span id="avisoLimite" style="display:none;color:#92400e;margin-left:8px">⚠️ Mais de 100 itens: o Google usa 1 consulta por item (limite: 100/dia grátis). Os demais terão só ML.</span>
   </div>
 
   <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -255,7 +254,6 @@ tbody td{padding:7px 10px;vertical-align:middle}
             <th class="td-center" style="color:var(--gr)">ML Menor</th>
             <th class="td-center" style="color:#666">ML Médio</th>
             <th class="td-center">Anúncios</th>
-            <th class="td-center">Google CSE</th>
             <th class="td-center">Ações</th>
           </tr>
         </thead>
@@ -283,7 +281,6 @@ let TIPO='codigo';
 let itensBusca=[];   // [{termo, cod, marca, desc, preco}]
 let resultados=[];
 let cancelado=false;
-let googleUsado=0;
 let dadosExcel=false;
 
 function getNPalavras(){return parseInt(document.getElementById('nPalavras').value)||3;}
@@ -404,7 +401,6 @@ function contarItens(){
   const ctr=document.getElementById('counter');
   ctr.style.display=n>0?'':'none';
   document.getElementById('nItens').textContent=n;
-  document.getElementById('avisoLimite').style.display=n>100?'':'none';
   document.getElementById('btnBuscar').disabled=n===0;
 }
 
@@ -513,36 +509,6 @@ async function buscarML(item){
 }
 
 
-// ── Busca Google CSE ──────────────────────────────────────────
-async function buscarGoogle(item){
-  if(googleUsado>=100) return{items:[],limite:true};
-  try{
-    // Usa descrição + marca para Google (texto funciona melhor que código numérico)
-    const isObj=typeof item==='object'&&item!==null;
-    const marca=isObj&&item.marca?item.marca:'';
-    const desc=isObj&&item.desc?item.desc:'';
-    const n=getNPalavras();
-    let qBase='';
-    if(isObj&&desc){
-      qBase=((marca?marca+' ':'')+truncarDesc(desc,Math.min(n+3,8))).trim();
-    }else{
-      qBase=buildQuery(item);
-    }
-    const q=encodeURIComponent(qBase+' preço comprar');
-    const url=`https://www.googleapis.com/customsearch/v1?key=${GAPI_KEY}&cx=${GAPI_CX}&q=${q}&num=5&gl=br&hl=pt-BR`;
-    const resp=await fetch(url);
-    const data=await resp.json();
-    if(!resp.ok||data.error){
-      const msg=(data.error&&data.error.message)||`HTTP ${resp.status}`;
-      return{items:[],erro:msg};
-    }
-    googleUsado++;
-    return{items:data.items||[]};
-  }catch(e){
-    return{items:[],erro:e.message};
-  }
-}
-
 // ── URLs de busca ─────────────────────────────────────────────
 function urlGoogle(item){
   return`https://www.google.com.br/search?q=${encodeURIComponent(buildQuery(item)+' preço')}&gl=br&hl=pt-BR`;
@@ -584,7 +550,6 @@ async function iniciarBusca(){
   // Não chama contarItens() aqui — sobrescreveria dados extras do Excel
   if(!itensBusca.length){ contarItens(); if(!itensBusca.length) return; }
   cancelado=false;
-  googleUsado=0;
   resultados=[];
 
   document.getElementById('secProg').style.display='';
@@ -605,11 +570,8 @@ async function iniciarBusca(){
     document.getElementById('progTxt').textContent=`Pesquisando: "${termo}" (${i+1} de ${total})`;
     document.getElementById('progDelay').textContent='';
 
-    // Busca ML (3 queries paralelas) e Google em paralelo
-    const [ml,goog]=await Promise.all([
-      buscarML(item),
-      buscarGoogle(item)
-    ]);
+    const ml=await buscarML(item);
+    const goog={items:[]};
 
     const r={termo,ml,goog,idx:i,extra:{cod:item.cod,marca:item.marca,desc:item.desc,preco:item.preco}};
     resultados.push(r);
@@ -643,9 +605,8 @@ function cancelarBusca(){
 // ── Renderizar linha da tabela ────────────────────────────────
 function renderLinha(r,idx){
   const tb=document.getElementById('resTbody');
-  const ml=r.ml, goog=r.goog;
+  const ml=r.ml;
   const temML=ml.items&&ml.items.length>0;
-  const temG=goog.items&&goog.items.length>0;
 
   // Preços ML
   let precoMin='—', precoMed='—', totalML=ml.total||0, unicosML=ml.unicos||0;
@@ -659,23 +620,8 @@ function renderLinha(r,idx){
     }
   }
 
-  // Status
-  let statusDot,statusTxt;
-  if(temML&&temG){statusDot='s-ok';statusTxt='ML + Google';}
-  else if(temML){statusDot='s-ok';statusTxt='ML';}
-  else if(temG){statusDot='s-warn';statusTxt='Google';}
-  else{statusDot='s-err';statusTxt='Não encontrado';}
-
-  // Google top
-  let googleTop='—';
-  if(temG){
-    const d=goog.items[0].displayLink||goog.items[0].link;
-    googleTop=`<span style="font-size:11px;color:var(--bl)">${d.replace(/^www\./,'').slice(0,30)}</span>`;
-  }else if(goog.limite){
-    googleTop='<span style="font-size:10px;color:#aaa">Limite 100/dia</span>';
-  }else if(goog.erro){
-    googleTop=`<span style="font-size:10px;color:#dc2626" title="${goog.erro}">Erro API</span>`;
-  }
+  const statusDot=temML?'s-ok':'s-err';
+  const statusTxt=temML?'ML':'Não encontrado';
 
   const ex=r.extra||{};
   const precoBHC=ex.preco;
@@ -721,7 +667,6 @@ function renderLinha(r,idx){
         ?`<span class="qtd-badge" title="${totalML.toLocaleString()} anúncios no total">${unicosML} únicos</span>`
         :'<span style="color:#ccc">0</span>'}
     </td>
-    <td class="td-center">${googleTop}</td>
     <td class="td-center" style="white-space:nowrap;display:flex;gap:3px;justify-content:center;flex-wrap:wrap;padding:6px 4px">
       <button class="btn blight btn-sm" onclick="toggleDet(${idx})" title="Ver detalhes ML + Google">🔍</button>
       <a class="btn blight btn-sm" href="${urlML(ex.cod?ex:r.termo)}" target="_blank" title="Ver busca no ML">🛒 ML</a>
@@ -742,13 +687,14 @@ function renderLinha(r,idx){
 }
 
 function buildDet(r){
-  const ml=r.ml,goog=r.goog;
+  const ml=r.ml;
+  const itRef=r.extra&&r.extra.cod?r.extra:r.termo;
   let mlHtml='<div class="det-titulo">🛒 Mercado Livre</div>';
   if(ml.queries&&ml.queries.length){
     mlHtml+=`<div style="font-size:10px;color:#aaa;margin-bottom:6px">Buscas: ${ml.queries.map(q=>`<code style="background:#f3f4f6;padding:1px 4px;border-radius:3px">${q}</code>`).join(' · ')}</div>`;
   }
   if(ml.items&&ml.items.length){
-    mlHtml+=ml.items.slice(0,5).map(it=>`
+    mlHtml+=ml.items.slice(0,8).map(it=>`
       <div class="ml-item">
         <img src="${it.thumbnail||''}" alt="" onerror="this.style.display='none'">
         <div class="mi-info">
@@ -761,27 +707,12 @@ function buildDet(r){
   }else{
     mlHtml+='<p style="font-size:11.5px;color:#aaa;padding:6px 0">Nenhum resultado encontrado.</p>';
   }
-
-  let gHtml='<div class="det-titulo">🌐 Google</div>';
-  if(goog.items&&goog.items.length){
-    gHtml+=goog.items.slice(0,4).map(it=>`
-      <div class="g-item">
-        <div class="gi-url">${(it.displayLink||'').replace(/^www\./,'')}</div>
-        <a href="${it.link}" target="_blank" class="gi-titulo">${it.title||''}</a>
-        <div class="gi-snippet">${it.snippet||''}</div>
-      </div>`).join('');
-  }else if(goog.limite){
-    gHtml+='<p style="font-size:11.5px;color:#aaa;padding:6px 0">Limite de 100 consultas/dia atingido.</p>';
-  }else{
-    gHtml+=`<p style="font-size:11.5px;color:#aaa;padding:6px 0">Sem resultados via API CSE.</p>`;
-  }
-  const itRef=r.extra&&r.extra.cod?r.extra:r.termo;
-  gHtml+=`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-    <a href="${urlGoogleShopping(itRef)}" target="_blank" class="btn bo btn-sm">🛍️ Abrir Google Shopping</a>
-    <a href="${urlGoogle(itRef)}" target="_blank" class="btn bb btn-sm">🌐 Google Busca Geral</a>
+  mlHtml+=`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+    <a href="${urlGoogleShopping(itRef)}" target="_blank" class="btn bo btn-sm">🛍️ Google Shopping</a>
+    <a href="${urlGoogle(itRef)}" target="_blank" class="btn bb btn-sm">🌐 Google Busca</a>
+    <a href="${urlML(itRef)}" target="_blank" class="btn blight btn-sm">🛒 Ver no ML</a>
   </div>`;
-
-  return`<div class="det-wrap"><div class="det-grid"><div>${mlHtml}</div><div>${gHtml}</div></div></div>`;
+  return`<div class="det-wrap"><div>${mlHtml}</div></div>`;
 }
 
 async function testarGoogle(){
@@ -816,18 +747,15 @@ function toggleDet(idx){
 function renderResumo(){
   const total=resultados.length;
   const comML=resultados.filter(r=>r.ml.items&&r.ml.items.length>0).length;
-  const comG=resultados.filter(r=>r.goog.items&&r.goog.items.length>0).length;
-  const semNada=resultados.filter(r=>(!r.ml.items||!r.ml.items.length)&&(!r.goog.items||!r.goog.items.length)).length;
+  const semNada=resultados.filter(r=>!r.ml.items||!r.ml.items.length).length;
   const todosPrecos=resultados.flatMap(r=>(r.ml.items||[]).map(i=>i.price)).filter(p=>p>0);
   const menorGeral=todosPrecos.length?Math.min(...todosPrecos):null;
 
   document.getElementById('resumoGrid').innerHTML=`
     <div class="res-stat"><div class="num">${total}</div><div class="lbl">Itens pesquisados</div></div>
     <div class="res-stat"><div class="num" style="color:var(--gr)">${comML}</div><div class="lbl">Com resultado ML</div></div>
-    <div class="res-stat"><div class="num" style="color:var(--bl)">${comG}</div><div class="lbl">Com resultado Google</div></div>
     <div class="res-stat"><div class="num" style="color:#ef4444">${semNada}</div><div class="lbl">Sem resultados</div></div>
-    ${menorGeral?`<div class="res-stat"><div class="num" style="font-size:16px">R$ ${fBR(menorGeral)}</div><div class="lbl">Menor preço geral</div></div>`:''}
-    <div class="res-stat"><div class="num" style="color:#92400e">${googleUsado}</div><div class="lbl">Consultas Google usadas</div></div>`;
+    ${menorGeral?`<div class="res-stat"><div class="num" style="font-size:16px">R$ ${fBR(menorGeral)}</div><div class="lbl">Menor preço geral</div></div>`:''}` ;
 }
 
 // ── Exportar Excel ────────────────────────────────────────────
@@ -836,26 +764,21 @@ function exportarExcel(){
   const wb=XLSX.utils.book_new();
   const rows=[['CÓD.FABRICANTE','MARCA','DESCRIÇÃO COMPLETA','TERMO BUSCADO',
     'PREÇO BHC','ML MENOR PREÇO','ML PREÇO MÉDIO','ML MAIOR PREÇO','DIFERENÇA %','ML ÚNICOS','ML TOTAL ANÚNCIOS','ML QUERIES USADAS','ML LINK BUSCA',
-    'GOOGLE SHOPPING LINK',
-    'GOOGLE 1 TÍTULO','GOOGLE 1 SITE','GOOGLE 1 SNIPPET','GOOGLE 1 LINK',
-    'LINK GOOGLE BUSCA']];
+    'GOOGLE SHOPPING LINK','LINK GOOGLE BUSCA']];
 
   for(const r of resultados){
-    const ml=r.ml,goog=r.goog,ex=r.extra||{};
+    const ml=r.ml,ex=r.extra||{};
     const precos=(ml.items||[]).map(i=>i.price).filter(p=>p>0).sort((a,b)=>a-b);
     const pMin=precos.length?precos[0]:'';
     const pMax=precos.length?precos[precos.length-1]:'';
     const pMed=precos.length?Math.round(precos.reduce((s,p)=>s+p,0)/precos.length*100)/100:'';
     const diff=(ex.preco&&pMin)?((pMin-ex.preco)/ex.preco*100).toFixed(1)+'%':'';
-    const g0=goog.items&&goog.items[0];
     const itRef=ex.cod?ex:r.termo;
     const queriesStr=(ml.queries||[]).join(' | ');
     rows.push([
       ex.cod||'', ex.marca||'', ex.desc||'', r.termo,
       ex.preco||'', pMin, pMed, pMax, diff, ml.unicos||0, ml.total||0, queriesStr, urlML(itRef),
-      urlGoogleShopping(itRef),
-      g0?g0.title:'', g0?g0.displayLink:'', g0?g0.snippet:'', g0?g0.link:'',
-      urlGoogle(itRef)
+      urlGoogleShopping(itRef), urlGoogle(itRef)
     ]);
   }
 
