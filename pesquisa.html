@@ -459,12 +459,26 @@ function buildQueries(item){
 // ── Busca Mercado Livre — 3 queries em paralelo, merge deduplificado ─────────
 async function buscarML(item){
   const buscarQ=async(q)=>{
-    try{
-      const r=await fetch(`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=8`);
-      if(!r.ok) return{total:0,items:[],erro:`HTTP ${r.status}`};
-      const d=await r.json();
-      return{total:d.paging?.total||0,items:d.results||[]};
-    }catch(e){return{total:0,items:[],erro:e.message};}
+    const mlUrl=`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=8`;
+    const tentar=async(url,parseWrapper)=>{
+      try{
+        const r=await fetch(url);
+        if(!r.ok) return{ok:false,status:r.status};
+        const raw=await r.json();
+        const d=parseWrapper?parseWrapper(raw):raw;
+        return{ok:true,data:d};
+      }catch(e){return{ok:false,erro:e.message};}
+    };
+    // 1ª tentativa: direto
+    let res=await tentar(mlUrl,null);
+    // 2ª tentativa: proxy CORS se bloqueado
+    if(!res.ok){
+      const proxy=`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`;
+      res=await tentar(proxy,null);
+    }
+    if(!res.ok) return{total:0,items:[],erro:res.erro||`HTTP ${res.status}`};
+    const d=res.data;
+    return{total:d.paging?.total||0,items:d.results||[]};
   };
   try{
     const queries=buildQueries(item);
@@ -536,27 +550,36 @@ async function testarML(){
   const res=document.getElementById('testeMLResult');
   btn.disabled=true;
   res.style.color='#888';
-  res.textContent='Testando...';
+  res.textContent='Testando direto...';
+  const mlUrl='https://api.mercadolibre.com/sites/MLB/search?q=chapa+lateral+volvo+fh&limit=3';
+  const tentar=async(url,label)=>{
+    res.textContent=`Testando ${label}...`;
+    const r=await fetch(url);
+    if(!r.ok) return null;
+    return r.json();
+  };
   try{
-    const r=await fetch('https://api.mercadolibre.com/sites/MLB/search?q=chapa+lateral+volvo+fh&limit=3');
-    if(!r.ok){
-      const msg=r.status===403&&location.protocol==='file:'
-        ?'❌ HTTP 403 — Abra pelo GitHub Pages (file:// é bloqueado pelo ML)'
-        :`❌ HTTP ${r.status}`;
-      res.style.color='#dc2626';res.textContent=msg;btn.disabled=false;return;
+    let d=null;
+    try{ d=await tentar(mlUrl,'direto'); }catch(e){}
+    if(!d){
+      try{
+        const proxy=`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`;
+        d=await tentar(proxy,'proxy');
+      }catch(e){}
     }
-    const d=await r.json();
-    const n=d.paging?.total||0;
-    if(n>0){
-      res.style.color='#16a34a';
-      res.textContent=`✅ ML ok — "${d.results[0].title.slice(0,40)}..." (${n.toLocaleString()} resultados)`;
+    if(!d){
+      res.style.color='#dc2626';
+      res.textContent='❌ ML bloqueado (403). Verifique console para detalhes.';
     }else{
-      res.style.color='#f59e0b';
-      res.textContent='⚠️ ML respondeu mas sem resultados para o termo de teste.';
+      const n=d.paging?.total||0;
+      res.style.color='#16a34a';
+      res.textContent=n>0
+        ?`✅ ML ok via proxy — "${d.results[0].title.slice(0,45)}..."`
+        :'⚠️ ML respondeu mas sem resultados para o teste.';
     }
   }catch(e){
     res.style.color='#dc2626';
-    res.textContent=`❌ Erro de rede: ${e.message}`;
+    res.textContent=`❌ ${e.message}`;
   }
   btn.disabled=false;
 }
