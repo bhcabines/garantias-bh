@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BH Cabines — Pesquisa de Preços</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--or:#E84800;--dk:#1a1a2e;--bg:#f4f4f6;--wh:#fff;--bd:#e0e0e0;--gr:#16a34a;--bl:#1D4ED8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:#333;min-height:100vh;position:relative}
+body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:70vmin;height:70vmin;background-image:url('logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png');background-repeat:no-repeat;background-position:center;background-size:contain;opacity:.05;pointer-events:none;z-index:0}
+
+/* Header */
+.hdr{background:var(--dk);border-bottom:3px solid var(--or);box-shadow:0 3px 14px rgba(0,0,0,.4);position:sticky;top:0;z-index:200}
+.hdr-in{display:flex;align-items:center;gap:1rem;padding:.65rem 2rem;flex-wrap:wrap}
+.hdr-in img{height:36px}
+.hdr-in h1{font-size:.88rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.5px}
+.hdr-in small{font-size:.65rem;color:rgba(255,255,255,.45);display:block}
+.ml-auto{margin-left:auto}
+
+.main{max-width:1300px;margin:0 auto;padding:20px;position:relative;z-index:1}
+
+/* Cards */
+.card{background:var(--wh);border-radius:12px;border:1px solid var(--bd);padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.04);margin-bottom:16px}
+.ct{font-size:12px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px}
+
+/* Buttons */
+.btn{padding:.45rem .9rem;border-radius:7px;border:none;cursor:pointer;font-size:.78rem;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:.35rem;text-decoration:none;white-space:nowrap}
+.bo{background:var(--or);color:#fff}.bo:hover{background:#c43d00}
+.bb{background:var(--bl);color:#fff}.bb:hover{background:#1639a8}
+.bg-hdr{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3)}.bg-hdr:hover{background:rgba(255,255,255,.22)}
+.bk{background:var(--gr);color:#fff}.bk:hover{background:#127a39}
+.bgray{background:#6b7280;color:#fff}.bgray:hover{background:#4b5563}
+.blight{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}.blight:hover{background:#e5e7eb}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-sm{padding:.28rem .65rem;font-size:.72rem}
+
+/* Input area */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--bd);margin-bottom:14px}
+.tab{padding:.5rem 1rem;cursor:pointer;font-size:.8rem;font-weight:600;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.tab.on{color:var(--or);border-color:var(--or)}
+.tab-panel{display:none}.tab-panel.on{display:block}
+
+textarea{width:100%;border:1.5px solid var(--bd);border-radius:8px;padding:10px 12px;font-size:12.5px;font-family:monospace;resize:vertical;min-height:120px;outline:none;transition:border .15s;line-height:1.6}
+textarea:focus{border-color:var(--or)}
+.inp-hint{font-size:11px;color:#aaa;margin-top:5px}
+
+.drop-file{border:2px dashed var(--bd);border-radius:10px;padding:32px 20px;text-align:center;cursor:pointer;transition:all .2s}
+.drop-file:hover,.drop-file.on{border-color:var(--or);background:rgba(232,72,0,.02)}
+.drop-file p{font-size:12.5px;color:#888}
+.drop-file input{display:none}
+
+.counter{font-size:12px;color:#666;font-weight:500;padding:6px 0}
+.counter b{color:var(--or)}
+
+/* Tipo busca */
+.tipo-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.tipo-btn{padding:.35rem .8rem;border-radius:20px;border:1.5px solid var(--bd);background:var(--wh);font-size:.75rem;font-weight:600;cursor:pointer;color:#666;transition:all .15s}
+.tipo-btn.on{background:var(--or);border-color:var(--or);color:#fff}
+
+/* Alerta limite */
+.alerta{padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px;display:flex;align-items:flex-start;gap:8px}
+.al-warn{background:#fffbeb;border:1px solid #fcd34d;color:#92400e}
+.al-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+.al-err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+.al-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}
+
+/* Progress */
+.prog-wrap{margin:12px 0}
+.prog-bar-bg{height:8px;background:#f0f0f0;border-radius:4px;overflow:hidden}
+.prog-bar{height:100%;background:linear-gradient(90deg,var(--or),#ff8c42);border-radius:4px;transition:width .3s}
+.prog-txt{font-size:11.5px;color:#666;margin-top:5px;display:flex;justify-content:space-between}
+
+/* Resumo */
+.resumo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.res-stat{background:#f8f8f8;border-radius:8px;padding:10px 12px;text-align:center;border:1px solid #eee}
+.res-stat .num{font-size:22px;font-weight:700;color:var(--or)}
+.res-stat .lbl{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px}
+
+/* Tabela de resultados */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#f7f7f7;border:1px solid #eee;padding:7px 10px;font-size:10.5px;font-weight:700;color:#555;text-transform:uppercase;white-space:nowrap;position:sticky;top:0}
+tbody tr{border-bottom:1px solid #f0f0f0;transition:background .1s}
+tbody tr:hover{background:#fafafa}
+tbody tr.expandido{background:#fff8f2}
+tbody td{padding:7px 10px;vertical-align:middle}
+.td-num{text-align:right;font-variant-numeric:tabular-nums}
+.td-center{text-align:center}
+
+/* Resultado linha */
+.item-termo{font-weight:600;font-size:12px;color:#222;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item-hint{font-size:10px;color:#aaa}
+.preco-min{font-weight:700;color:var(--gr);font-size:13px}
+.preco-max{font-size:11px;color:#888}
+.qtd-badge{display:inline-block;background:#f0f0f0;border-radius:4px;padding:1px 6px;font-size:10.5px;font-weight:600;color:#555}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.s-ok{background:#22c55e}.s-warn{background:#f59e0b}.s-err{background:#ef4444}.s-wait{background:#d1d5db}
+
+/* Detalhes expandidos */
+.det-wrap{background:#fff8f2;padding:12px 16px;border-top:1px solid #ffe4cc}
+.det-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.det-titulo{font-size:10.5px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.ml-item{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f5f5f5}
+.ml-item:last-child{border:none}
+.ml-item img{width:36px;height:36px;object-fit:contain;border-radius:4px;border:1px solid #eee;flex-shrink:0}
+.ml-item .mi-info{flex:1;min-width:0}
+.ml-item .mi-nome{font-size:11px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ml-item .mi-preco{font-weight:700;color:var(--gr);font-size:12px}
+.ml-item .mi-cond{font-size:9.5px;color:#aaa}
+.g-item{padding:5px 0;border-bottom:1px solid #f5f5f5}
+.g-item:last-child{border:none}
+.g-item .gi-titulo{font-size:11.5px;font-weight:600;color:var(--bl);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-item .gi-url{font-size:10px;color:#22c55e;margin-bottom:2px}
+.g-item .gi-snippet{font-size:10.5px;color:#666;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* Spinner */
+.sp{display:inline-block;width:14px;height:14px;border:2px solid #eee;border-top-color:var(--or);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+@media(max-width:768px){
+  .det-grid{grid-template-columns:1fr}
+  .hdr-in{padding:.65rem 1rem}
+}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-in">
+    <img src="logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH">
+    <div><h1>Pesquisa de Preços</h1><small>Mercado Livre + Google · Busca em lote</small></div>
+    <div class="ml-auto"><a href="index.html" class="btn bg-hdr">🏠 Menu</a></div>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ══ CONFIGURAÇÃO ══ -->
+<div class="card">
+  <div class="ct">⚙️ Tipo de Busca</div>
+  <div class="tipo-row" id="tipoRow">
+    <button class="tipo-btn on" onclick="setTipo('codigo',this)">🔢 Somente Código</button>
+    <button class="tipo-btn" onclick="setTipo('nome',this)">📝 Somente Nome</button>
+    <button class="tipo-btn" onclick="setTipo('ambos',this)">🔢📝 Código + Nome</button>
+  </div>
+  <div class="al-info alerta" id="tipoHint">
+    ℹ️ <span>Cole uma coluna de <b>códigos</b> — ex: <code>190668</code>. Um por linha.</span>
+  </div>
+</div>
+
+<!-- ══ ENTRADA ══ -->
+<div class="card">
+  <div class="ct">📋 Lista de Itens</div>
+  <div class="tabs">
+    <div class="tab on" onclick="showTab('colar',this)">✏️ Colar lista</div>
+    <div class="tab" onclick="showTab('excel',this)">📊 Upload Excel</div>
+  </div>
+
+  <div class="tab-panel on" id="tab-colar">
+    <textarea id="txtLista" placeholder="Cole aqui os itens — um por linha:&#10;190668&#10;052987&#10;190648&#10;..." oninput="contarItens()"></textarea>
+    <div class="inp-hint">Um item por linha. Para "Código + Nome", separe com espaço ou vírgula: <code>190668 SUPORTE ESTRIBO</code></div>
+  </div>
+
+  <div class="tab-panel" id="tab-excel">
+    <div class="drop-file" id="dzFile" onclick="document.getElementById('fileIn').click()">
+      <p style="font-size:28px;margin-bottom:8px">📊</p>
+      <p><b>Clique ou arraste</b> o arquivo Excel (.xlsx / .xls)</p>
+      <p style="font-size:11px;margin-top:4px;color:#bbb">A 1ª coluna será usada como termos de busca</p>
+      <input type="file" id="fileIn" accept=".xlsx,.xls,.csv" onchange="lerExcel(this.files[0])">
+    </div>
+    <div id="excelInfo" style="display:none" class="al-ok alerta">✅ <span id="excelInfoTxt"></span></div>
+  </div>
+
+  <div class="counter" id="counter" style="display:none">
+    <b id="nItens">0</b> itens na lista
+    <span id="avisoLimite" style="display:none;color:#92400e;margin-left:8px">⚠️ Mais de 100 itens: o Google usa 1 consulta por item (limite: 100/dia grátis). Os demais terão só ML.</span>
+  </div>
+
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn bo" id="btnBuscar" onclick="iniciarBusca()" disabled>🔍 Iniciar Pesquisa em Lote</button>
+    <button class="btn bgray" onclick="limparTudo()">🗑️ Limpar</button>
+  </div>
+</div>
+
+<!-- ══ PROGRESSO ══ -->
+<div class="card" id="secProg" style="display:none">
+  <div class="ct">⏳ Processando</div>
+  <div class="prog-wrap">
+    <div class="prog-bar-bg"><div class="prog-bar" id="progBar" style="width:0%"></div></div>
+    <div class="prog-txt"><span id="progTxt">Iniciando...</span><span id="progPct">0%</span></div>
+  </div>
+  <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+    <button class="btn bgray btn-sm" onclick="cancelarBusca()">⏹ Cancelar</button>
+    <span id="progDelay" style="font-size:11px;color:#aaa"></span>
+  </div>
+</div>
+
+<!-- ══ RESULTADOS ══ -->
+<div id="secRes" style="display:none">
+  <div class="card">
+    <div class="ct">📊 Resultados</div>
+    <div class="resumo-grid" id="resumoGrid"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn bk" onclick="exportarExcel()">📊 Exportar Excel</button>
+      <button class="btn bb" onclick="novaBusca()">🔄 Nova Busca</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:28px">#</th>
+            <th>Termo Buscado</th>
+            <th>Status</th>
+            <th class="td-center">ML Menor Preço</th>
+            <th class="td-center">ML Anúncios</th>
+            <th class="td-center">Google</th>
+            <th class="td-center">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="resTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<script>
+const GAPI_KEY='AIzaSyCPlSthpf5TnjROVPsmVnlLR0F_XjHKmyU';
+const GAPI_CX='921c096823d9d4403';
+
+let TIPO='codigo';
+let itensBusca=[];
+let resultados=[];
+let cancelado=false;
+let googleUsado=0;
+
+// ── Tipo de busca ─────────────────────────────────────────────
+const HINTS={
+  codigo:'Cole uma coluna de <b>códigos</b> — ex: <code>190668</code>. Um por linha.',
+  nome:'Cole os <b>nomes/descrições</b> — ex: <code>SUPORTE ESTRIBO VW</code>. Um por linha.',
+  ambos:'Cole <b>código e nome</b> separados por espaço — ex: <code>190668 SUPORTE ESTRIBO VW</code>. Um por linha.'
+};
+function setTipo(t,el){
+  TIPO=t;
+  document.querySelectorAll('.tipo-btn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('tipoHint').querySelector('span').innerHTML=HINTS[t];
+  contarItens();
+}
+
+// ── Tabs ─────────────────────────────────────────────────────
+function showTab(name,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('tab-'+name).classList.add('on');
+}
+
+// ── Drag & Drop arquivo ───────────────────────────────────────
+const dz=document.getElementById('dzFile');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('on')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('on'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('on');lerExcel(e.dataTransfer.files[0])});
+
+function lerExcel(f){
+  if(!f)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',raw:false});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+    const termos=rows.map(r=>String(r[0]||'').trim()).filter(v=>v&&v.length>1);
+    document.getElementById('txtLista').value=termos.join('\n');
+    document.getElementById('excelInfo').style.display='';
+    document.getElementById('excelInfoTxt').textContent=`${termos.length} itens carregados do arquivo "${f.name}"`;
+    showTab('colar',document.querySelectorAll('.tab')[0]);
+    contarItens();
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+// ── Contar itens ──────────────────────────────────────────────
+function contarItens(){
+  const linhas=parseLista();
+  const n=linhas.length;
+  const ctr=document.getElementById('counter');
+  ctr.style.display=n>0?'':'none';
+  document.getElementById('nItens').textContent=n;
+  document.getElementById('avisoLimite').style.display=n>100?'':'none';
+  document.getElementById('btnBuscar').disabled=n===0;
+  itensBusca=linhas;
+}
+
+function parseLista(){
+  const txt=document.getElementById('txtLista').value;
+  return txt.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const fBR=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+function buildQuery(termo){
+  if(TIPO==='codigo') return termo+' peça';
+  if(TIPO==='nome') return termo;
+  return termo; // ambos: usa o texto completo
+}
+
+// ── Busca Mercado Livre ───────────────────────────────────────
+async function buscarML(termo){
+  try{
+    const q=encodeURIComponent(buildQuery(termo));
+    const resp=await fetch(`https://api.mercadolibre.com/sites/MLB/search?q=${q}&limit=6`);
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const data=await resp.json();
+    return{total:data.paging?.total||0, items:data.results||[]};
+  }catch(e){
+    return{total:0,items:[],erro:e.message};
+  }
+}
+
+// ── Busca Google CSE ──────────────────────────────────────────
+async function buscarGoogle(termo){
+  if(googleUsado>=100) return{items:[],limite:true};
+  try{
+    const q=encodeURIComponent(buildQuery(termo)+' preço comprar');
+    const url=`https://www.googleapis.com/customsearch/v1?key=${GAPI_KEY}&cx=${GAPI_CX}&q=${q}&num=5&gl=br&hl=pt-BR`;
+    const resp=await fetch(url);
+    const data=await resp.json();
+    if(data.error) return{items:[],erro:data.error.message};
+    googleUsado++;
+    return{items:data.items||[]};
+  }catch(e){
+    return{items:[],erro:e.message};
+  }
+}
+
+// ── URL Google pesquisa aberta ────────────────────────────────
+function urlGoogle(termo){
+  return`https://www.google.com/search?q=${encodeURIComponent(buildQuery(termo)+' preço comprar')}&gl=br&hl=pt-BR`;
+}
+function urlML(termo){
+  return`https://lista.mercadolivre.com.br/${encodeURIComponent(buildQuery(termo))}`;
+}
+
+// ── Iniciar busca em lote ─────────────────────────────────────
+async function iniciarBusca(){
+  contarItens();
+  if(!itensBusca.length) return;
+  cancelado=false;
+  googleUsado=0;
+  resultados=[];
+
+  document.getElementById('secProg').style.display='';
+  document.getElementById('secRes').style.display='none';
+  document.getElementById('btnBuscar').disabled=true;
+  document.getElementById('resTbody').innerHTML='';
+
+  const total=itensBusca.length;
+
+  for(let i=0;i<total;i++){
+    if(cancelado) break;
+    const termo=itensBusca[i];
+    const pct=Math.round((i/total)*100);
+
+    document.getElementById('progBar').style.width=pct+'%';
+    document.getElementById('progPct').textContent=pct+'%';
+    document.getElementById('progTxt').textContent=`Pesquisando: "${termo}" (${i+1} de ${total})`;
+    document.getElementById('progDelay').textContent='';
+
+    // Busca ML e Google em paralelo
+    const [ml,goog]=await Promise.all([
+      buscarML(termo),
+      buscarGoogle(termo)
+    ]);
+
+    const r={termo,ml,goog,idx:i};
+    resultados.push(r);
+    renderLinha(r,i);
+
+    // Delay entre itens (respeitar rate limit)
+    if(i<total-1){
+      document.getElementById('progDelay').textContent='Aguardando...';
+      await sleep(1200);
+    }
+  }
+
+  document.getElementById('progBar').style.width='100%';
+  document.getElementById('progPct').textContent='100%';
+  document.getElementById('progTxt').textContent=cancelado?'Cancelado.':'Concluído!';
+  setTimeout(()=>{
+    document.getElementById('secProg').style.display='none';
+    document.getElementById('secRes').style.display='';
+    renderResumo();
+    document.getElementById('btnBuscar').disabled=false;
+  },800);
+}
+
+function cancelarBusca(){
+  cancelado=true;
+  document.getElementById('secRes').style.display=resultados.length?'':'none';
+  if(resultados.length) renderResumo();
+  document.getElementById('btnBuscar').disabled=false;
+}
+
+// ── Renderizar linha da tabela ────────────────────────────────
+function renderLinha(r,idx){
+  const tb=document.getElementById('resTbody');
+  const ml=r.ml, goog=r.goog;
+  const temML=ml.items&&ml.items.length>0;
+  const temG=goog.items&&goog.items.length>0;
+
+  // Menor preço ML
+  let precoMin='—', precoMax='', totalML=ml.total||0;
+  if(temML){
+    const precos=ml.items.map(i=>i.price).filter(p=>p>0).sort((a,b)=>a-b);
+    if(precos.length){
+      precoMin='R$ '+fBR(precos[0]);
+      if(precos.length>1) precoMax='até R$ '+fBR(precos[precos.length-1]);
+    }
+  }
+
+  // Status
+  let statusDot,statusTxt;
+  if(temML&&temG){statusDot='s-ok';statusTxt='ML + Google';}
+  else if(temML){statusDot='s-ok';statusTxt='ML';}
+  else if(temG){statusDot='s-warn';statusTxt='Google';}
+  else{statusDot='s-err';statusTxt='Não encontrado';}
+
+  // Google top
+  let googleTop='—';
+  if(temG){
+    const d=goog.items[0].displayLink||goog.items[0].link;
+    googleTop=`<span style="font-size:11px;color:var(--bl)">${d.replace(/^www\./,'').slice(0,30)}</span>`;
+  }else if(goog.limite){
+    googleTop='<span style="font-size:10px;color:#aaa">Limite 100/dia</span>';
+  }else if(goog.erro){
+    googleTop='<span style="font-size:10px;color:#aaa">—</span>';
+  }
+
+  const tr=document.createElement('tr');
+  tr.id='tr-'+idx;
+  tr.innerHTML=`
+    <td class="td-center" style="color:#aaa;font-size:11px">${idx+1}</td>
+    <td>
+      <div class="item-termo" title="${r.termo}">${r.termo}</div>
+      ${temML?`<div class="item-hint">${ml.total.toLocaleString()} resultados ML</div>`:''}
+    </td>
+    <td class="td-center">
+      <span style="display:inline-flex;align-items:center;gap:4px">
+        <span class="status-dot ${statusDot}"></span>
+        <span style="font-size:10.5px;color:#555">${statusTxt}</span>
+      </span>
+    </td>
+    <td class="td-center">
+      <div class="preco-min">${precoMin}</div>
+      <div class="preco-max">${precoMax}</div>
+    </td>
+    <td class="td-center">
+      ${totalML>0?`<span class="qtd-badge">${totalML.toLocaleString()}</span>`:'<span style="color:#ccc">0</span>'}
+    </td>
+    <td class="td-center">${googleTop}</td>
+    <td class="td-center" style="white-space:nowrap">
+      <button class="btn blight btn-sm" onclick="toggleDet(${idx})" title="Ver detalhes">🔍</button>
+      <a class="btn blight btn-sm" href="${urlML(r.termo)}" target="_blank" title="Ver no ML">🛒</a>
+      <a class="btn blight btn-sm" href="${urlGoogle(r.termo)}" target="_blank" title="Buscar no Google">🌐</a>
+    </td>`;
+  tb.appendChild(tr);
+
+  // Linha de detalhes (oculta)
+  const trDet=document.createElement('tr');
+  trDet.id='det-'+idx;
+  trDet.style.display='none';
+  const td=document.createElement('td');
+  td.colSpan=7;
+  td.innerHTML=buildDet(r);
+  trDet.appendChild(td);
+  tb.appendChild(trDet);
+}
+
+function buildDet(r){
+  const ml=r.ml,goog=r.goog;
+  let mlHtml='<div class="det-titulo">🛒 Mercado Livre</div>';
+  if(ml.items&&ml.items.length){
+    mlHtml+=ml.items.slice(0,5).map(it=>`
+      <div class="ml-item">
+        <img src="${it.thumbnail||''}" alt="" onerror="this.style.display='none'">
+        <div class="mi-info">
+          <div class="mi-cond">${it.condition==='new'?'Novo':'Usado'} · ${it.seller?.nickname||''}</div>
+          <div class="mi-nome" title="${it.title}">${it.title}</div>
+          <div class="mi-preco">R$ ${fBR(it.price)}</div>
+        </div>
+        <a href="${it.permalink}" target="_blank" class="btn bk btn-sm" style="flex-shrink:0">Ver →</a>
+      </div>`).join('');
+  }else{
+    mlHtml+='<p style="font-size:11.5px;color:#aaa;padding:6px 0">Nenhum resultado encontrado.</p>';
+  }
+
+  let gHtml='<div class="det-titulo">🌐 Google</div>';
+  if(goog.items&&goog.items.length){
+    gHtml+=goog.items.slice(0,4).map(it=>`
+      <div class="g-item">
+        <div class="gi-url">${(it.displayLink||'').replace(/^www\./,'')}</div>
+        <a href="${it.link}" target="_blank" class="gi-titulo">${it.title||''}</a>
+        <div class="gi-snippet">${it.snippet||''}</div>
+      </div>`).join('');
+  }else if(goog.limite){
+    gHtml+='<p style="font-size:11.5px;color:#aaa;padding:6px 0">Limite de 100 consultas/dia atingido.</p>';
+  }else{
+    gHtml+=`<p style="font-size:11.5px;color:#aaa;padding:6px 0">Sem resultados via API. <a href="${urlGoogle(r.termo)}" target="_blank" style="color:var(--bl)">Buscar no Google →</a></p>`;
+  }
+
+  return`<div class="det-wrap"><div class="det-grid"><div>${mlHtml}</div><div>${gHtml}</div></div></div>`;
+}
+
+function toggleDet(idx){
+  const tr=document.getElementById('det-'+idx);
+  const row=document.getElementById('tr-'+idx);
+  const vis=tr.style.display==='none';
+  tr.style.display=vis?'':'none';
+  row.classList.toggle('expandido',vis);
+}
+
+// ── Resumo ────────────────────────────────────────────────────
+function renderResumo(){
+  const total=resultados.length;
+  const comML=resultados.filter(r=>r.ml.items&&r.ml.items.length>0).length;
+  const comG=resultados.filter(r=>r.goog.items&&r.goog.items.length>0).length;
+  const semNada=resultados.filter(r=>(!r.ml.items||!r.ml.items.length)&&(!r.goog.items||!r.goog.items.length)).length;
+  const todosPrecos=resultados.flatMap(r=>(r.ml.items||[]).map(i=>i.price)).filter(p=>p>0);
+  const menorGeral=todosPrecos.length?Math.min(...todosPrecos):null;
+
+  document.getElementById('resumoGrid').innerHTML=`
+    <div class="res-stat"><div class="num">${total}</div><div class="lbl">Itens pesquisados</div></div>
+    <div class="res-stat"><div class="num" style="color:var(--gr)">${comML}</div><div class="lbl">Com resultado ML</div></div>
+    <div class="res-stat"><div class="num" style="color:var(--bl)">${comG}</div><div class="lbl">Com resultado Google</div></div>
+    <div class="res-stat"><div class="num" style="color:#ef4444">${semNada}</div><div class="lbl">Sem resultados</div></div>
+    ${menorGeral?`<div class="res-stat"><div class="num" style="font-size:16px">R$ ${fBR(menorGeral)}</div><div class="lbl">Menor preço geral</div></div>`:''}
+    <div class="res-stat"><div class="num" style="color:#92400e">${googleUsado}</div><div class="lbl">Consultas Google usadas</div></div>`;
+}
+
+// ── Exportar Excel ────────────────────────────────────────────
+function exportarExcel(){
+  if(!resultados.length){alert('Nenhum resultado para exportar.');return;}
+  const wb=XLSX.utils.book_new();
+  const rows=[['TERMO','ML TOTAL ANÚNCIOS','ML MENOR PREÇO','ML MAIOR PREÇO','ML MEDIA PREÇO','ML LINK BUSCA',
+    'GOOGLE 1 TÍTULO','GOOGLE 1 SITE','GOOGLE 1 SNIPPET','GOOGLE 1 LINK',
+    'GOOGLE 2 TÍTULO','GOOGLE 2 LINK','LINK GOOGLE BUSCA']];
+
+  for(const r of resultados){
+    const ml=r.ml,goog=r.goog;
+    const precos=(ml.items||[]).map(i=>i.price).filter(p=>p>0).sort((a,b)=>a-b);
+    const pMin=precos.length?precos[0]:'';
+    const pMax=precos.length?precos[precos.length-1]:'';
+    const pMed=precos.length?Math.round(precos.reduce((s,p)=>s+p,0)/precos.length*100)/100:'';
+    const g0=goog.items&&goog.items[0];
+    const g1=goog.items&&goog.items[1];
+    rows.push([
+      r.termo, ml.total||0, pMin, pMax, pMed, urlML(r.termo),
+      g0?g0.title:'', g0?g0.displayLink:'', g0?g0.snippet:'', g0?g0.link:'',
+      g1?g1.title:'', g1?g1.link:'',
+      urlGoogle(r.termo)
+    ]);
+  }
+
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[20,14,14,14,14,30,44,24,50,30,44,30,30].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws,'Pesquisa de Preços');
+  const bytes=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`Pesquisa_Precos_${new Date().toISOString().slice(0,10)}.xlsx`;
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
+}
+
+// ── Controles gerais ──────────────────────────────────────────
+function novaBusca(){
+  document.getElementById('secRes').style.display='none';
+  document.getElementById('resTbody').innerHTML='';
+  resultados=[];
+}
+
+function limparTudo(){
+  document.getElementById('txtLista').value='';
+  document.getElementById('excelInfo').style.display='none';
+  contarItens();
+  document.getElementById('secRes').style.display='none';
+  document.getElementById('secProg').style.display='none';
+  resultados=[];
+}
+</script>
+</body>
+</html>
