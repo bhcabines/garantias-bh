@@ -300,12 +300,18 @@ function salvarCreds(){
   mlAccessToken=null; // força renovação
 }
 
+const ML_APP_ID_DEFAULT='451328745736644';
+const ML_SECRET_DEFAULT='iUyvYWWNVPod9ALhf36qwyhVJeEr5UsQ';
+
 function carregarCreds(){
-  const id=localStorage.getItem('ml_app_id')||'';
-  const sec=localStorage.getItem('ml_secret')||'';
+  const id=localStorage.getItem('ml_app_id')||ML_APP_ID_DEFAULT;
+  const sec=localStorage.getItem('ml_secret')||ML_SECRET_DEFAULT;
   document.getElementById('mlAppId').value=id;
   document.getElementById('mlSecret').value=sec;
-  if(id&&sec) atualizarStatusML('Credenciais salvas — clique "Conectar" para testar.','#f59e0b');
+  localStorage.setItem('ml_app_id',id);
+  localStorage.setItem('ml_secret',sec);
+  // Conecta automaticamente
+  conectarML();
 }
 
 function atualizarStatusML(msg,cor){
@@ -559,16 +565,17 @@ async function buscarML(item){
       }catch(e){clearTimeout(t);throw e;}
     };
     try{
-      // Com token: chamada direta autenticada (sem CORS issue)
+      // Com token: passa como query param (GET simples, sem preflight CORS)
       if(token){
-        const d=await tentarUrl(mlUrl,{'Authorization':`Bearer ${token}`,'Accept':'application/json'});
+        const urlToken=mlUrl+`&access_token=${encodeURIComponent(token)}`;
+        const d=await tentarUrl(urlToken,{});
         return{total:d.paging?.total||0,items:d.results||[]};
       }
       // Sem token: tenta proxies em paralelo
       const d=await Promise.any([
-        tentarUrl(mlUrl),
-        tentarUrl(`https://api.allorigins.win/raw?url=${encodeURIComponent(mlUrl)}`),
-        tentarUrl(`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`),
+        tentarUrl(mlUrl,{}),
+        tentarUrl(`https://api.allorigins.win/raw?url=${encodeURIComponent(mlUrl)}`,{}),
+        tentarUrl(`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`,{}),
       ]);
       return{total:d.paging?.total||0,items:d.results||[]};
     }catch(e){
@@ -646,7 +653,9 @@ async function testarML(){
   btn.disabled=true;
   res.style.color='#888';
   res.textContent='Testando (até 10s)...';
-  const mlUrl='https://api.mercadolibre.com/sites/MLB/search?q=chapa+lateral+volvo+fh&limit=3';
+  const mlBase='https://api.mercadolibre.com/sites/MLB/search?q=chapa+lateral+volvo+fh&limit=3';
+  const token=await obterTokenML();
+  const mlUrl=token?mlBase+`&access_token=${encodeURIComponent(token)}`:mlBase;
   const tentarUrl=async(url)=>{
     const ctrl=new AbortController();
     const t=setTimeout(()=>ctrl.abort(),9000);
@@ -660,19 +669,25 @@ async function testarML(){
     }catch(e){clearTimeout(t);throw e;}
   };
   try{
-    const d=await Promise.any([
-      tentarUrl(mlUrl).then(d=>({d,via:'direto'})),
-      tentarUrl(`https://api.allorigins.win/raw?url=${encodeURIComponent(mlUrl)}`).then(d=>({d,via:'allorigins'})),
-      tentarUrl(`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`).then(d=>({d,via:'corsproxy'})),
-    ]);
-    const n=d.d.paging?.total||0;
+    let d,via;
+    if(token){
+      d=await tentarUrl(mlUrl); via='token ML';
+    }else{
+      const r=await Promise.any([
+        tentarUrl(mlUrl).then(d=>({d,via:'direto'})),
+        tentarUrl(`https://api.allorigins.win/raw?url=${encodeURIComponent(mlUrl)}`).then(d=>({d,via:'allorigins'})),
+        tentarUrl(`https://corsproxy.io/?url=${encodeURIComponent(mlUrl)}`).then(d=>({d,via:'corsproxy'})),
+      ]);
+      d=r.d; via=r.via;
+    }
+    const n=d.paging?.total||0;
     res.style.color='#16a34a';
     res.textContent=n>0
-      ?`✅ ML ok (via ${d.via}) — "${d.d.results[0].title.slice(0,45)}..."`
-      :`⚠️ Conectou via ${d.via} mas 0 resultados para o teste.`;
+      ?`✅ ML ok (via ${via}) — "${d.results[0].title.slice(0,45)}..."`
+      :`⚠️ Conectou via ${via} mas 0 resultados para o teste.`;
   }catch(e){
     res.style.color='#dc2626';
-    res.textContent='❌ Todos os proxies bloqueados. Necessário cadastro ML Developer.';
+    res.textContent=token?`❌ Token obtido mas busca bloqueada: ${e.message}`:'❌ Todos os proxies bloqueados.';
   }
   btn.disabled=false;
 }
