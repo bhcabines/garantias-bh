@@ -199,9 +199,11 @@ tbody td{padding:7px 10px;vertical-align:middle}
     <span id="avisoLimite" style="display:none;color:#92400e;margin-left:8px">⚠️ Mais de 100 itens: o Google usa 1 consulta por item (limite: 100/dia grátis). Os demais terão só ML.</span>
   </div>
 
-  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button class="btn bo" id="btnBuscar" onclick="iniciarBusca()" disabled>🔍 Iniciar Pesquisa em Lote</button>
     <button class="btn bgray" onclick="limparTudo()">🗑️ Limpar</button>
+    <button class="btn blight" onclick="testarML()" id="btnTestar">🔌 Testar conexão ML</button>
+    <span id="testeMLResult" style="font-size:11.5px"></span>
   </div>
 </div>
 
@@ -453,17 +455,19 @@ async function buscarML(item){
   const buscarQ=async(q)=>{
     try{
       const r=await fetch(`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=8`);
-      if(!r.ok) return{total:0,items:[]};
+      if(!r.ok) return{total:0,items:[],erro:`HTTP ${r.status}`};
       const d=await r.json();
       return{total:d.paging?.total||0,items:d.results||[]};
-    }catch{return{total:0,items:[]};}
+    }catch(e){return{total:0,items:[],erro:e.message};}
   };
   try{
     const queries=buildQueries(item);
+    if(!queries.length) return{total:0,items:[],queries,unicos:0};
     const parts=await Promise.all(queries.map(q=>buscarQ(q)));
     const seen=new Set();
     const merged=[];
     let totalMax=0;
+    const erros=parts.filter(p=>p.erro).map(p=>p.erro);
     for(const p of parts){
       totalMax=Math.max(totalMax,p.total);
       for(const it of p.items){
@@ -471,9 +475,10 @@ async function buscarML(item){
       }
     }
     merged.sort((a,b)=>a.price-b.price);
-    return{total:Math.max(totalMax,merged.length),items:merged,queries,unicos:merged.length};
+    const erroFinal=merged.length===0&&erros.length?erros[0]:undefined;
+    return{total:Math.max(totalMax,merged.length),items:merged,queries,unicos:merged.length,erro:erroFinal};
   }catch(e){
-    return{total:0,items:[],erro:e.message,queries:[]};
+    return{total:0,items:[],erro:e.message,queries:[],unicos:0};
   }
 }
 
@@ -517,6 +522,32 @@ function urlGoogleShopping(item){
 }
 function urlML(item){
   return`https://lista.mercadolivre.com.br/${encodeURIComponent(buildQuery(item))}`;
+}
+
+// ── Testar conexão ML ──────────────────────────────────────────
+async function testarML(){
+  const btn=document.getElementById('btnTestar');
+  const res=document.getElementById('testeMLResult');
+  btn.disabled=true;
+  res.style.color='#888';
+  res.textContent='Testando...';
+  try{
+    const r=await fetch('https://api.mercadolibre.com/sites/MLB/search?q=chapa+lateral+volvo+fh&limit=3');
+    if(!r.ok){res.style.color='#dc2626';res.textContent=`❌ HTTP ${r.status}`;btn.disabled=false;return;}
+    const d=await r.json();
+    const n=d.paging?.total||0;
+    if(n>0){
+      res.style.color='#16a34a';
+      res.textContent=`✅ ML ok — "${d.results[0].title.slice(0,40)}..." (${n.toLocaleString()} resultados)`;
+    }else{
+      res.style.color='#f59e0b';
+      res.textContent='⚠️ ML respondeu mas sem resultados para o termo de teste.';
+    }
+  }catch(e){
+    res.style.color='#dc2626';
+    res.textContent=`❌ Erro de rede: ${e.message}`;
+  }
+  btn.disabled=false;
 }
 
 // ── Iniciar busca em lote ─────────────────────────────────────
@@ -650,6 +681,7 @@ function renderLinha(r,idx){
     </td>
     <td class="td-center">
       <div class="preco-min">${precoMin}</div>
+      ${!temML&&ml.erro?`<div style="font-size:9.5px;color:#dc2626" title="${ml.erro}">Erro rede</div>`:''}
       ${diffHtml}
     </td>
     <td class="td-center">
