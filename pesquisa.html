@@ -142,6 +142,36 @@ tbody td{padding:7px 10px;vertical-align:middle}
 
 <div class="main">
 
+<!-- ══ CREDENCIAIS ML ══ -->
+<div class="card" style="border-left:4px solid var(--or)">
+  <div class="ct">🔑 Credenciais API — Mercado Livre</div>
+  <div class="al-warn alerta" id="avisoCred" style="margin-bottom:12px">
+    ⚠️ <span>A API do ML exige credenciais de desenvolvedor. <b>Cadastro gratuito:</b>
+    <a href="https://developers.mercadolivre.com.br/" target="_blank" style="color:var(--or);font-weight:700">developers.mercadolivre.com.br</a>
+    → "Criar aplicativo" → copie o <b>App ID</b> e o <b>Secret Key</b> abaixo.</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">
+    <div>
+      <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">App ID (client_id)</label>
+      <input type="text" id="mlAppId" placeholder="Ex: 12345678"
+        style="width:100%;border:1.5px solid var(--bd);border-radius:8px;padding:8px 12px;font-size:13px;outline:none"
+        oninput="salvarCreds()" onfocus="this.style.borderColor='var(--or)'" onblur="this.style.borderColor='var(--bd)'">
+    </div>
+    <div>
+      <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Secret Key (client_secret)</label>
+      <input type="password" id="mlSecret" placeholder="Cole o secret key aqui"
+        style="width:100%;border:1.5px solid var(--bd);border-radius:8px;padding:8px 12px;font-size:13px;outline:none"
+        oninput="salvarCreds()" onfocus="this.style.borderColor='var(--or)'" onblur="this.style.borderColor='var(--bd)'">
+    </div>
+    <div>
+      <button class="btn bo" onclick="conectarML()">🔌 Conectar</button>
+    </div>
+  </div>
+  <div id="mlStatus" style="font-size:12px;margin-top:8px;color:#888">
+    Sem credenciais — insira App ID e Secret Key para habilitar a busca no ML.
+  </div>
+</div>
+
 <!-- ══ CONFIGURAÇÃO ══ -->
 <div class="card">
   <div class="ct">⚙️ Configuração da Busca</div>
@@ -207,7 +237,8 @@ tbody td{padding:7px 10px;vertical-align:middle}
   <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button class="btn bo" id="btnBuscar" onclick="iniciarBusca()" disabled>🔍 Iniciar Pesquisa em Lote</button>
     <button class="btn bgray" onclick="limparTudo()">🗑️ Limpar</button>
-    <button class="btn blight" onclick="testarML()" id="btnTestar">🔌 Testar conexão ML</button>
+    <button class="btn blight" onclick="testarML()" id="btnTestar">🔌 Testar ML</button>
+    <button class="btn blight" onclick="testarGoogle()">🌐 Testar Google</button>
     <span id="testeMLResult" style="font-size:11.5px"></span>
   </div>
 </div>
@@ -259,6 +290,60 @@ tbody td{padding:7px 10px;vertical-align:middle}
 
 <script>
 if(location.protocol==='file:') document.getElementById('avisoLocal').style.display='';
+
+// ── Credenciais ML ────────────────────────────────────────────
+let mlAccessToken=null, mlTokenExpiry=0;
+
+function salvarCreds(){
+  localStorage.setItem('ml_app_id', document.getElementById('mlAppId').value.trim());
+  localStorage.setItem('ml_secret', document.getElementById('mlSecret').value.trim());
+  mlAccessToken=null; // força renovação
+}
+
+function carregarCreds(){
+  const id=localStorage.getItem('ml_app_id')||'';
+  const sec=localStorage.getItem('ml_secret')||'';
+  document.getElementById('mlAppId').value=id;
+  document.getElementById('mlSecret').value=sec;
+  if(id&&sec) atualizarStatusML('Credenciais salvas — clique "Conectar" para testar.','#f59e0b');
+}
+
+function atualizarStatusML(msg,cor){
+  const el=document.getElementById('mlStatus');
+  el.textContent=msg; el.style.color=cor||'#888';
+}
+
+async function obterTokenML(){
+  if(mlAccessToken && Date.now()<mlTokenExpiry-60000) return mlAccessToken;
+  const appId=(document.getElementById('mlAppId').value||'').trim();
+  const secret=(document.getElementById('mlSecret').value||'').trim();
+  if(!appId||!secret) return null;
+  try{
+    const r=await fetch('https://api.mercadolibre.com/oauth/token',{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
+      body:`grant_type=client_credentials&client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(secret)}`
+    });
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.message||`HTTP ${r.status}`);}
+    const d=await r.json();
+    mlAccessToken=d.access_token;
+    mlTokenExpiry=Date.now()+(d.expires_in||21600)*1000;
+    return mlAccessToken;
+  }catch(e){
+    atualizarStatusML('❌ Erro ao obter token: '+e.message,'#dc2626');
+    return null;
+  }
+}
+
+async function conectarML(){
+  atualizarStatusML('Conectando...','#888');
+  const tok=await obterTokenML();
+  if(tok){
+    atualizarStatusML('✅ Conectado! Token válido por 6 horas.','#16a34a');
+    document.getElementById('avisoCred').style.display='none';
+  }
+}
+
 const GAPI_KEY='AIzaSyCPlSthpf5TnjROVPsmVnlLR0F_XjHKmyU';
 const GAPI_CX='921c096823d9d4403';
 
@@ -460,12 +545,12 @@ function buildQueries(item){
 async function buscarML(item){
   const buscarQ=async(q)=>{
     const mlUrl=`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=8`;
-    // Tenta direto + 2 proxies em paralelo — usa o primeiro que responder
-    const tentarUrl=async(url)=>{
+    const token=await obterTokenML();
+    const tentarUrl=async(url,headers)=>{
       const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),9000);
+      const t=setTimeout(()=>ctrl.abort(),10000);
       try{
-        const r=await fetch(url,{signal:ctrl.signal});
+        const r=await fetch(url,{signal:ctrl.signal,headers:headers||{}});
         clearTimeout(t);
         if(!r.ok) throw new Error(`HTTP ${r.status}`);
         const d=await r.json();
@@ -474,6 +559,12 @@ async function buscarML(item){
       }catch(e){clearTimeout(t);throw e;}
     };
     try{
+      // Com token: chamada direta autenticada (sem CORS issue)
+      if(token){
+        const d=await tentarUrl(mlUrl,{'Authorization':`Bearer ${token}`,'Accept':'application/json'});
+        return{total:d.paging?.total||0,items:d.results||[]};
+      }
+      // Sem token: tenta proxies em paralelo
       const d=await Promise.any([
         tentarUrl(mlUrl),
         tentarUrl(`https://api.allorigins.win/raw?url=${encodeURIComponent(mlUrl)}`),
@@ -481,7 +572,7 @@ async function buscarML(item){
       ]);
       return{total:d.paging?.total||0,items:d.results||[]};
     }catch(e){
-      return{total:0,items:[],erro:'API ML bloqueada (403)'};
+      return{total:0,items:[],erro:token?e.message:'Sem credenciais ou proxies bloqueados'};
     }
   };
   try{
@@ -791,6 +882,26 @@ function buildDet(r){
   return`<div class="det-wrap"><div class="det-grid"><div>${mlHtml}</div><div>${gHtml}</div></div></div>`;
 }
 
+async function testarGoogle(){
+  const res=document.getElementById('testeMLResult');
+  res.style.color='#888'; res.textContent='Testando Google CSE...';
+  try{
+    const q=encodeURIComponent('chapa lateral volvo fh preço comprar');
+    const url=`https://www.googleapis.com/customsearch/v1?key=${GAPI_KEY}&cx=${GAPI_CX}&q=${q}&num=3&gl=br&hl=pt-BR`;
+    const r=await fetch(url);
+    const d=await r.json();
+    if(!r.ok||d.error){
+      const msg=(d.error&&d.error.message)||`HTTP ${r.status}`;
+      res.style.color='#dc2626'; res.textContent=`❌ Google: ${msg}`;
+    }else{
+      const n=(d.items||[]).length;
+      res.style.color='#16a34a'; res.textContent=`✅ Google ok — ${n} resultados para teste.`;
+    }
+  }catch(e){
+    res.style.color='#dc2626'; res.textContent=`❌ Google erro: ${e.message}`;
+  }
+}
+
 function toggleDet(idx){
   const tr=document.getElementById('det-'+idx);
   const row=document.getElementById('tr-'+idx);
@@ -875,6 +986,9 @@ function limparTudo(){
   document.getElementById('secProg').style.display='none';
   resultados=[];
 }
+
+// Inicialização
+carregarCreds();
 </script>
 </body>
 </html>
