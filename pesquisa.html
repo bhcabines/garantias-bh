@@ -139,7 +139,7 @@ tbody td{padding:7px 10px;vertical-align:middle}
 
 <!-- ══ CONFIGURAÇÃO ══ -->
 <div class="card">
-  <div class="ct">⚙️ Tipo de Busca</div>
+  <div class="ct">⚙️ Configuração da Busca</div>
   <div class="tipo-row" id="tipoRow">
     <button class="tipo-btn on" onclick="setTipo('codigo',this)">🔢 Somente Código</button>
     <button class="tipo-btn" onclick="setTipo('nome',this)">📝 Somente Nome</button>
@@ -147,6 +147,27 @@ tbody td{padding:7px 10px;vertical-align:middle}
   </div>
   <div class="al-info alerta" id="tipoHint">
     ℹ️ <span>Cole uma coluna de <b>códigos</b> — ex: <code>190668</code>. Um por linha.</span>
+  </div>
+
+  <div style="margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start">
+    <div>
+      <label style="font-size:11.5px;font-weight:700;color:#555;display:block;margin-bottom:5px">
+        🔎 Termos adicionais <span style="font-weight:400;color:#aaa">(adicionados em toda busca para melhorar os resultados)</span>
+      </label>
+      <input type="text" id="termosExtras" placeholder='Ex: caminhão peças colisão VW'
+        style="width:100%;border:1.5px solid var(--bd);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;transition:border .15s"
+        onfocus="this.style.borderColor='var(--or)'" onblur="this.style.borderColor='var(--bd)'">
+      <div style="font-size:11px;color:#aaa;margin-top:4px">Sugerido: <b>caminhão colisão</b></div>
+    </div>
+    <div>
+      <label style="font-size:11.5px;font-weight:700;color:#555;display:block;margin-bottom:5px">
+        📝 Palavras da descrição
+      </label>
+      <input type="number" id="nPalavras" value="3" min="1" max="8"
+        style="width:70px;border:1.5px solid var(--bd);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;text-align:center"
+        onfocus="this.style.borderColor='var(--or)'" onblur="this.style.borderColor='var(--bd)'">
+      <div style="font-size:11px;color:#aaa;margin-top:4px">primeiras N palavras</div>
+    </div>
   </div>
 </div>
 
@@ -211,11 +232,12 @@ tbody td{padding:7px 10px;vertical-align:middle}
         <thead>
           <tr>
             <th style="width:28px">#</th>
-            <th>Termo Buscado</th>
+            <th>Código · Descrição</th>
             <th>Status</th>
-            <th class="td-center">ML Menor Preço</th>
+            <th class="td-center" style="color:#1D4ED8">Preço BHC</th>
+            <th class="td-center" style="color:var(--gr)">ML Menor Preço</th>
             <th class="td-center">ML Anúncios</th>
-            <th class="td-center">Google</th>
+            <th class="td-center">Google CSE</th>
             <th class="td-center">Ações</th>
           </tr>
         </thead>
@@ -232,10 +254,24 @@ const GAPI_KEY='AIzaSyCPlSthpf5TnjROVPsmVnlLR0F_XjHKmyU';
 const GAPI_CX='921c096823d9d4403';
 
 let TIPO='codigo';
-let itensBusca=[];
+let itensBusca=[];   // [{termo, cod, marca, desc, preco}]
 let resultados=[];
 let cancelado=false;
 let googleUsado=0;
+
+function getNPalavras(){return parseInt(document.getElementById('nPalavras').value)||3;}
+
+function truncarDesc(desc,n){
+  return desc.trim().split(/\s+/).slice(0,n).join(' ');
+}
+
+function pBRnum(s){
+  const t=String(s||'').trim().replace(/\s/g,'');
+  if(!t||t==='—') return null;
+  if(/^\d{1,3}(\.\d{3})*,\d+$/.test(t)) return parseFloat(t.replace(/\./g,'').replace(',','.'))||null;
+  if(/^\d+,\d+$/.test(t)) return parseFloat(t.replace(',','.'))||null;
+  return parseFloat(t)||null;
+}
 
 // ── Tipo de busca ─────────────────────────────────────────────
 const HINTS={
@@ -271,42 +307,97 @@ function lerExcel(f){
   reader.onload=e=>{
     const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',raw:false});
     const ws=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
-    const termos=rows.map(r=>String(r[0]||'').trim()).filter(v=>v&&v.length>1);
-    document.getElementById('txtLista').value=termos.join('\n');
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false})
+      .map(r=>(Array.isArray(r)?r:[]).map(c=>String(c==null?'':c).trim()));
+
+    // Detectar formato "Controle de Preços" (tem "Código Fabricante" nos headers)
+    let headerRow=-1, colCod=-1, colMarca=-1, colDesc=-1, colPreco=-1;
+    for(let i=0;i<Math.min(rows.length,5);i++){
+      const r=rows[i];
+      const codIdx=r.findIndex(c=>/c[oó]d.*fabr/i.test(c));
+      if(codIdx>=0){
+        headerRow=i;
+        colCod=codIdx;
+        colMarca=r.findIndex(c=>/^marca$/i.test(c));
+        colDesc=r.findIndex(c=>/^descri/i.test(c));
+        // Preço de Venda = col "Preço de Venda Varejo" ou "Sugestão Preço"
+        colPreco=r.findIndex(c=>/pre[çc]o de venda/i.test(c));
+        if(colPreco<0) colPreco=r.findIndex(c=>/sugest[aã]o.*pre[çc]o/i.test(c));
+        break;
+      }
+    }
+
+    const n=getNPalavras();
+    let itens=[], linhas=[];
+
+    if(headerRow>=0 && colCod>=0){
+      // Formato "Controle de Preços"
+      for(let i=headerRow+1;i<rows.length;i++){
+        const r=rows[i];
+        const cod=(r[colCod]||'').trim();
+        if(!cod) continue;
+        const marca=colMarca>=0?(r[colMarca]||'').trim():'';
+        const desc=colDesc>=0?(r[colDesc]||'').trim():'';
+        const precoRaw=colPreco>=0?pBRnum(r[colPreco]):null;
+        const descTrunc=truncarDesc(desc,n);
+        const termo=(cod+(descTrunc?' '+descTrunc:'')).trim();
+        itens.push({termo,cod,marca,desc,preco:precoRaw});
+        linhas.push(termo);
+      }
+      document.getElementById('termosExtras').value=document.getElementById('termosExtras').value||'caminhão colisão';
+    }else{
+      // Formato genérico: 1ª coluna como termos
+      const termos=rows.map(r=>r[0]||'').filter(v=>v&&v.length>1);
+      termos.forEach(t=>{itens.push({termo:t,cod:'',marca:'',desc:'',preco:null});linhas.push(t);});
+    }
+
+    itensBusca=itens;
+    document.getElementById('txtLista').value=linhas.join('\n');
     document.getElementById('excelInfo').style.display='';
-    document.getElementById('excelInfoTxt').textContent=`${termos.length} itens carregados do arquivo "${f.name}"`;
+    document.getElementById('excelInfoTxt').textContent=
+      headerRow>=0
+        ? `${itens.length} itens carregados — formato "Controle de Preços" detectado ✅ (${n} palavras da descrição)`
+        : `${itens.length} itens carregados do arquivo "${f.name}"`;
     showTab('colar',document.querySelectorAll('.tab')[0]);
-    contarItens();
+    document.getElementById('counter').style.display=itens.length?'':'none';
+    document.getElementById('nItens').textContent=itens.length;
+    document.getElementById('btnBuscar').disabled=itens.length===0;
   };
   reader.readAsArrayBuffer(f);
 }
 
 // ── Contar itens ──────────────────────────────────────────────
 function contarItens(){
-  const linhas=parseLista();
-  const n=linhas.length;
+  const parsed=parseLista();
+  // Só atualiza itensBusca do textarea se não veio de Excel (sem extra data)
+  itensBusca=parsed;
+  const n=parsed.length;
   const ctr=document.getElementById('counter');
   ctr.style.display=n>0?'':'none';
   document.getElementById('nItens').textContent=n;
   document.getElementById('avisoLimite').style.display=n>100?'':'none';
   document.getElementById('btnBuscar').disabled=n===0;
-  itensBusca=linhas;
 }
 
 function parseLista(){
   const txt=document.getElementById('txtLista').value;
-  return txt.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  return txt.split('\n').map(l=>l.trim()).filter(l=>l.length>0)
+    .map(t=>({termo:t,cod:'',marca:'',desc:'',preco:null}));
 }
 
 // ── Helpers ───────────────────────────────────────────────────
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const fBR=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 
+function getExtras(){
+  return (document.getElementById('termosExtras').value||'').trim();
+}
+
 function buildQuery(termo){
-  if(TIPO==='codigo') return termo+' peça';
-  if(TIPO==='nome') return termo;
-  return termo; // ambos: usa o texto completo
+  const ex=getExtras();
+  if(TIPO==='codigo') return (ex?termo+' '+ex:termo+' peça caminhão').trim();
+  if(TIPO==='nome')   return (ex?termo+' '+ex:termo).trim();
+  return (ex?termo+' '+ex:termo).trim(); // ambos
 }
 
 // ── Busca Mercado Livre ───────────────────────────────────────
@@ -338,9 +429,12 @@ async function buscarGoogle(termo){
   }
 }
 
-// ── URL Google pesquisa aberta ────────────────────────────────
+// ── URLs de busca ─────────────────────────────────────────────
 function urlGoogle(termo){
-  return`https://www.google.com/search?q=${encodeURIComponent(buildQuery(termo)+' preço comprar')}&gl=br&hl=pt-BR`;
+  return`https://www.google.com.br/search?q=${encodeURIComponent(buildQuery(termo)+' preço')}&gl=br&hl=pt-BR`;
+}
+function urlGoogleShopping(termo){
+  return`https://www.google.com.br/search?q=${encodeURIComponent(buildQuery(termo))}&tbm=shop&gl=br&hl=pt-BR`;
 }
 function urlML(termo){
   return`https://lista.mercadolivre.com.br/${encodeURIComponent(buildQuery(termo))}`;
@@ -363,7 +457,8 @@ async function iniciarBusca(){
 
   for(let i=0;i<total;i++){
     if(cancelado) break;
-    const termo=itensBusca[i];
+    const item=itensBusca[i];
+    const termo=item.termo;
     const pct=Math.round((i/total)*100);
 
     document.getElementById('progBar').style.width=pct+'%';
@@ -377,7 +472,7 @@ async function iniciarBusca(){
       buscarGoogle(termo)
     ]);
 
-    const r={termo,ml,goog,idx:i};
+    const r={termo,ml,goog,idx:i,extra:{cod:item.cod,marca:item.marca,desc:item.desc,preco:item.preco}};
     resultados.push(r);
     renderLinha(r,i);
 
@@ -441,13 +536,30 @@ function renderLinha(r,idx){
     googleTop='<span style="font-size:10px;color:#aaa">—</span>';
   }
 
+  const ex=r.extra||{};
+  const precoBHC=ex.preco;
+  // Comparação preço BHC vs ML
+  let diffHtml='';
+  if(precoBHC&&temML){
+    const precos=ml.items.map(i=>i.price).filter(p=>p>0).sort((a,b)=>a-b);
+    if(precos.length){
+      const menor=precos[0];
+      const diff=((menor-precoBHC)/precoBHC*100);
+      const cor=diff<-10?'#16a34a':diff>10?'#dc2626':'#f59e0b';
+      const sinal=diff>=0?'+':'';
+      diffHtml=`<div style="font-size:10px;color:${cor};font-weight:700">${sinal}${diff.toFixed(1)}% vs BHC</div>`;
+    }
+  }
+
   const tr=document.createElement('tr');
   tr.id='tr-'+idx;
   tr.innerHTML=`
     <td class="td-center" style="color:#aaa;font-size:11px">${idx+1}</td>
     <td>
-      <div class="item-termo" title="${r.termo}">${r.termo}</div>
-      ${temML?`<div class="item-hint">${ml.total.toLocaleString()} resultados ML</div>`:''}
+      <div class="item-termo" title="${ex.desc||r.termo}">${ex.cod||r.termo}</div>
+      <div class="item-hint" style="color:#555;font-size:10.5px">${ex.desc?ex.desc.slice(0,40)+(ex.desc.length>40?'…':''):''}</div>
+      ${ex.marca?`<div class="item-hint">${ex.marca}</div>`:''}
+      ${!temML&&!ex.desc?'<div class="item-hint" style="color:#f59e0b">Adicione termos extras para melhorar</div>':''}
     </td>
     <td class="td-center">
       <span style="display:inline-flex;align-items:center;gap:4px">
@@ -456,17 +568,22 @@ function renderLinha(r,idx){
       </span>
     </td>
     <td class="td-center">
+      ${precoBHC!=null?`<div style="font-weight:700;color:var(--bl);font-size:13px">R$ ${fBR(precoBHC)}</div>`:'<span style="color:#ccc">—</span>'}
+    </td>
+    <td class="td-center">
       <div class="preco-min">${precoMin}</div>
       <div class="preco-max">${precoMax}</div>
+      ${diffHtml}
     </td>
     <td class="td-center">
       ${totalML>0?`<span class="qtd-badge">${totalML.toLocaleString()}</span>`:'<span style="color:#ccc">0</span>'}
     </td>
     <td class="td-center">${googleTop}</td>
-    <td class="td-center" style="white-space:nowrap">
-      <button class="btn blight btn-sm" onclick="toggleDet(${idx})" title="Ver detalhes">🔍</button>
-      <a class="btn blight btn-sm" href="${urlML(r.termo)}" target="_blank" title="Ver no ML">🛒</a>
-      <a class="btn blight btn-sm" href="${urlGoogle(r.termo)}" target="_blank" title="Buscar no Google">🌐</a>
+    <td class="td-center" style="white-space:nowrap;display:flex;gap:3px;justify-content:center;flex-wrap:wrap;padding:6px 4px">
+      <button class="btn blight btn-sm" onclick="toggleDet(${idx})" title="Ver detalhes ML + Google">🔍</button>
+      <a class="btn blight btn-sm" href="${urlML(r.termo)}" target="_blank" title="Ver busca no ML">🛒 ML</a>
+      <a class="btn bo btn-sm" href="${urlGoogleShopping(r.termo)}" target="_blank" title="Google Shopping">🛍️ Shop</a>
+      <a class="btn blight btn-sm" href="${urlGoogle(r.termo)}" target="_blank" title="Google busca geral">🌐</a>
     </td>`;
   tb.appendChild(tr);
 
@@ -510,8 +627,12 @@ function buildDet(r){
   }else if(goog.limite){
     gHtml+='<p style="font-size:11.5px;color:#aaa;padding:6px 0">Limite de 100 consultas/dia atingido.</p>';
   }else{
-    gHtml+=`<p style="font-size:11.5px;color:#aaa;padding:6px 0">Sem resultados via API. <a href="${urlGoogle(r.termo)}" target="_blank" style="color:var(--bl)">Buscar no Google →</a></p>`;
+    gHtml+=`<p style="font-size:11.5px;color:#aaa;padding:6px 0">Sem resultados via API CSE.</p>`;
   }
+  gHtml+=`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+    <a href="${urlGoogleShopping(r.termo)}" target="_blank" class="btn bo btn-sm">🛍️ Abrir Google Shopping</a>
+    <a href="${urlGoogle(r.termo)}" target="_blank" class="btn bb btn-sm">🌐 Google Busca Geral</a>
+  </div>`;
 
   return`<div class="det-wrap"><div class="det-grid"><div>${mlHtml}</div><div>${gHtml}</div></div></div>`;
 }
@@ -546,22 +667,25 @@ function renderResumo(){
 function exportarExcel(){
   if(!resultados.length){alert('Nenhum resultado para exportar.');return;}
   const wb=XLSX.utils.book_new();
-  const rows=[['TERMO','ML TOTAL ANÚNCIOS','ML MENOR PREÇO','ML MAIOR PREÇO','ML MEDIA PREÇO','ML LINK BUSCA',
+  const rows=[['CÓD.FABRICANTE','MARCA','DESCRIÇÃO COMPLETA','TERMO BUSCADO',
+    'PREÇO BHC','ML MENOR PREÇO','ML MAIOR PREÇO','ML MEDIA PREÇO','DIFERENÇA %','ML TOTAL ANÚNCIOS','ML LINK BUSCA',
+    'GOOGLE SHOPPING LINK',
     'GOOGLE 1 TÍTULO','GOOGLE 1 SITE','GOOGLE 1 SNIPPET','GOOGLE 1 LINK',
-    'GOOGLE 2 TÍTULO','GOOGLE 2 LINK','LINK GOOGLE BUSCA']];
+    'LINK GOOGLE BUSCA']];
 
   for(const r of resultados){
-    const ml=r.ml,goog=r.goog;
+    const ml=r.ml,goog=r.goog,ex=r.extra||{};
     const precos=(ml.items||[]).map(i=>i.price).filter(p=>p>0).sort((a,b)=>a-b);
     const pMin=precos.length?precos[0]:'';
     const pMax=precos.length?precos[precos.length-1]:'';
     const pMed=precos.length?Math.round(precos.reduce((s,p)=>s+p,0)/precos.length*100)/100:'';
+    const diff=(ex.preco&&pMin)?((pMin-ex.preco)/ex.preco*100).toFixed(1)+'%':'';
     const g0=goog.items&&goog.items[0];
-    const g1=goog.items&&goog.items[1];
     rows.push([
-      r.termo, ml.total||0, pMin, pMax, pMed, urlML(r.termo),
+      ex.cod||'', ex.marca||'', ex.desc||'', r.termo,
+      ex.preco||'', pMin, pMax, pMed, diff, ml.total||0, urlML(r.termo),
+      urlGoogleShopping(r.termo),
       g0?g0.title:'', g0?g0.displayLink:'', g0?g0.snippet:'', g0?g0.link:'',
-      g1?g1.title:'', g1?g1.link:'',
       urlGoogle(r.termo)
     ]);
   }
