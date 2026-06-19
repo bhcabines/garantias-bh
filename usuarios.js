@@ -1,1 +1,0 @@
-window.USUARIOS_CONFIG = [];
