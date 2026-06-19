@@ -27,285 +27,165 @@
     overflow-x: hidden;
   }
 
-  /* Marca d'água */
   body::before {
     content: '';
     position: fixed;
-    top: 50%;
-    left: 50%;
+    top: 50%;left: 50%;
     transform: translate(-50%, -50%);
-    width: 70vmin;
-    height: 70vmin;
+    width: 70vmin;height: 70vmin;
     background-image: url('logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png');
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: contain;
-    opacity: 0.05;
-    pointer-events: none;
-    z-index: 0;
+    background-repeat: no-repeat;background-position: center;background-size: contain;
+    opacity: 0.05;pointer-events: none;z-index: 0;
   }
 
-  /* Header */
+  /* ===== LOGIN OVERLAY ===== */
+  #loginOverlay {
+    position: fixed;inset: 0;z-index: 1000;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d1a0a 100%);
+    display: flex;align-items: center;justify-content: center;
+  }
+  .login-box {
+    background: var(--white);border-radius: 20px;
+    padding: 48px 44px;width: 100%;max-width: 420px;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.5);
+    text-align: center;
+  }
+  .login-box img { height: 56px;margin-bottom: 20px; }
+  .login-box h2 { font-size: 1.3rem;font-weight: 700;color: var(--dark);margin-bottom: 4px; }
+  .login-box p { font-size: .82rem;color: #999;margin-bottom: 28px; }
+  .login-field { text-align: left;margin-bottom: 14px; }
+  .login-field label { display: block;font-size: .7rem;font-weight: 700;color: #999;text-transform: uppercase;letter-spacing: .5px;margin-bottom: 5px; }
+  .login-field input { width: 100%;padding: 11px 14px;border: 1.5px solid var(--border);border-radius: 9px;font-size: .9rem;font-family: inherit;transition: border-color .15s; }
+  .login-field input:focus { outline: none;border-color: var(--orange); }
+  .btn-login { width: 100%;padding: 13px;background: var(--orange);color: var(--white);border: none;border-radius: 9px;font-size: .95rem;font-weight: 700;cursor: pointer;margin-top: 6px;transition: background .15s; }
+  .btn-login:hover { background: #c43d00; }
+  .login-error { background: #fee2e2;border: 1px solid #fecaca;color: #991b1b;border-radius: 8px;padding: 9px 12px;font-size: .78rem;margin-top: 10px;display: none; }
+
+  /* ===== HEADER ===== */
   header {
-    position: relative;
-    z-index: 10;
-    background: var(--white);
-    border-bottom: 3px solid var(--orange);
-    padding: 0 40px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 72px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    position: relative;z-index: 10;
+    background: var(--white);border-bottom: 3px solid var(--orange);
+    padding: 0 40px;display: flex;align-items: center;justify-content: space-between;
+    height: 72px;box-shadow: 0 2px 12px rgba(0,0,0,0.08);
   }
+  .header-logo { display: flex;align-items: center;gap: 16px; }
+  .header-logo img { height: 44px;width: auto; }
+  .header-title { display: flex;flex-direction: column;line-height: 1.1; }
+  .header-title .company { font-size: 18px;font-weight: 700;color: var(--orange);letter-spacing: .5px;text-transform: uppercase; }
+  .header-title .subtitle { font-size: 11px;font-weight: 400;color: var(--gray);letter-spacing: 1.5px;text-transform: uppercase; }
+  .header-right { display: flex;align-items: center;gap: 14px; }
+  .header-date { font-size: 12px;color: #999;font-weight: 400; }
+  .header-user { font-size: .78rem;font-weight: 600;color: var(--gray); }
+  .btn-header { padding: 7px 16px;border-radius: 8px;border: 1.5px solid;font-size: .78rem;font-weight: 700;cursor: pointer;transition: all .15s;white-space: nowrap; }
+  .btn-admin { border-color: var(--orange);background: var(--orange-dim);color: var(--orange); }
+  .btn-admin:hover { background: var(--orange);color: var(--white); }
+  .btn-sair { border-color: #d1d5db;background: #f9fafb;color: #6b7280; }
+  .btn-sair:hover { background: #e5e7eb; }
 
-  .header-logo {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
+  /* ===== MAIN ===== */
+  main { position: relative;z-index: 10;max-width: 1200px;margin: 0 auto;padding: 48px 40px 80px; }
+  .section-header { margin-bottom: 36px; }
+  .section-header h1 { font-size: 26px;font-weight: 700;color: var(--dark);margin-bottom: 6px; }
+  .section-header p { font-size: 14px;color: #888;font-weight: 400; }
+  .section-divider { width: 48px;height: 3px;background: var(--orange);border-radius: 2px;margin-top: 12px; }
 
-  .header-logo img {
-    height: 44px;
-    width: auto;
-  }
-
-  .header-title {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.1;
-  }
-
-  .header-title .company {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--orange);
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-  }
-
-  .header-title .subtitle {
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--gray);
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-  }
-
-  .header-date {
-    font-size: 12px;
-    color: #999;
-    font-weight: 400;
-  }
-
-  /* Main content */
-  main {
-    position: relative;
-    z-index: 10;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 48px 40px 80px;
-  }
-
-  .section-header {
-    margin-bottom: 36px;
-  }
-
-  .section-header h1 {
-    font-size: 26px;
-    font-weight: 700;
-    color: var(--dark);
-    margin-bottom: 6px;
-  }
-
-  .section-header p {
-    font-size: 14px;
-    color: #888;
-    font-weight: 400;
-  }
-
-  .section-divider {
-    width: 48px;
-    height: 3px;
-    background: var(--orange);
-    border-radius: 2px;
-    margin-top: 12px;
-  }
-
-  /* Grid de pastas */
-  .folders-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 24px;
-  }
-
-  /* Card de pasta */
+  /* ===== FOLDER CARDS ===== */
+  .folders-grid { display: grid;grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));gap: 24px; }
   .folder-card {
-    background: var(--white);
-    border: 1.5px solid var(--border);
-    border-radius: 14px;
-    padding: 28px 24px 24px;
-    cursor: pointer;
-    text-decoration: none;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 14px;
-    transition: all 0.22s ease;
-    position: relative;
-    overflow: hidden;
+    background: var(--white);border: 1.5px solid var(--border);border-radius: 14px;
+    padding: 28px 24px 24px;cursor: pointer;text-decoration: none;
+    display: flex;flex-direction: column;align-items: flex-start;gap: 14px;
+    transition: all .22s ease;position: relative;overflow: hidden;
     box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   }
+  .folder-card::before { content: '';position: absolute;top: 0;left: 0;width: 100%;height: 4px;background: var(--orange);transform: scaleX(0);transform-origin: left;transition: transform .22s ease;border-radius: 14px 14px 0 0; }
+  .folder-card:hover { border-color: var(--orange-light);box-shadow: 0 8px 28px rgba(232, 72, 0, 0.14);transform: translateY(-3px); }
+  .folder-card:hover::before { transform: scaleX(1); }
+  .folder-icon { width: 52px;height: 52px;background: var(--orange-dim);border-radius: 12px;display: flex;align-items: center;justify-content: center;transition: background .22s ease; }
+  .folder-card:hover .folder-icon { background: rgba(232, 72, 0, 0.14); }
+  .folder-icon svg { width: 26px;height: 26px;color: var(--orange); }
+  .folder-info { flex: 1;width: 100%; }
+  .folder-name { font-size: 15px;font-weight: 700;color: var(--dark);letter-spacing: .3px;text-transform: uppercase;margin-bottom: 5px; }
+  .folder-desc { font-size: 12px;color: #888;font-weight: 400;line-height: 1.4; }
+  .folder-arrow { width: 28px;height: 28px;background: var(--orange-dim);border-radius: 50%;display: flex;align-items: center;justify-content: center;align-self: flex-end;transition: all .22s ease; }
+  .folder-card:hover .folder-arrow { background: var(--orange); }
+  .folder-arrow svg { width: 14px;height: 14px;color: var(--orange);transition: color .22s ease; }
+  .folder-card:hover .folder-arrow svg { color: var(--white); }
 
-  .folder-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 4px;
-    background: var(--orange);
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform 0.22s ease;
-    border-radius: 14px 14px 0 0;
-  }
+  /* ===== ADMIN MODAL ===== */
+  .modal-overlay { display: none;position: fixed;inset: 0;background: rgba(0,0,0,.55);z-index: 900;align-items: center;justify-content: center;padding: 20px; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { background: var(--white);border-radius: 18px;width: 100%;max-width: 900px;max-height: 90vh;display: flex;flex-direction: column;box-shadow: 0 24px 72px rgba(0,0,0,.3); }
+  .modal-head { display: flex;align-items: center;justify-content: space-between;padding: 20px 26px;border-bottom: 1px solid var(--border); }
+  .modal-head h3 { font-size: 1.1rem;font-weight: 700;color: var(--dark); }
+  .modal-close { background: none;border: none;font-size: 1.6rem;color: #999;cursor: pointer;line-height: 1; }
+  .modal-close:hover { color: var(--orange); }
+  .modal-body { padding: 24px 26px;overflow-y: auto;flex: 1; }
 
-  .folder-card:hover {
-    border-color: var(--orange-light);
-    box-shadow: 0 8px 28px rgba(232, 72, 0, 0.14);
-    transform: translateY(-3px);
-  }
+  /* Admin tabs */
+  .admin-tabs { display: flex;gap: 4px;border-bottom: 2px solid var(--border);margin-bottom: 22px; }
+  .admin-tab { padding: 9px 18px;border: none;background: none;font-size: .82rem;font-weight: 600;color: #999;cursor: pointer;border-bottom: 2px solid transparent;margin-bottom: -2px;transition: all .15s; }
+  .admin-tab.active { color: var(--orange);border-bottom-color: var(--orange); }
+  .admin-tab-panel { display: none; }
+  .admin-tab-panel.active { display: block; }
 
-  .folder-card:hover::before {
-    transform: scaleX(1);
-  }
+  /* Forms */
+  .form-row { display: grid;grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));gap: 12px;margin-bottom: 14px; }
+  .form-field { display: flex;flex-direction: column;gap: 4px; }
+  .form-field label { font-size: .68rem;font-weight: 700;color: #999;text-transform: uppercase;letter-spacing: .4px; }
+  .form-field input { padding: 9px 11px;border: 1.5px solid var(--border);border-radius: 8px;font-size: .85rem;font-family: inherit; }
+  .form-field input:focus { outline: none;border-color: var(--orange); }
+  .projetos-check { display: flex;flex-wrap: wrap;gap: 10px;margin: 14px 0; }
+  .projetos-check label { display: flex;align-items: center;gap: 6px;font-size: .8rem;font-weight: 600;color: var(--gray);cursor: pointer;padding: 6px 12px;border: 1.5px solid var(--border);border-radius: 8px;transition: all .15s; }
+  .projetos-check label:has(input:checked) { border-color: var(--orange);background: var(--orange-dim);color: var(--orange); }
+  .projetos-check input[type=checkbox] { accent-color: var(--orange);width: 14px;height: 14px; }
+  .btn-salvar { padding: 9px 20px;background: var(--orange);color: var(--white);border: none;border-radius: 8px;font-size: .8rem;font-weight: 700;cursor: pointer;transition: background .15s; }
+  .btn-salvar:hover { background: #c43d00; }
+  .btn-danger { padding: 6px 12px;background: none;border: 1.5px solid #fecaca;color: #dc2626;border-radius: 7px;font-size: .72rem;font-weight: 700;cursor: pointer;transition: all .15s; }
+  .btn-danger:hover { background: #fee2e2; }
 
-  .folder-icon {
-    width: 52px;
-    height: 52px;
-    background: var(--orange-dim);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.22s ease;
-  }
-
-  .folder-card:hover .folder-icon {
-    background: rgba(232, 72, 0, 0.14);
-  }
-
-  .folder-icon svg {
-    width: 26px;
-    height: 26px;
-    color: var(--orange);
-  }
-
-  .folder-info {
-    flex: 1;
-    width: 100%;
-  }
-
-  .folder-name {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--dark);
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-    margin-bottom: 5px;
-  }
-
-  .folder-desc {
-    font-size: 12px;
-    color: #888;
-    font-weight: 400;
-    line-height: 1.4;
-  }
-
-  .folder-arrow {
-    width: 28px;
-    height: 28px;
-    background: var(--orange-dim);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    align-self: flex-end;
-    transition: all 0.22s ease;
-  }
-
-  .folder-card:hover .folder-arrow {
-    background: var(--orange);
-  }
-
-  .folder-arrow svg {
-    width: 14px;
-    height: 14px;
-    color: var(--orange);
-    transition: color 0.22s ease;
-  }
-
-  .folder-card:hover .folder-arrow svg {
-    color: var(--white);
-  }
-
-  /* Card "Em breve" */
-  .folder-card.coming-soon {
-    opacity: 0.5;
-    cursor: default;
-    pointer-events: none;
-  }
-
-  .folder-card.coming-soon .folder-icon {
-    background: #f0f0f0;
-  }
-
-  .folder-card.coming-soon .folder-icon svg {
-    color: #bbb;
-  }
-
-  .badge-soon {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    background: #f0f0f0;
-    color: #aaa;
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 3px 8px;
-    border-radius: 20px;
-  }
+  /* Tables */
+  .tbl { width: 100%;border-collapse: collapse;font-size: .8rem;margin-top: 16px; }
+  .tbl thead th { background: #f7f6f5;border: 1px solid var(--border);padding: 8px 10px;font-size: .65rem;font-weight: 700;color: var(--gray);text-transform: uppercase;letter-spacing: .3px;white-space: nowrap; }
+  .tbl tbody td { border: 1px solid var(--border);padding: 8px 10px;vertical-align: middle; }
+  .tbl tbody tr:nth-child(even) { background: #fafafa; }
+  .tbl-empty td { text-align: center;color: #bbb;font-style: italic;padding: 18px; }
+  .badge-proj { display: inline-block;background: var(--orange-dim);color: var(--orange);font-size: .65rem;font-weight: 700;padding: 2px 8px;border-radius: 20px;margin: 2px; }
 
   /* Footer */
-  footer {
-    position: relative;
-    z-index: 10;
-    text-align: center;
-    padding: 24px;
-    font-size: 11px;
-    color: #bbb;
-    border-top: 1px solid #eee;
-    background: var(--white);
-  }
-
-  footer span {
-    color: var(--orange);
-    font-weight: 600;
-  }
+  footer { position: relative;z-index: 10;text-align: center;padding: 24px;font-size: 11px;color: #bbb;border-top: 1px solid #eee;background: var(--white); }
+  footer span { color: var(--orange);font-weight: 600; }
 
   @media (max-width: 600px) {
     header { padding: 0 20px; }
     main { padding: 32px 20px 60px; }
-    .folders-grid { grid-template-columns: 1fr 1fr; gap: 16px; }
+    .folders-grid { grid-template-columns: 1fr 1fr;gap: 16px; }
     .header-date { display: none; }
   }
 </style>
 </head>
 <body>
 
+<!-- ===== LOGIN OVERLAY ===== -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <img src="logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <h2>Controles Internos</h2>
+    <p>Faça login para acessar o sistema</p>
+    <div class="login-field">
+      <label>Nome</label>
+      <input type="text" id="loginNome" placeholder="Seu nome" autocomplete="username">
+    </div>
+    <div class="login-field">
+      <label>Senha</label>
+      <input type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-login" id="btnLogin">Entrar</button>
+    <div class="login-error" id="loginError">Nome ou senha incorretos.</div>
+  </div>
+</div>
+
+<!-- ===== HEADER ===== -->
 <header>
   <div class="header-logo">
     <img src="logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
@@ -314,103 +194,366 @@
       <span class="subtitle">Controles Internos</span>
     </div>
   </div>
-  <div class="header-date" id="headerDate"></div>
+  <div class="header-right">
+    <span class="header-date" id="headerDate"></span>
+    <span class="header-user" id="headerUser"></span>
+    <button class="btn-header btn-admin" id="btnAdminPanel" style="display:none">⚙ Administração</button>
+    <button class="btn-header btn-sair" id="btnSair">Sair</button>
+  </div>
 </header>
 
+<!-- ===== MAIN ===== -->
 <main>
   <div class="section-header">
     <h1>Painel de Controles</h1>
     <p>Selecione um setor para acessar o sistema de controle correspondente.</p>
     <div class="section-divider"></div>
   </div>
-
-  <div class="folders-grid">
-
-    <!-- GARANTIA -->
-    <a class="folder-card" href="garantias.html" title="Abrir Controle de Garantias">
-      <div class="folder-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-      </div>
-      <div class="folder-info">
-        <div class="folder-name">Garantia</div>
-        <div class="folder-desc">Controle e gestão de peças em garantia</div>
-      </div>
-      <div class="folder-arrow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
-    </a>
-
-    <!-- Placeholders para futuros controles -->
-    <!-- VENDAS / DIFAL -->
-    <a class="folder-card" href="vendas.html" title="Abrir Controle de Vendas / DIFAL">
-      <div class="folder-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-        </svg>
-      </div>
-      <div class="folder-info">
-        <div class="folder-name">Vendas / DIFAL</div>
-        <div class="folder-desc">Cálculo de DIFAL e orçamento com impostos</div>
-      </div>
-      <div class="folder-arrow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
-    </a>
-
-    <!-- PESQUISA DE PREÇOS -->
-    <a class="folder-card" href="pesquisa.html" title="Pesquisa de Preços">
-      <div class="folder-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
-        </svg>
-      </div>
-      <div class="folder-info">
-        <div class="folder-name">Pesquisa de Preços</div>
-        <div class="folder-desc">Busca em lote no ML e Google por código ou nome</div>
-      </div>
-      <div class="folder-arrow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
-    </a>
-
-    <!-- GESTÃO DE CUSTOS -->
-    <a class="folder-card" href="gestao-custos/index.html" title="Abrir Gestão de Custos">
-      <div class="folder-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>
-        </svg>
-      </div>
-      <div class="folder-info">
-        <div class="folder-name">Gestão de Custos</div>
-        <div class="folder-desc">Custos fixos/variáveis, entrada de NF-e e formação de preço de venda</div>
-      </div>
-      <div class="folder-arrow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
-    </a>
-
-  </div>
+  <div class="folders-grid" id="foldersGrid"></div>
 </main>
 
 <footer>
   &copy; <span>BH Cabines</span> — Sistema de Controles Internos
 </footer>
 
+<!-- ===== MODAL ADMIN ===== -->
+<div class="modal-overlay" id="modalAdmin">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>⚙ Painel Administrativo</h3>
+      <button class="modal-close" id="closeAdmin">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="admin-tabs">
+        <button class="admin-tab active" data-tab="usuarios">Usuários</button>
+        <button class="admin-tab" data-tab="registros">Registro de Acessos</button>
+      </div>
+
+      <!-- TAB: USUÁRIOS -->
+      <div class="admin-tab-panel active" id="tab-usuarios">
+        <h4 style="font-size:.85rem;color:var(--dark);margin-bottom:14px">Cadastrar / Editar Usuário</h4>
+        <div class="form-row">
+          <div class="form-field"><label>Nome *</label><input type="text" id="uNome" placeholder="Nome do usuário"></div>
+          <div class="form-field"><label>Senha *</label><input type="password" id="uSenha" placeholder="Senha de acesso"></div>
+        </div>
+        <div style="font-size:.72rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Projetos liberados</div>
+        <div class="projetos-check" id="projetosCheck"></div>
+        <input type="hidden" id="uEditId">
+        <div style="display:flex;gap:10px;margin-top:6px">
+          <button class="btn-salvar" id="btnSalvarUsuario">Salvar Usuário</button>
+          <button class="btn-danger" id="btnCancelarEdicao" style="display:none">Cancelar edição</button>
+        </div>
+
+        <table class="tbl" style="margin-top:24px" id="tblUsuarios">
+          <thead><tr><th>Nome</th><th>Projetos Liberados</th><th>Ações</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- TAB: REGISTROS -->
+      <div class="admin-tab-panel" id="tab-registros">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:.82rem;color:#666">Histórico completo de logins e acessos a projetos.</span>
+          <button class="btn-danger" id="btnLimparLogs">Limpar registros</button>
+        </div>
+        <table class="tbl" id="tblLogs">
+          <thead><tr><th>Data</th><th>Hora</th><th>Usuário</th><th>Ação</th><th>Projeto</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-  const d = new Date();
-  const opts = { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' };
-  document.getElementById('headerDate').textContent = d.toLocaleDateString('pt-BR', opts);
+/* =========================================================
+   CONFIGURAÇÕES
+   ========================================================= */
+const ADMIN_NOME  = 'admin';
+const ADMIN_SENHA = 'helvecio';
+
+const PROJETOS = [
+  {
+    id: 'garantias', nome: 'Garantia', href: 'garantias.html',
+    desc: 'Controle e gestão de peças em garantia',
+    icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
+  },
+  {
+    id: 'vendas', nome: 'Vendas / DIFAL', href: 'vendas.html',
+    desc: 'Cálculo de DIFAL e orçamento com impostos',
+    icon: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'
+  },
+  {
+    id: 'pesquisa', nome: 'Pesquisa de Preços', href: 'pesquisa.html',
+    desc: 'Busca em lote no ML e Google por código ou nome',
+    icon: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>'
+  },
+  {
+    id: 'custos', nome: 'Gestão de Custos', href: 'gestao-custos/index.html',
+    desc: 'Custos fixos/variáveis, entrada de NF-e e formação de preço de venda',
+    icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'
+  }
+];
+
+/* =========================================================
+   STORAGE
+   ========================================================= */
+function getUsers()       { return JSON.parse(localStorage.getItem('auth_users')  || '[]'); }
+function saveUsers(u)     { localStorage.setItem('auth_users', JSON.stringify(u)); }
+function getLogs()        { return JSON.parse(localStorage.getItem('auth_logs')   || '[]'); }
+function saveLogs(l)      { localStorage.setItem('auth_logs', JSON.stringify(l));  }
+function getSession()     { return JSON.parse(localStorage.getItem('auth_session')|| 'null'); }
+function saveSession(s)   { localStorage.setItem('auth_session', JSON.stringify(s)); }
+function clearSession()   { localStorage.removeItem('auth_session'); }
+
+/* =========================================================
+   AUTENTICAÇÃO
+   ========================================================= */
+function autenticar(nome, senha) {
+  if (nome.trim() === ADMIN_NOME && senha === ADMIN_SENHA) {
+    return { id: '__admin__', nome: ADMIN_NOME, isAdmin: true, projetos: PROJETOS.map(p => p.id) };
+  }
+  const user = getUsers().find(u => u.nome.toLowerCase() === nome.trim().toLowerCase() && u.senha === senha);
+  return user || null;
+}
+
+function registrarLog(user, acao, projeto = '—') {
+  const logs = getLogs();
+  const agora = new Date();
+  logs.unshift({
+    id: Date.now(),
+    userId: user.id,
+    nome: user.nome,
+    acao,
+    projeto,
+    data: agora.toLocaleDateString('pt-BR'),
+    hora: agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  });
+  saveLogs(logs.slice(0, 500)); // mantém últimos 500 registros
+}
+
+/* =========================================================
+   UI: LOGIN
+   ========================================================= */
+document.getElementById('btnLogin').addEventListener('click', fazerLogin);
+document.getElementById('loginSenha').addEventListener('keydown', e => { if (e.key === 'Enter') fazerLogin(); });
+document.getElementById('loginNome').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginSenha').focus(); });
+
+function fazerLogin() {
+  const nome  = document.getElementById('loginNome').value;
+  const senha = document.getElementById('loginSenha').value;
+  const user  = autenticar(nome, senha);
+
+  if (!user) {
+    const err = document.getElementById('loginError');
+    err.style.display = 'block';
+    document.getElementById('loginSenha').value = '';
+    return;
+  }
+
+  saveSession(user);
+  registrarLog(user, 'Login');
+  iniciarSessao(user);
+}
+
+function iniciarSessao(user) {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('headerUser').textContent = '👤 ' + user.nome;
+  document.getElementById('btnAdminPanel').style.display = user.isAdmin ? 'inline-flex' : 'none';
+  renderProjetos(user);
+}
+
+document.getElementById('btnSair').addEventListener('click', () => {
+  const user = getSession();
+  if (user) registrarLog(user, 'Logout');
+  clearSession();
+  location.reload();
+});
+
+/* =========================================================
+   UI: CARDS DE PROJETOS
+   ========================================================= */
+function renderProjetos(user) {
+  const grid = document.getElementById('foldersGrid');
+  grid.innerHTML = '';
+  const acessiveis = PROJETOS.filter(p => user.projetos.includes(p.id));
+
+  if (!acessiveis.length) {
+    grid.innerHTML = '<p style="color:#999;font-size:.9rem">Nenhum projeto liberado para este usuário. Solicite ao administrador.</p>';
+    return;
+  }
+
+  acessiveis.forEach(p => {
+    const card = document.createElement('a');
+    card.className = 'folder-card';
+    card.href = '#';
+    card.title = 'Abrir ' + p.nome;
+    card.innerHTML = `
+      <div class="folder-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p.icon}</svg></div>
+      <div class="folder-info"><div class="folder-name">${p.nome}</div><div class="folder-desc">${p.desc}</div></div>
+      <div class="folder-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>`;
+    card.addEventListener('click', e => {
+      e.preventDefault();
+      registrarLog(user, 'Acesso', p.nome);
+      window.location.href = p.href;
+    });
+    grid.appendChild(card);
+  });
+}
+
+/* =========================================================
+   UI: PAINEL ADMIN — TABS
+   ========================================================= */
+document.getElementById('btnAdminPanel').addEventListener('click', () => {
+  document.getElementById('modalAdmin').classList.add('open');
+  renderTabelaUsuarios();
+  renderTabelaLogs();
+});
+document.getElementById('closeAdmin').addEventListener('click', () => document.getElementById('modalAdmin').classList.remove('open'));
+
+document.querySelectorAll('.admin-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.admin-tab-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'registros') renderTabelaLogs();
+  });
+});
+
+/* =========================================================
+   UI: PAINEL ADMIN — USUÁRIOS
+   ========================================================= */
+function buildProjetosCheck(selecionados = []) {
+  const wrap = document.getElementById('projetosCheck');
+  wrap.innerHTML = '';
+  PROJETOS.forEach(p => {
+    const lbl = document.createElement('label');
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.value = p.id;
+    chk.checked = selecionados.includes(p.id);
+    lbl.appendChild(chk);
+    lbl.appendChild(document.createTextNode(' ' + p.nome));
+    wrap.appendChild(lbl);
+  });
+}
+
+buildProjetosCheck();
+
+document.getElementById('btnSalvarUsuario').addEventListener('click', () => {
+  const nome  = document.getElementById('uNome').value.trim();
+  const senha = document.getElementById('uSenha').value;
+  const editId = document.getElementById('uEditId').value;
+
+  if (!nome || !senha) { alert('Preencha nome e senha.'); return; }
+  if (nome.toLowerCase() === ADMIN_NOME.toLowerCase()) { alert('Nome reservado.'); return; }
+
+  const projetos = Array.from(document.querySelectorAll('#projetosCheck input:checked')).map(c => c.value);
+  if (!projetos.length) { alert('Selecione ao menos um projeto.'); return; }
+
+  const users = getUsers();
+  if (editId) {
+    const idx = users.findIndex(u => u.id === editId);
+    if (idx >= 0) { users[idx].nome = nome; users[idx].senha = senha; users[idx].projetos = projetos; }
+  } else {
+    if (users.some(u => u.nome.toLowerCase() === nome.toLowerCase())) { alert('Já existe um usuário com este nome.'); return; }
+    users.push({ id: 'u_' + Date.now(), nome, senha, projetos, isAdmin: false });
+  }
+
+  saveUsers(users);
+  limparFormUsuario();
+  renderTabelaUsuarios();
+});
+
+document.getElementById('btnCancelarEdicao').addEventListener('click', limparFormUsuario);
+
+function limparFormUsuario() {
+  document.getElementById('uNome').value = '';
+  document.getElementById('uSenha').value = '';
+  document.getElementById('uEditId').value = '';
+  document.getElementById('btnCancelarEdicao').style.display = 'none';
+  buildProjetosCheck();
+}
+
+function editarUsuario(id) {
+  const user = getUsers().find(u => u.id === id);
+  if (!user) return;
+  document.getElementById('uNome').value = user.nome;
+  document.getElementById('uSenha').value = user.senha;
+  document.getElementById('uEditId').value = user.id;
+  document.getElementById('btnCancelarEdicao').style.display = 'inline-block';
+  buildProjetosCheck(user.projetos);
+  document.getElementById('uNome').focus();
+}
+
+function excluirUsuario(id) {
+  if (!confirm('Excluir este usuário?')) return;
+  saveUsers(getUsers().filter(u => u.id !== id));
+  renderTabelaUsuarios();
+}
+
+function renderTabelaUsuarios() {
+  const tbody = document.querySelector('#tblUsuarios tbody');
+  const users = getUsers();
+  tbody.innerHTML = '';
+  if (!users.length) {
+    tbody.innerHTML = '<tr class="tbl-empty"><td colspan="3">Nenhum usuário cadastrado.</td></tr>';
+    return;
+  }
+  users.forEach(u => {
+    const badges = u.projetos.map(pid => {
+      const p = PROJETOS.find(x => x.id === pid);
+      return `<span class="badge-proj">${p ? p.nome : pid}</span>`;
+    }).join('');
+    tbody.innerHTML += `<tr>
+      <td><strong>${u.nome}</strong></td>
+      <td>${badges}</td>
+      <td style="white-space:nowrap">
+        <button class="btn-danger" onclick="editarUsuario('${u.id}')">Editar</button>
+        &nbsp;
+        <button class="btn-danger" onclick="excluirUsuario('${u.id}')">Excluir</button>
+      </td>
+    </tr>`;
+  });
+}
+
+/* =========================================================
+   UI: PAINEL ADMIN — REGISTROS
+   ========================================================= */
+document.getElementById('btnLimparLogs').addEventListener('click', () => {
+  if (confirm('Limpar todo o registro de acessos?')) { saveLogs([]); renderTabelaLogs(); }
+});
+
+function renderTabelaLogs() {
+  const tbody = document.querySelector('#tblLogs tbody');
+  const logs = getLogs();
+  tbody.innerHTML = '';
+  if (!logs.length) {
+    tbody.innerHTML = '<tr class="tbl-empty"><td colspan="5">Nenhum registro ainda.</td></tr>';
+    return;
+  }
+  logs.forEach(l => {
+    tbody.innerHTML += `<tr>
+      <td>${l.data}</td><td>${l.hora}</td><td><strong>${l.nome}</strong></td>
+      <td>${l.acao}</td><td>${l.projeto}</td>
+    </tr>`;
+  });
+}
+
+/* =========================================================
+   INICIALIZAÇÃO
+   ========================================================= */
+document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', {
+  weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+});
+
+const sessao = getSession();
+if (sessao) {
+  iniciarSessao(sessao);
+} else {
+  document.getElementById('loginNome').focus();
+}
 </script>
 
 </body>
