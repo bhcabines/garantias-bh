@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BH Cabines — Controles Internos</title>
-<script src="usuarios.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -181,7 +180,8 @@
       <label>Senha</label>
       <input type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <button class="btn-login" id="btnLogin">Entrar</button>
+    <div id="loginCarregando" style="font-size:.78rem;color:#999;margin-bottom:8px">⏳ Carregando usuários...</div>
+    <button class="btn-login" id="btnLogin" disabled style="opacity:.5">Entrar</button>
     <div class="login-error" id="loginError">Nome ou senha incorretos.</div>
   </div>
 </div>
@@ -310,26 +310,40 @@ const PROJETOS = [
 
 /* =========================================================
    STORAGE
-   =========================================================
-   Usuários vêm de usuarios.js (carregado no <head> como
-   window.USUARIOS_CONFIG). Isso garante que todos os
-   dispositivos vejam a mesma lista sem fetch assíncrono.
    ========================================================= */
-function getUsers() {
-  // Prefere o arquivo usuarios.js (GitHub); fallback para localStorage
-  const fromJs = window.USUARIOS_CONFIG;
-  if (Array.isArray(fromJs) && fromJs.length > 0) return fromJs;
-  return JSON.parse(localStorage.getItem('auth_users') || '[]');
-}
-function saveUsers(u) {
-  window.USUARIOS_CONFIG = u;
-  localStorage.setItem('auth_users', JSON.stringify(u));
-}
+function getUsers()     { return window._USERS || JSON.parse(localStorage.getItem('auth_users') || '[]'); }
+function saveUsers(u)   { window._USERS = u; localStorage.setItem('auth_users', JSON.stringify(u)); }
 function getLogs()      { return JSON.parse(localStorage.getItem('auth_logs') || '[]'); }
 function saveLogs(l)    { localStorage.setItem('auth_logs', JSON.stringify(l)); }
 function getSession()   { return JSON.parse(localStorage.getItem('auth_session') || 'null'); }
 function saveSession(s) { localStorage.setItem('auth_session', JSON.stringify(s)); }
 function clearSession() { localStorage.removeItem('auth_session'); }
+
+/* =========================================================
+   CARREGAR USUÁRIOS DO GITHUB (sem cache)
+   Busca usuarios.js com timestamp para garantir versão fresca
+   em qualquer computador, independente de cache do browser.
+   ========================================================= */
+async function carregarUsuarios() {
+  try {
+    const r = await fetch('usuarios.js?t=' + Date.now());
+    if (!r.ok) throw new Error('não encontrado');
+    const texto = await r.text();
+    // Extrai o array JSON de dentro de "window.USUARIOS_CONFIG = [...];"
+    const match = texto.match(/window\.USUARIOS_CONFIG\s*=\s*(\[[\s\S]*?\]);/);
+    if (match) {
+      const users = JSON.parse(match[1]);
+      if (Array.isArray(users)) {
+        window._USERS = users;
+        localStorage.setItem('auth_users', JSON.stringify(users));
+      }
+    }
+  } catch(e) {
+    // Fallback: usa o que está no localStorage (acesso offline ou arquivo não encontrado)
+    const salvo = JSON.parse(localStorage.getItem('auth_users') || '[]');
+    if (salvo.length) window._USERS = salvo;
+  }
+}
 
 /* =========================================================
    AUTENTICAÇÃO
@@ -586,12 +600,20 @@ document.getElementById('headerDate').textContent = new Date().toLocaleDateStrin
   weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
 });
 
-const sessao = getSession();
-if (sessao) {
-  iniciarSessao(sessao);
-} else {
-  document.getElementById('loginNome').focus();
-}
+// Carrega usuarios.js forçando versão fresca, depois libera o botão de login
+carregarUsuarios().finally(() => {
+  document.getElementById('loginCarregando').style.display = 'none';
+  const btn = document.getElementById('btnLogin');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+
+  const sessao = getSession();
+  if (sessao) {
+    iniciarSessao(sessao);
+  } else {
+    document.getElementById('loginNome').focus();
+  }
+});
 </script>
 
 </body>
