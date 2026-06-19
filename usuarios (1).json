@@ -1,0 +1,98 @@
+[
+  {
+    "id": "u_1781877470017",
+    "nome": "natalia",
+    "senha": "1234",
+    "projetos": [
+      "vendas",
+      "custos"
+    ],
+    "isAdmin": false
+  },
+  {
+    "id": "u_1781877496841",
+    "nome": "fabiola",
+    "senha": "1234",
+    "projetos": [
+      "garantias",
+      "vendas",
+      "custos"
+    ],
+    "isAdmin": false
+  },
+  {
+    "id": "u_1781877509337",
+    "nome": "elenice",
+    "senha": "1234",
+    "projetos": [
+      "vendas",
+      "custos"
+    ],
+    "isAdmin": false
+  },
+  {
+    "id": "u_1781878472414",
+    "nome": "newrian",
+    "senha": "1234",
+    "projetos": [
+      "pesquisa",
+      "custos"
+    ],
+    "isAdmin": false
+  },
+  {
+    "id": "u_1781878482286",
+    "nome": "maria",
+    "senha": "1234",
+    "projetos": [
+      "pesquisa",
+      "custos"
+    ],
+    "isAdmin": false
+  },
+  {
+    "id": "u_1781878497342",
+    "nome": "helvecio",
+    "senha": "helvecio",
+    "projetos": [
+      "garantias",
+      "vendas",
+      "pesquisa",
+      "custos"
+    ],
+    "isAdmin": false
+  },
+  {
+    "id": "u_1781878504117",
+    "nome": "luisa",
+    "senha": "1234",
+    "projetos": [
+      "garantias",
+      "vendas",
+      "pesquisa",
+      "custos"
+    ],
+    "isAdmin": false
+  },
+  {
+    "id": "u_1781878515310",
+    "nome": "leandro",
+    "senha": "1234",
+    "projetos": [
+      "garantias",
+      "vendas",
+      "pesquisa",
+      "custos"
+    ],
+    "isAdmin": false
+  },
+  {
+    "id": "u_1781878546766",
+    "nome": "dalila",
+    "senha": "1234",
+    "projetos": [
+      "custos"
+    ],
+    "isAdmin": false
+  }
+]
