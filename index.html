@@ -356,10 +356,11 @@ function autenticar(nome, senha) {
   return user || null;
 }
 
+const LOGS_URL = 'https://script.google.com/macros/s/AKfycbwDQZ4dAfEJ9eZs0CV4ceRvj6Pe_QNTaVuuZwT6285JWhcmlL-mpYR_YK7A6ikVkS27/exec';
+
 function registrarLog(user, acao, projeto = '—') {
-  const logs = getLogs();
   const agora = new Date();
-  logs.unshift({
+  const entrada = {
     id: Date.now(),
     userId: user.id,
     nome: user.nome,
@@ -367,8 +368,18 @@ function registrarLog(user, acao, projeto = '—') {
     projeto,
     data: agora.toLocaleDateString('pt-BR'),
     hora: agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  });
-  saveLogs(logs.slice(0, 500)); // mantém últimos 500 registros
+  };
+
+  // Salva localmente (fallback)
+  const logs = getLogs();
+  logs.unshift(entrada);
+  saveLogs(logs.slice(0, 500));
+
+  // Envia para Google Sheets (centralizado, visível para todos os computadores)
+  fetch(LOGS_URL, {
+    method: 'POST',
+    body: JSON.stringify(entrada)
+  }).catch(() => {}); // falha silenciosa se offline
 }
 
 /* =========================================================
@@ -566,18 +577,39 @@ document.getElementById('btnLimparLogs').addEventListener('click', () => {
 
 function renderTabelaLogs() {
   const tbody = document.querySelector('#tblLogs tbody');
-  const logs = getLogs();
-  tbody.innerHTML = '';
-  if (!logs.length) {
-    tbody.innerHTML = '<tr class="tbl-empty"><td colspan="5">Nenhum registro ainda.</td></tr>';
-    return;
-  }
-  logs.forEach(l => {
-    tbody.innerHTML += `<tr>
-      <td>${l.data}</td><td>${l.hora}</td><td><strong>${l.nome}</strong></td>
-      <td>${l.acao}</td><td>${l.projeto}</td>
-    </tr>`;
-  });
+  tbody.innerHTML = '<tr class="tbl-empty"><td colspan="5">⏳ Buscando registros...</td></tr>';
+
+  // Busca os logs na planilha Google (todos os computadores)
+  fetch(LOGS_URL + '?t=' + Date.now())
+    .then(r => r.json())
+    .then(logs => {
+      tbody.innerHTML = '';
+      if (!logs.length) {
+        tbody.innerHTML = '<tr class="tbl-empty"><td colspan="5">Nenhum registro ainda.</td></tr>';
+        return;
+      }
+      logs.forEach(l => {
+        tbody.innerHTML += `<tr>
+          <td>${l.data}</td><td>${l.hora}</td><td><strong>${l.nome}</strong></td>
+          <td>${l.acao}</td><td>${l.projeto}</td>
+        </tr>`;
+      });
+    })
+    .catch(() => {
+      // Fallback: mostra logs locais se não conseguir buscar do Google
+      const logs = getLogs();
+      tbody.innerHTML = '';
+      if (!logs.length) {
+        tbody.innerHTML = '<tr class="tbl-empty"><td colspan="5">Nenhum registro local encontrado.</td></tr>';
+        return;
+      }
+      logs.forEach(l => {
+        tbody.innerHTML += `<tr>
+          <td>${l.data}</td><td>${l.hora}</td><td><strong>${l.nome}</strong></td>
+          <td>${l.acao}</td><td>${l.projeto}</td>
+        </tr>`;
+      });
+    });
 }
 
 /* =========================================================
