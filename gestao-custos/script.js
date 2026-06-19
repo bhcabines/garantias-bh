@@ -651,7 +651,7 @@ function renderTabelaItensDetalhe() {
     n.itens.forEach((item, idx) => {
       tbody.innerHTML += `<tr>
         <td>${item.codigo || '—'}</td>
-        <td><input type="text" class="input-cod-interno" value="${item.codigoInterno || ''}" placeholder="Cód. interno" onchange="atualizarCodigoInterno(${idx}, this.value)" style="min-width:100px"></td>
+        <td><input type="text" class="input-cod-interno" value="${item.codigoInterno || ''}" placeholder="Cód. interno" oninput="atualizarCodigoInterno(${idx}, this.value)" style="min-width:100px"></td>
         <td>${item.descricao || '—'}</td>
         <td>${item.ncm || '—'}</td>
         <td>${item.cfop || '—'}</td>
