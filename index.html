@@ -244,6 +244,18 @@
           <button class="btn-danger" id="btnCancelarEdicao" style="display:none">Cancelar edição</button>
         </div>
 
+        <div style="margin-top:22px;padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px">
+          <strong style="font-size:.8rem;color:#c2410c">📤 Como liberar acesso para outros computadores</strong>
+          <p style="font-size:.77rem;color:#7c4a1e;margin-top:6px;line-height:1.6">
+            Após cadastrar ou editar usuários, clique em <strong>"Exportar usuarios.json"</strong> para baixar o arquivo atualizado.
+            Em seguida, envie esse arquivo para o GitHub (substituindo o <code>usuarios.json</code> existente).
+            Assim todos os computadores que abrirem o sistema verão os usuários atualizados.
+          </p>
+          <button class="btn-salvar" onclick="exportarUsuarios()" style="margin-top:10px;background:#c2410c">
+            📥 Exportar usuarios.json
+          </button>
+        </div>
+
         <table class="tbl" style="margin-top:24px" id="tblUsuarios">
           <thead><tr><th>Nome</th><th>Projetos Liberados</th><th>Ações</th></tr></thead>
           <tbody></tbody>
@@ -298,13 +310,34 @@ const PROJETOS = [
 /* =========================================================
    STORAGE
    ========================================================= */
-function getUsers()       { return JSON.parse(localStorage.getItem('auth_users')  || '[]'); }
-function saveUsers(u)     { localStorage.setItem('auth_users', JSON.stringify(u)); }
-function getLogs()        { return JSON.parse(localStorage.getItem('auth_logs')   || '[]'); }
-function saveLogs(l)      { localStorage.setItem('auth_logs', JSON.stringify(l));  }
-function getSession()     { return JSON.parse(localStorage.getItem('auth_session')|| 'null'); }
-function saveSession(s)   { localStorage.setItem('auth_session', JSON.stringify(s)); }
-function clearSession()   { localStorage.removeItem('auth_session'); }
+// Usuários são carregados do arquivo usuarios.json (repositório GitHub).
+// Na edição via painel admin, são salvos temporariamente em localStorage E
+// disponibilizados para download como usuarios.json atualizado.
+let _usersCache = null;
+
+function getUsers()     { return _usersCache || JSON.parse(localStorage.getItem('auth_users') || '[]'); }
+function saveUsers(u)   { _usersCache = u; localStorage.setItem('auth_users', JSON.stringify(u)); }
+function getLogs()      { return JSON.parse(localStorage.getItem('auth_logs')  || '[]'); }
+function saveLogs(l)    { localStorage.setItem('auth_logs', JSON.stringify(l)); }
+function getSession()   { return JSON.parse(localStorage.getItem('auth_session') || 'null'); }
+function saveSession(s) { localStorage.setItem('auth_session', JSON.stringify(s)); }
+function clearSession() { localStorage.removeItem('auth_session'); }
+
+// Carrega usuarios.json do servidor (GitHub Pages) e sobrescreve localStorage.
+// Isso garante que todos os dispositivos vejam os mesmos usuários.
+async function carregarUsuariosDoServidor() {
+  try {
+    const res = await fetch('usuarios.json?v=' + Date.now());
+    if (!res.ok) return;
+    const users = await res.json();
+    if (Array.isArray(users)) {
+      _usersCache = users;
+      localStorage.setItem('auth_users', JSON.stringify(users));
+    }
+  } catch(e) {
+    // Offline ou arquivo não encontrado: usa localStorage como fallback
+  }
+}
 
 /* =========================================================
    AUTENTICAÇÃO
@@ -542,18 +575,33 @@ function renderTabelaLogs() {
 }
 
 /* =========================================================
+   EXPORTAR usuarios.json
+   ========================================================= */
+function exportarUsuarios() {
+  const json = JSON.stringify(getUsers(), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'usuarios.json';
+  a.click();
+}
+
+/* =========================================================
    INICIALIZAÇÃO
    ========================================================= */
 document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', {
   weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
 });
 
-const sessao = getSession();
-if (sessao) {
-  iniciarSessao(sessao);
-} else {
-  document.getElementById('loginNome').focus();
-}
+// Carrega usuários do servidor e só então verifica sessão / mostra login
+carregarUsuariosDoServidor().finally(() => {
+  const sessao = getSession();
+  if (sessao) {
+    iniciarSessao(sessao);
+  } else {
+    document.getElementById('loginNome').focus();
+  }
+});
 </script>
 
 </body>
