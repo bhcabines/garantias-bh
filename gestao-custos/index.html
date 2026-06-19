@@ -19,7 +19,10 @@
       <h1>Gestão de Custos</h1>
       <small>Custos fixos/variáveis · Entrada de NF-e · Preço de venda</small>
     </div>
-    <div class="ml header-date" id="headerDate"></div>
+    <div class="ml hdr-right">
+      <span class="header-date" id="headerDate"></span>
+      <a href="../index.html" class="btn-menu">🏠 Menu</a>
+    </div>
   </div>
 </header>
 
@@ -149,7 +152,7 @@
             <input type="number" id="custoValor" step="0.01" min="0" required placeholder="0,00">
           </div>
           <div class="field">
-            <label>Data de cadastro</label>
+            <label>Data de Lançamento</label>
             <input type="date" id="custoData">
           </div>
           <div class="field field-wide">
@@ -213,6 +216,7 @@
         <div id="alertaConferenciaTop"></div>
         <form id="formNota" class="form-grid">
           <div class="field"><label>Número da NF *</label><input type="text" id="nfNumero" required></div>
+          <div class="field"><label>Data de Lançamento</label><input type="date" id="nfDataLancamento"></div>
           <div class="field"><label>Fornecedor *</label><input type="text" id="nfFornecedor" required></div>
           <div class="field"><label>Estado do Fornecedor (UF) *</label>
             <select id="nfUf" required>
@@ -278,7 +282,7 @@
         <h3 class="card-title">Notas Fiscais Lançadas</h3>
         <div class="table-wrap">
           <table id="tblNotas">
-            <thead><tr><th>Nº NF</th><th>Fornecedor</th><th>UF</th><th>Valor da NF</th><th>ST</th><th>IPI</th><th>PIS</th><th>COFINS</th><th>Frete</th><th>ICMS Frete</th><th>Custo Total</th><th></th></tr></thead>
+            <thead><tr><th>Data</th><th>Nº NF</th><th>Fornecedor</th><th>UF</th><th>Valor da NF</th><th>ST</th><th>IPI</th><th>PIS</th><th>COFINS</th><th>Frete</th><th>ICMS Frete</th><th>Custo Total</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -319,6 +323,10 @@
 
       <div class="card">
         <form id="formPreco" class="form-grid">
+          <div class="field">
+            <label>Filtrar por Código Interno</label>
+            <input type="text" id="filtroCodigoInterno" placeholder="Digite o código interno...">
+          </div>
           <div class="field field-wide">
             <label>Produto *</label>
             <select id="precoProduto" required></select>
@@ -441,7 +449,7 @@
       <div class="table-wrap">
         <table id="tblItensDetalhe">
           <thead><tr>
-            <th>Código</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Vlr. Unit.</th><th>Vlr. Total</th><th>% do Total</th>
+            <th>Código</th><th>Cód. Interno</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Vlr. Unit.</th><th>Vlr. Total</th><th>% do Total</th>
             <th>Frete Dil.</th><th>ICMS Frete Dil.</th><th>IPI</th><th>ICMS</th><th>ST</th><th>PIS</th><th>COFINS</th><th>Pagar PIS/COFINS</th><th>Outros Dil.</th>
             <th>Importado</th><th>Custo Total Entrada</th><th>Custo Unit. Real</th><th></th>
           </tr></thead>
@@ -482,7 +490,8 @@
     </div>
     <div class="modal-body">
       <form id="formItem" class="form-grid">
-        <div class="field"><label>Código</label><input type="text" id="itCodigo"></div>
+        <div class="field"><label>Código (Fornecedor)</label><input type="text" id="itCodigo"></div>
+        <div class="field"><label>Código Interno</label><input type="text" id="itCodigoInterno" placeholder="Cód. interno do sistema"></div>
         <div class="field field-wide"><label>Descrição</label><input type="text" id="itDescricao"></div>
         <div class="field"><label>NCM</label><input type="text" id="itNcm"></div>
         <div class="field"><label>CFOP</label><input type="text" id="itCfop"></div>

@@ -192,12 +192,13 @@ function novaNotaVazia() {
     valorProdutos: 0, valorFrete: 0, icmsFrete: 0,
     icms: 0, st: 0, ipi: 0, pis: 0, cofins: 0,
     outros: 0, descontos: 0, valorTotal: 0, valorFinal: 0,
-    obs: '', metodo: 'manual', mva: 0, temPisCofins: false,
+    obs: '', metodo: 'manual', mva: 0, temPisCofins: false, dataLancamento: hojeISO(),
     itens: [], status: 'pendente', somaItens: 0, stAdicional: 0, totalCustoNF: 0, diferenca: 0
   };
 }
 
 function initEntradaNota() {
+  document.getElementById('nfDataLancamento').value = hojeISO();
   document.getElementById('btnMetodoXml').addEventListener('click', () => selecionarMetodo('xml'));
   document.getElementById('btnMetodoManual').addEventListener('click', () => selecionarMetodo('manual'));
 
@@ -245,6 +246,7 @@ function selecionarMetodo(metodo) {
     STATE.notaEmEdicao = novaNotaVazia();
     STATE.notaEmEdicao.metodo = 'manual';
     document.getElementById('formNota').reset();
+    document.getElementById('nfDataLancamento').value = hojeISO();
     document.getElementById('notaFormCard').style.display = 'block';
     document.getElementById('mvaArea').style.display = 'none';
     document.getElementById('conferenciaBox').style.display = 'none';
@@ -336,6 +338,7 @@ function extrairDadosNota(xmlString) {
       // 0, 3, 4 ou 5 = mercadoria nacional. Se não vier no XML, cai no heurístico por CFOP.
       importado: origemIcms !== null ? ['1', '2'].includes(origemIcms) : cfop.startsWith('3'),
       origemIcms: origemIcms || '',
+      codigoInterno: '',
       pagaPisCofins: false,
       freteDiluido: 0, icmsFreteDiluido: 0, outrosDiluidos: 0, descontoDiluido: 0,
       custoTotalEntrada: 0, custoUnitarioReal: 0,
@@ -377,6 +380,7 @@ function somaImpostoItem(impostoEl, grupo, campos) {
 
 function preencherFormularioNota(nota) {
   document.getElementById('nfNumero').value = nota.numero;
+  document.getElementById('nfDataLancamento').value = nota.dataLancamento || hojeISO();
   document.getElementById('nfFornecedor').value = nota.fornecedor;
   document.getElementById('nfUf').value = nota.uf;
   document.getElementById('nfValorProdutos').value = nota.valorProdutos;
@@ -400,6 +404,7 @@ function lerFormularioNota() {
   if (!STATE.notaEmEdicao) STATE.notaEmEdicao = novaNotaVazia();
   const n = STATE.notaEmEdicao;
   n.numero = document.getElementById('nfNumero').value.trim();
+  n.dataLancamento = document.getElementById('nfDataLancamento').value || hojeISO();
   n.fornecedor = document.getElementById('nfFornecedor').value.trim();
   n.uf = document.getElementById('nfUf').value;
   n.valorProdutos = num(document.getElementById('nfValorProdutos').value);
@@ -585,7 +590,7 @@ function abrirModalDetalhe() {
 function novoItemVazio() {
   return {
     codigo: '', descricao: '', ncm: '', cfop: '', qtd: 1, valorUnit: 0, valorTotalItem: 0,
-    icmsItem: 0, ipiItem: 0, pisItem: 0, cofinsItem: 0, stItem: 0, importado: false, origemIcms: '', pagaPisCofins: false,
+    icmsItem: 0, ipiItem: 0, pisItem: 0, cofinsItem: 0, stItem: 0, importado: false, origemIcms: '', pagaPisCofins: false, codigoInterno: '',
     freteDiluido: 0, icmsFreteDiluido: 0, outrosDiluidos: 0, descontoDiluido: 0,
     custoTotalEntrada: 0, custoUnitarioReal: 0, mva: 0, aliqInterna: 0, aliqOp: 0
   };
@@ -599,11 +604,12 @@ function renderTabelaItensDetalhe() {
   document.getElementById('alertaPisCofinsModal').style.display = 'block';
 
   if (!n.itens.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="21">Nenhum item adicionado.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="22">Nenhum item adicionado.</td></tr>';
   } else {
     n.itens.forEach((item, idx) => {
       tbody.innerHTML += `<tr>
         <td>${item.codigo || '—'}</td>
+        <td>${item.codigoInterno || '—'}</td>
         <td>${item.descricao || '—'}</td>
         <td>${item.ncm || '—'}</td>
         <td>${item.cfop || '—'}</td>
@@ -663,6 +669,7 @@ function editarItem(idx) {
   STATE.itemEditandoIndex = idx;
   const item = STATE.notaEmEdicao.itens[idx];
   document.getElementById('itCodigo').value = item.codigo;
+  document.getElementById('itCodigoInterno').value = item.codigoInterno || '';
   document.getElementById('itDescricao').value = item.descricao;
   document.getElementById('itNcm').value = item.ncm;
   document.getElementById('itCfop').value = item.cfop;
@@ -693,6 +700,7 @@ function initModais() {
     const idx = STATE.itemEditandoIndex;
     const item = STATE.notaEmEdicao.itens[idx];
     item.codigo = document.getElementById('itCodigo').value.trim();
+    item.codigoInterno = document.getElementById('itCodigoInterno').value.trim();
     item.descricao = document.getElementById('itDescricao').value.trim();
     item.ncm = document.getElementById('itNcm').value.trim();
     item.cfop = document.getElementById('itCfop').value.trim();
@@ -770,7 +778,7 @@ function renderNotasLancadas() {
   const tbody = document.querySelector('#tblNotas tbody');
   tbody.innerHTML = '';
   if (!STATE.notas.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="12">Nenhuma nota lançada ainda.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="13">Nenhuma nota lançada ainda.</td></tr>';
     return;
   }
   STATE.notas.forEach(n => {
@@ -782,8 +790,9 @@ function renderNotasLancadas() {
     const totalCOFINS = n.itens.reduce((s, i) => s + (i.pagaPisCofins ? i.cofinsItem : 0), 0);
     const custoTotal = n.itens.reduce((s, i) => s + i.custoTotalEntrada, 0);
 
+    const dataFmt = n.dataLancamento ? new Date(n.dataLancamento + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
     tbody.innerHTML += `<tr>
-      <td>${n.numero}</td><td>${n.fornecedor}</td><td>${n.uf}</td>
+      <td>${dataFmt}</td><td>${n.numero}</td><td>${n.fornecedor}</td><td>${n.uf}</td>
       <td class="tr">${fmtMoeda(n.valorFinal)}</td>
       <td class="tr">${fmtMoeda(totalST)}</td>
       <td class="tr">${fmtMoeda(totalIPI)}</td>
@@ -869,20 +878,31 @@ function listaProdutosUnicos() {
   return Array.from(mapa.values());
 }
 
-function renderSeletorProdutoPreco() {
+function renderSeletorProdutoPreco(filtro = '') {
   const select = document.getElementById('precoProduto');
-  const produtos = listaProdutosUnicos();
+  const todos = listaProdutosUnicos();
+  const filtroLower = filtro.toLowerCase().trim();
+
+  const produtos = filtroLower
+    ? todos.filter(p => (p.codigoInterno || '').toLowerCase().includes(filtroLower)
+        || (p.codigo || '').toLowerCase().includes(filtroLower)
+        || (p.descricao || '').toLowerCase().includes(filtroLower))
+    : todos;
+
   select.innerHTML = '<option value="">Selecione um produto...</option>';
   produtos.forEach((p, idx) => {
-    select.innerHTML += `<option value="${idx}">${p.codigo ? p.codigo + ' — ' : ''}${p.descricao} (NF ${p.nf})</option>`;
+    const codInt = p.codigoInterno ? `[${p.codigoInterno}] ` : '';
+    const codForn = p.codigo ? `${p.codigo} — ` : '';
+    select.innerHTML += `<option value="${idx}">${codInt}${codForn}${p.descricao} (NF ${p.nf})</option>`;
   });
   select.dataset.produtos = JSON.stringify(produtos);
 
   select.onchange = () => {
-    const produtos = JSON.parse(select.dataset.produtos);
-    const p = produtos[select.value];
+    const lista = JSON.parse(select.dataset.produtos);
+    const p = lista[select.value];
     document.getElementById('precoCustoUnitario').value = p ? p.custoUnitarioReal.toFixed(2) : '';
     document.getElementById('resultadoPreco').style.display = 'none';
+    document.getElementById('resultadoPrecoDetalhe').style.display = 'none';
   };
 }
 
@@ -910,6 +930,10 @@ function calcularPrecoVenda(params) {
 
 function initPrecoVenda() {
   // Atualiza campos "Total" em tempo real ao digitar nos impostos / outros custos
+  document.getElementById('filtroCodigoInterno').addEventListener('input', e => {
+    renderSeletorProdutoPreco(e.target.value);
+  });
+
   const atualizarTotaisPreco = () => {
     const est = num(document.getElementById('precoImpostosEstaduais').value);
     const fed = num(document.getElementById('precoImpostosFederais').value);
