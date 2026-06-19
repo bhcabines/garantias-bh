@@ -26,19 +26,61 @@ const STATE = {
   itemEditandoIndex: null
 };
 
+/* URL do Google Apps Script compartilhado (mesmo do sistema de login) */
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbwDQZ4dAfEJ9eZs0CV4ceRvj6Pe_QNTaVuuZwT6285JWhcmlL-mpYR_YK7A6ikVkS27/exec';
+
 function salvarEstado() {
   localStorage.setItem('gc_custos', JSON.stringify(STATE.custos));
   localStorage.setItem('gc_notas', JSON.stringify(STATE.notas));
   localStorage.setItem('gc_config', JSON.stringify(STATE.config));
+  sincronizarComServidor();
 }
 
 function carregarEstado() {
   try {
     STATE.custos = JSON.parse(localStorage.getItem('gc_custos')) || [];
-    STATE.notas = JSON.parse(localStorage.getItem('gc_notas')) || [];
+    STATE.notas  = JSON.parse(localStorage.getItem('gc_notas'))  || [];
     STATE.config = Object.assign(STATE.config, JSON.parse(localStorage.getItem('gc_config')) || {});
   } catch (e) {
-    console.warn('Falha ao carregar estado salvo, iniciando vazio.', e);
+    console.warn('Falha ao carregar estado local.', e);
+  }
+}
+
+/* Debounce: evita múltiplas chamadas simultâneas ao servidor */
+let _syncTimer = null;
+function sincronizarComServidor() {
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => {
+    fetch(SYNC_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'saveData',
+        data: { custos: STATE.custos, notas: STATE.notas }
+      })
+    }).catch(() => {});
+  }, 800);
+}
+
+/* Carrega dados do servidor ao abrir o sistema.
+   Dados do servidor têm prioridade sobre localStorage (são a fonte de verdade). */
+async function carregarDadosDoServidor() {
+  const indicador = document.getElementById('syncIndicador');
+  if (indicador) { indicador.textContent = '🔄 Sincronizando...'; indicador.style.display = 'block'; }
+  try {
+    const r = await fetch(SYNC_URL + '?action=getData&t=' + Date.now());
+    if (!r.ok) throw new Error('erro');
+    const data = await r.json();
+    if (data && Array.isArray(data.custos)) {
+      STATE.custos = data.custos;
+      localStorage.setItem('gc_custos', JSON.stringify(STATE.custos));
+    }
+    if (data && Array.isArray(data.notas)) {
+      STATE.notas = data.notas;
+      localStorage.setItem('gc_notas', JSON.stringify(STATE.notas));
+    }
+    if (indicador) { indicador.textContent = '✅ Sincronizado'; setTimeout(() => { indicador.style.display = 'none'; }, 2000); }
+  } catch(e) {
+    if (indicador) { indicador.textContent = '⚠️ Offline — usando dados locais'; setTimeout(() => { indicador.style.display = 'none'; }, 3000); }
   }
 }
 
@@ -1126,7 +1168,8 @@ function gerarResumoFinal() {
 
 /* ============================== INICIALIZAÇÃO ============================== */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Carrega localStorage como base imediata (sem esperar rede)
   carregarEstado();
 
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', {
@@ -1142,6 +1185,14 @@ document.addEventListener('DOMContentLoaded', () => {
   initConfig();
 
   renderDashboard();
+
+  // Busca dados atualizados do servidor (substitui localStorage se servidor tiver mais dados)
+  await carregarDadosDoServidor();
+
+  // Re-renderiza tudo com os dados do servidor
+  renderDashboard();
+  renderCustos();
+  renderNotasLancadas();
 
   if (!STATE.custos.length && !STATE.notas.length) {
     carregarDadosExemplo();
