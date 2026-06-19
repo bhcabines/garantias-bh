@@ -651,7 +651,7 @@ function renderTabelaItensDetalhe() {
     n.itens.forEach((item, idx) => {
       tbody.innerHTML += `<tr>
         <td>${item.codigo || '—'}</td>
-        <td>${item.codigoInterno || '—'}</td>
+        <td><input type="text" class="input-cod-interno" value="${item.codigoInterno || ''}" placeholder="Cód. interno" onchange="atualizarCodigoInterno(${idx}, this.value)" style="min-width:100px"></td>
         <td>${item.descricao || '—'}</td>
         <td>${item.ncm || '—'}</td>
         <td>${item.cfop || '—'}</td>
@@ -684,6 +684,10 @@ function renderTabelaItensDetalhe() {
   }
 
   renderConferencia(n, 'Modal');
+}
+
+function atualizarCodigoInterno(idx, valor) {
+  STATE.notaEmEdicao.itens[idx].codigoInterno = valor.trim();
 }
 
 function togglePagaPisCofins(idx, checked) {

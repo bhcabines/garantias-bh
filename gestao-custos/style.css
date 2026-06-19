@@ -120,6 +120,8 @@ tbody td{border:1px solid var(--border);padding:7px 10px;vertical-align:middle;w
 tbody tr:nth-child(even){background:#fafafa}
 tbody td input,tbody td select{padding:5px 7px;font-size:.76rem}
 tbody td input[type="checkbox"]{width:16px;height:16px;padding:0;border-radius:4px;cursor:pointer;accent-color:var(--orange)}
+.input-cod-interno{background:#fffbf5;border-color:#fed7aa;font-weight:600;color:var(--orange)}
+.input-cod-interno:focus{border-color:var(--orange);background:#fff}
 .tr{text-align:right}.tc{text-align:center}
 .empty-row td{text-align:center;color:#bbb;font-style:italic;padding:18px}
 
