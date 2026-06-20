@@ -3,644 +3,333 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BH Cabines — Controles Internos</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  :root {
-    --orange: #E84800;
-    --orange-light: #FF6B2B;
-    --orange-dim: rgba(232, 72, 0, 0.08);
-    --dark: #1a1a1a;
-    --gray: #4a4a4a;
-    --border: #e0e0e0;
-    --white: #ffffff;
-  }
-
-  body {
-    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-    background-color: #f8f6f3;
-    min-height: 100vh;
-    position: relative;
-    overflow-x: hidden;
-  }
-
-  body::before {
-    content: '';
-    position: fixed;
-    top: 50%;left: 50%;
-    transform: translate(-50%, -50%);
-    width: 70vmin;height: 70vmin;
-    background-image: url('logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png');
-    background-repeat: no-repeat;background-position: center;background-size: contain;
-    opacity: 0.05;pointer-events: none;z-index: 0;
-  }
-
-  /* ===== LOGIN OVERLAY ===== */
-  #loginOverlay {
-    position: fixed;inset: 0;z-index: 1000;
-    background: linear-gradient(135deg, #1a1a1a 0%, #2d1a0a 100%);
-    display: flex;align-items: center;justify-content: center;
-  }
-  .login-box {
-    background: var(--white);border-radius: 20px;
-    padding: 48px 44px;width: 100%;max-width: 420px;
-    box-shadow: 0 32px 80px rgba(0,0,0,0.5);
-    text-align: center;
-  }
-  .login-box img { height: 56px;margin-bottom: 20px; }
-  .login-box h2 { font-size: 1.3rem;font-weight: 700;color: var(--dark);margin-bottom: 4px; }
-  .login-box p { font-size: .82rem;color: #999;margin-bottom: 28px; }
-  .login-field { text-align: left;margin-bottom: 14px; }
-  .login-field label { display: block;font-size: .7rem;font-weight: 700;color: #999;text-transform: uppercase;letter-spacing: .5px;margin-bottom: 5px; }
-  .login-field input { width: 100%;padding: 11px 14px;border: 1.5px solid var(--border);border-radius: 9px;font-size: .9rem;font-family: inherit;transition: border-color .15s; }
-  .login-field input:focus { outline: none;border-color: var(--orange); }
-  .btn-login { width: 100%;padding: 13px;background: var(--orange);color: var(--white);border: none;border-radius: 9px;font-size: .95rem;font-weight: 700;cursor: pointer;margin-top: 6px;transition: background .15s; }
-  .btn-login:hover { background: #c43d00; }
-  .login-error { background: #fee2e2;border: 1px solid #fecaca;color: #991b1b;border-radius: 8px;padding: 9px 12px;font-size: .78rem;margin-top: 10px;display: none; }
-
-  /* ===== HEADER ===== */
-  header {
-    position: relative;z-index: 10;
-    background: var(--white);border-bottom: 3px solid var(--orange);
-    padding: 0 40px;display: flex;align-items: center;justify-content: space-between;
-    height: 72px;box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-  }
-  .header-logo { display: flex;align-items: center;gap: 16px; }
-  .header-logo img { height: 44px;width: auto; }
-  .header-title { display: flex;flex-direction: column;line-height: 1.1; }
-  .header-title .company { font-size: 18px;font-weight: 700;color: var(--orange);letter-spacing: .5px;text-transform: uppercase; }
-  .header-title .subtitle { font-size: 11px;font-weight: 400;color: var(--gray);letter-spacing: 1.5px;text-transform: uppercase; }
-  .header-right { display: flex;align-items: center;gap: 14px; }
-  .header-date { font-size: 12px;color: #999;font-weight: 400; }
-  .header-user { font-size: .78rem;font-weight: 600;color: var(--gray); }
-  .btn-header { padding: 7px 16px;border-radius: 8px;border: 1.5px solid;font-size: .78rem;font-weight: 700;cursor: pointer;transition: all .15s;white-space: nowrap; }
-  .btn-admin { border-color: var(--orange);background: var(--orange-dim);color: var(--orange); }
-  .btn-admin:hover { background: var(--orange);color: var(--white); }
-  .btn-sair { border-color: #d1d5db;background: #f9fafb;color: #6b7280; }
-  .btn-sair:hover { background: #e5e7eb; }
-
-  /* ===== MAIN ===== */
-  main { position: relative;z-index: 10;max-width: 1200px;margin: 0 auto;padding: 48px 40px 80px; }
-  .section-header { margin-bottom: 36px; }
-  .section-header h1 { font-size: 26px;font-weight: 700;color: var(--dark);margin-bottom: 6px; }
-  .section-header p { font-size: 14px;color: #888;font-weight: 400; }
-  .section-divider { width: 48px;height: 3px;background: var(--orange);border-radius: 2px;margin-top: 12px; }
-
-  /* ===== FOLDER CARDS ===== */
-  .folders-grid { display: grid;grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));gap: 24px; }
-  .folder-card {
-    background: var(--white);border: 1.5px solid var(--border);border-radius: 14px;
-    padding: 28px 24px 24px;cursor: pointer;text-decoration: none;
-    display: flex;flex-direction: column;align-items: flex-start;gap: 14px;
-    transition: all .22s ease;position: relative;overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  }
-  .folder-card::before { content: '';position: absolute;top: 0;left: 0;width: 100%;height: 4px;background: var(--orange);transform: scaleX(0);transform-origin: left;transition: transform .22s ease;border-radius: 14px 14px 0 0; }
-  .folder-card:hover { border-color: var(--orange-light);box-shadow: 0 8px 28px rgba(232, 72, 0, 0.14);transform: translateY(-3px); }
-  .folder-card:hover::before { transform: scaleX(1); }
-  .folder-icon { width: 52px;height: 52px;background: var(--orange-dim);border-radius: 12px;display: flex;align-items: center;justify-content: center;transition: background .22s ease; }
-  .folder-card:hover .folder-icon { background: rgba(232, 72, 0, 0.14); }
-  .folder-icon svg { width: 26px;height: 26px;color: var(--orange); }
-  .folder-info { flex: 1;width: 100%; }
-  .folder-name { font-size: 15px;font-weight: 700;color: var(--dark);letter-spacing: .3px;text-transform: uppercase;margin-bottom: 5px; }
-  .folder-desc { font-size: 12px;color: #888;font-weight: 400;line-height: 1.4; }
-  .folder-arrow { width: 28px;height: 28px;background: var(--orange-dim);border-radius: 50%;display: flex;align-items: center;justify-content: center;align-self: flex-end;transition: all .22s ease; }
-  .folder-card:hover .folder-arrow { background: var(--orange); }
-  .folder-arrow svg { width: 14px;height: 14px;color: var(--orange);transition: color .22s ease; }
-  .folder-card:hover .folder-arrow svg { color: var(--white); }
-
-  /* ===== ADMIN MODAL ===== */
-  .modal-overlay { display: none;position: fixed;inset: 0;background: rgba(0,0,0,.55);z-index: 900;align-items: center;justify-content: center;padding: 20px; }
-  .modal-overlay.open { display: flex; }
-  .modal-box { background: var(--white);border-radius: 18px;width: 100%;max-width: 900px;max-height: 90vh;display: flex;flex-direction: column;box-shadow: 0 24px 72px rgba(0,0,0,.3); }
-  .modal-head { display: flex;align-items: center;justify-content: space-between;padding: 20px 26px;border-bottom: 1px solid var(--border); }
-  .modal-head h3 { font-size: 1.1rem;font-weight: 700;color: var(--dark); }
-  .modal-close { background: none;border: none;font-size: 1.6rem;color: #999;cursor: pointer;line-height: 1; }
-  .modal-close:hover { color: var(--orange); }
-  .modal-body { padding: 24px 26px;overflow-y: auto;flex: 1; }
-
-  /* Admin tabs */
-  .admin-tabs { display: flex;gap: 4px;border-bottom: 2px solid var(--border);margin-bottom: 22px; }
-  .admin-tab { padding: 9px 18px;border: none;background: none;font-size: .82rem;font-weight: 600;color: #999;cursor: pointer;border-bottom: 2px solid transparent;margin-bottom: -2px;transition: all .15s; }
-  .admin-tab.active { color: var(--orange);border-bottom-color: var(--orange); }
-  .admin-tab-panel { display: none; }
-  .admin-tab-panel.active { display: block; }
-
-  /* Forms */
-  .form-row { display: grid;grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));gap: 12px;margin-bottom: 14px; }
-  .form-field { display: flex;flex-direction: column;gap: 4px; }
-  .form-field label { font-size: .68rem;font-weight: 700;color: #999;text-transform: uppercase;letter-spacing: .4px; }
-  .form-field input { padding: 9px 11px;border: 1.5px solid var(--border);border-radius: 8px;font-size: .85rem;font-family: inherit; }
-  .form-field input:focus { outline: none;border-color: var(--orange); }
-  .projetos-check { display: flex;flex-wrap: wrap;gap: 10px;margin: 14px 0; }
-  .projetos-check label { display: flex;align-items: center;gap: 6px;font-size: .8rem;font-weight: 600;color: var(--gray);cursor: pointer;padding: 6px 12px;border: 1.5px solid var(--border);border-radius: 8px;transition: all .15s; }
-  .projetos-check label:has(input:checked) { border-color: var(--orange);background: var(--orange-dim);color: var(--orange); }
-  .projetos-check input[type=checkbox] { accent-color: var(--orange);width: 14px;height: 14px; }
-  .btn-salvar { padding: 9px 20px;background: var(--orange);color: var(--white);border: none;border-radius: 8px;font-size: .8rem;font-weight: 700;cursor: pointer;transition: background .15s; }
-  .btn-salvar:hover { background: #c43d00; }
-  .btn-danger { padding: 6px 12px;background: none;border: 1.5px solid #fecaca;color: #dc2626;border-radius: 7px;font-size: .72rem;font-weight: 700;cursor: pointer;transition: all .15s; }
-  .btn-danger:hover { background: #fee2e2; }
-
-  /* Tables */
-  .tbl { width: 100%;border-collapse: collapse;font-size: .8rem;margin-top: 16px; }
-  .tbl thead th { background: #f7f6f5;border: 1px solid var(--border);padding: 8px 10px;font-size: .65rem;font-weight: 700;color: var(--gray);text-transform: uppercase;letter-spacing: .3px;white-space: nowrap; }
-  .tbl tbody td { border: 1px solid var(--border);padding: 8px 10px;vertical-align: middle; }
-  .tbl tbody tr:nth-child(even) { background: #fafafa; }
-  .tbl-empty td { text-align: center;color: #bbb;font-style: italic;padding: 18px; }
-  .badge-proj { display: inline-block;background: var(--orange-dim);color: var(--orange);font-size: .65rem;font-weight: 700;padding: 2px 8px;border-radius: 20px;margin: 2px; }
-
-  /* Footer */
-  footer { position: relative;z-index: 10;text-align: center;padding: 24px;font-size: 11px;color: #bbb;border-top: 1px solid #eee;background: var(--white); }
-  footer span { color: var(--orange);font-weight: 600; }
-
-  @media (max-width: 600px) {
-    header { padding: 0 20px; }
-    main { padding: 32px 20px 60px; }
-    .folders-grid { grid-template-columns: 1fr 1fr;gap: 16px; }
-    .header-date { display: none; }
-  }
-</style>
+<title>BH Cabines — Importações</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- ===== LOGIN OVERLAY ===== -->
-<div id="loginOverlay">
-  <div class="login-box">
-    <img src="logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
-    <h2>Controles Internos</h2>
-    <p>Faça login para acessar o sistema</p>
-    <div class="login-field">
-      <label>Nome</label>
-      <input type="text" id="loginNome" placeholder="Seu nome" autocomplete="username">
+<header class="hdr">
+  <div class="hdr-in">
+    <a href="../index.html" class="btn-menu-back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <div class="hdr-title">
+      <h1>Gestão de Importações</h1>
+      <small>Kanban · Prazos · Conferência DUIMP</small>
     </div>
-    <div class="login-field">
-      <label>Senha</label>
-      <input type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password">
+    <div class="ml hdr-right">
+      <span class="header-date" id="headerDate"></span>
+      <a href="../index.html" class="btn-menu">🏠 Menu</a>
     </div>
-    <div id="loginCarregando" style="font-size:.78rem;color:#999;margin-bottom:8px">⏳ Carregando usuários...</div>
-    <button class="btn-login" id="btnLogin" disabled style="opacity:.5">Entrar</button>
-    <div class="login-error" id="loginError">Nome ou senha incorretos.</div>
-  </div>
-</div>
-
-<!-- ===== HEADER ===== -->
-<header>
-  <div class="header-logo">
-    <img src="logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
-    <div class="header-title">
-      <span class="company">BH Cabines</span>
-      <span class="subtitle">Controles Internos</span>
-    </div>
-  </div>
-  <div class="header-right">
-    <span class="header-date" id="headerDate"></span>
-    <span class="header-user" id="headerUser"></span>
-    <button class="btn-header btn-admin" id="btnAdminPanel" style="display:none">⚙ Administração</button>
-    <button class="btn-header btn-sair" id="btnSair">Sair</button>
   </div>
 </header>
 
-<!-- ===== MAIN ===== -->
-<main>
-  <div class="section-header">
-    <h1>Painel de Controles</h1>
-    <p>Selecione um setor para acessar o sistema de controle correspondente.</p>
-    <div class="section-divider"></div>
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <button class="btn bo" id="btnNovoPedido">+ Novo Pedido</button>
+  <button class="btn bgray" id="btnHistorico">📋 Histórico de Pedidos</button>
+  <div class="toolbar-filters">
+    <input type="text" id="filtroKanban" placeholder="Buscar pedido, fornecedor...">
   </div>
-  <div class="folders-grid" id="foldersGrid"></div>
-</main>
+  <div class="legenda">
+    <span class="leg ok">✔ No prazo</span>
+    <span class="leg atencao">⚠ Atenção</span>
+    <span class="leg atrasado">⛔ Atrasado</span>
+  </div>
+</div>
 
-<footer>
-  &copy; <span>BH Cabines</span> — Sistema de Controles Internos
-</footer>
+<!-- KANBAN BOARD -->
+<div class="kanban-board" id="kanbanBoard"></div>
 
-<!-- ===== MODAL ADMIN ===== -->
-<div class="modal-overlay" id="modalAdmin">
-  <div class="modal-box">
+<!-- ===== MODAL: PEDIDO (criar / detalhe) ===== -->
+<div class="modal-overlay" id="modalPedido">
+  <div class="modal-box modal-xl">
     <div class="modal-head">
-      <h3>⚙ Painel Administrativo</h3>
-      <button class="modal-close" id="closeAdmin">&times;</button>
+      <h3 id="modalPedidoTitulo">Novo Pedido de Importação</h3>
+      <button class="modal-close" id="closePedido">&times;</button>
     </div>
+
+    <div class="modal-tabs">
+      <button class="mtab active" data-tab="dados">📋 Dados</button>
+      <button class="mtab" data-tab="itens">📦 Itens do Pedido</button>
+      <button class="mtab" data-tab="duimp">📄 DUIMP</button>
+      <button class="mtab" data-tab="comparacao">🔍 Comparação</button>
+      <button class="mtab" data-tab="alteracoes">📝 Histórico</button>
+    </div>
+
     <div class="modal-body">
-      <div class="admin-tabs">
-        <button class="admin-tab active" data-tab="usuarios">Usuários</button>
-        <button class="admin-tab" data-tab="registros">Registro de Acessos</button>
+      <!-- TAB: DADOS -->
+      <div class="mtab-panel active" id="tab-dados">
+        <div class="form-grid">
+          <div class="field"><label>Referência do Pedido *</label><input type="text" id="pReferencia" placeholder="Ex: VW001 - Jun/2026"></div>
+          <div class="field"><label>Fornecedor *</label><input type="text" id="pFornecedor" placeholder="Nome do fornecedor"></div>
+          <div class="field"><label>País</label><input type="text" id="pPais" value="China"></div>
+          <div class="field"><label>Data do Pedido *</label><input type="date" id="pDataPedido"></div>
+        </div>
+
+        <div class="section-label">⏱ Prazos (em dias) — preenchidos conforme acordado com o fornecedor</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Prazo de Fabricação / Despacho (dias)</label>
+            <input type="number" id="pPrazoFabricacao" min="0" placeholder="Ex: 120">
+          </div>
+          <div class="field">
+            <label>Prazo de Transporte Marítimo (dias)</label>
+            <input type="number" id="pPrazoTransporte" min="0" placeholder="Ex: 30">
+          </div>
+          <div class="field">
+            <label>Prazo de Desembaraço (dias)</label>
+            <input type="number" id="pPrazoDesembaraco" min="0" placeholder="Ex: 15">
+          </div>
+        </div>
+
+        <div class="section-label">📅 Datas de Acompanhamento</div>
+        <div class="form-grid">
+          <div class="field"><label>Data de Embarque</label><input type="date" id="pDataEmbarcado"></div>
+          <div class="field"><label>Chegada ao Porto</label><input type="date" id="pDataPorto"></div>
+          <div class="field"><label>Início do Desembaraço</label><input type="date" id="pDataDesembaraco"></div>
+          <div class="field"><label>Data de Entrega</label><input type="date" id="pDataEntregue"></div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field field-wide"><label>Observações</label><input type="text" id="pObs" placeholder="Notas gerais sobre o pedido"></div>
+          <div class="field">
+            <label>Etapa atual</label>
+            <select id="pEtapa"></select>
+          </div>
+        </div>
       </div>
 
-      <!-- TAB: USUÁRIOS -->
-      <div class="admin-tab-panel active" id="tab-usuarios">
-        <h4 style="font-size:.85rem;color:var(--dark);margin-bottom:14px">Cadastrar / Editar Usuário</h4>
-        <div class="form-row">
-          <div class="form-field"><label>Nome *</label><input type="text" id="uNome" placeholder="Nome do usuário"></div>
-          <div class="form-field"><label>Senha *</label><input type="password" id="uSenha" placeholder="Senha de acesso"></div>
-        </div>
-        <div style="font-size:.72rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Projetos liberados</div>
-        <div class="projetos-check" id="projetosCheck"></div>
-        <input type="hidden" id="uEditId">
-        <div style="display:flex;gap:10px;margin-top:6px">
-          <button class="btn-salvar" id="btnSalvarUsuario">Salvar Usuário</button>
-          <button class="btn-danger" id="btnCancelarEdicao" style="display:none">Cancelar edição</button>
-        </div>
-
-        <div style="margin-top:22px;padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px">
-          <strong style="font-size:.8rem;color:#c2410c">📤 Como liberar acesso para outros computadores</strong>
-          <p style="font-size:.77rem;color:#7c4a1e;margin-top:6px;line-height:1.6">
-            Após cadastrar ou editar usuários, clique em <strong>"Exportar usuarios.js"</strong> para baixar o arquivo.
-            Envie esse arquivo para o GitHub (substituindo o <code>usuarios.js</code> existente).
-            Todos os computadores que abrirem o sistema carregarão automaticamente os usuários atualizados.
-          </p>
-          <button class="btn-salvar" onclick="exportarUsuarios()" style="margin-top:10px;background:#c2410c">
-            📥 Exportar usuarios.js
-          </button>
-        </div>
-
-        <table class="tbl" style="margin-top:24px" id="tblUsuarios">
-          <thead><tr><th>Nome</th><th>Projetos Liberados</th><th>Ações</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <!-- TAB: REGISTROS -->
-      <div class="admin-tab-panel" id="tab-registros">
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-bottom:14px">
-          <strong style="font-size:.8rem;color:#15803d">📊 Registros centralizados no Google Sheets</strong>
-          <p style="font-size:.77rem;color:#166534;margin-top:4px">Os acessos de <strong>todos os computadores</strong> ficam gravados na planilha Google. Abra-a para ver o histórico completo.</p>
-          <a id="linkPlanilha" href="https://docs.google.com/spreadsheets/d/1bYaR6UI31O6T5yCCmsITuk29_KYXo9NUzen8zX1fExg/edit" target="_blank" style="display:inline-block;margin-top:8px;padding:7px 14px;background:#15803d;color:#fff;border-radius:7px;font-size:.78rem;font-weight:700;text-decoration:none">
-            🔗 Abrir Planilha de Registros
-          </a>
-        </div>
+      <!-- TAB: ITENS -->
+      <div class="mtab-panel" id="tab-itens">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <span style="font-size:.82rem;color:#666">Registros deste computador:</span>
-          <button class="btn-danger" id="btnLimparLogs">Limpar registros locais</button>
+          <span class="section-label" style="margin:0">Itens do pedido</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div id="pedidoXlsxDrop" class="xlsx-drop-btn">
+              <label class="btn bgray btn-sm xlsx-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Importar .xlsx
+                <input type="file" id="pedidoXlsxInput" accept=".xlsx,.xls" style="display:none">
+              </label>
+            </div>
+            <button class="btn bgray btn-sm" id="btnAddItemManualPedido">+ Adicionar item</button>
+          </div>
         </div>
-        <table class="tbl" id="tblLogs">
-          <thead><tr><th>Data</th><th>Hora</th><th>Usuário</th><th>Ação</th><th>Projeto</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <div class="table-wrap">
+          <table id="tblItensPedido">
+            <thead><tr><th>ITEM NO</th><th>Descrição</th><th>OE NO</th><th>QTY Pedida</th><th>Preço Unit. (USD)</th><th>Total (USD)</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="total-bar" id="totalPedidoBar"></div>
       </div>
+
+      <!-- TAB: DUIMP -->
+      <div class="mtab-panel" id="tab-duimp">
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="field"><label>Nº da DUIMP</label><input type="text" id="dNumero" placeholder="Ex: 26/0000000-0"></div>
+          <div class="field"><label>Data de Registro</label><input type="date" id="dDataRegistro"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="section-label" style="margin:0">Adições da DUIMP</span>
+          <button class="btn bgray btn-sm" id="btnAddAdicao">+ Adicionar adição</button>
+        </div>
+        <div class="table-wrap">
+          <table id="tblDuimp">
+            <thead><tr>
+              <th>Adição</th><th>NCM</th><th>Descrição</th><th>Ref. ITEM NO</th>
+              <th>Qtd. Estatística</th><th>Unidade</th><th>Vlr. FOB Unit. (USD)</th><th>Vlr. FOB Total (USD)</th><th></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB: COMPARAÇÃO -->
+      <div class="mtab-panel" id="tab-comparacao">
+        <div id="comparacaoContent">
+          <div class="alert-info">Para gerar a comparação, preencha os <strong>Itens do Pedido</strong> e as <strong>Adições da DUIMP</strong>, depois clique em "Comparar".</div>
+        </div>
+        <button class="btn bo" id="btnComparar" style="margin-top:14px">🔍 Comparar Pedido × DUIMP</button>
+      </div>
+
+      <!-- TAB: HISTÓRICO DE ALTERAÇÕES -->
+      <div class="mtab-panel" id="tab-alteracoes">
+        <div id="alteracoesContent">
+          <div class="alert-info">Histórico de alterações de datas deste pedido.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarPedido">Cancelar</button>
+      <button class="btn bk" id="btnSalvarPedido">Salvar Pedido</button>
     </div>
   </div>
 </div>
 
-<script>
-/* =========================================================
-   CONFIGURAÇÕES
-   ========================================================= */
-const ADMIN_NOME  = 'admin';
-const ADMIN_SENHA = 'helvecio';
+<!-- ===== MODAL: AVANÇAR ETAPA ===== -->
+<div class="modal-overlay" id="modalEtapa">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-head">
+      <h3 id="modalEtapaTitulo">Avançar Etapa</h3>
+      <button class="modal-close" id="closeEtapa">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="modalEtapaDesc" style="font-size:.85rem;color:#666;margin-bottom:16px"></p>
+      <div class="field">
+        <label id="modalEtapaLabelData">Data</label>
+        <input type="date" id="etapaData">
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Observação (opcional)</label>
+        <input type="text" id="etapaObs" placeholder="Nota sobre esta etapa">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarEtapa">Cancelar</button>
+      <button class="btn bo" id="btnConfirmarEtapa">Confirmar</button>
+    </div>
+  </div>
+</div>
 
-const PROJETOS = [
-  {
-    id: 'garantias', nome: 'Garantia', href: 'garantias.html',
-    desc: 'Controle e gestão de peças em garantia',
-    icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
-  },
-  {
-    id: 'vendas', nome: 'Vendas / DIFAL', href: 'vendas.html',
-    desc: 'Cálculo de DIFAL e orçamento com impostos',
-    icon: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'
-  },
-  {
-    id: 'pesquisa', nome: 'Pesquisa de Preços', href: 'pesquisa.html',
-    desc: 'Busca em lote no ML e Google por código ou nome',
-    icon: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>'
-  },
-  {
-    id: 'custos', nome: 'Gestão de Custos', href: 'gestao-custos/index.html',
-    desc: 'Custos fixos/variáveis, entrada de NF-e e formação de preço de venda',
-    icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'
-  },
-  {
-    id: 'importacoes', nome: 'Importações', href: 'importacoes/index.html',
-    desc: 'Kanban de pedidos, prazos, acompanhamento e conferência DUIMP',
-    icon: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>'
-  }
-];
+<!-- ===== MODAL: ITEM DE PEDIDO (manual) ===== -->
+<div class="modal-overlay" id="modalItemPedido">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <h3>Item do Pedido</h3>
+      <button class="modal-close" id="closeItemPedido">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>ITEM NO *</label><input type="text" id="ipItemNo" placeholder="Ex: VW001-001"></div>
+        <div class="field field-wide"><label>Descrição</label><input type="text" id="ipDescricao"></div>
+        <div class="field field-wide"><label>OE NO</label><input type="text" id="ipOeNo"></div>
+        <div class="field"><label>QTY Pedida</label><input type="number" id="ipQtd" step="1" value="0"></div>
+        <div class="field"><label>Preço Unit. (USD)</label><input type="number" id="ipPreco" step="0.01" value="0"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarItemPedido">Cancelar</button>
+      <button class="btn bk" id="btnSalvarItemPedido">Salvar</button>
+    </div>
+  </div>
+</div>
 
-/* =========================================================
-   STORAGE
-   ========================================================= */
-function getUsers()     { return window._USERS || JSON.parse(localStorage.getItem('auth_users') || '[]'); }
-function saveUsers(u)   { window._USERS = u; localStorage.setItem('auth_users', JSON.stringify(u)); }
-function getLogs()      { return JSON.parse(localStorage.getItem('auth_logs') || '[]'); }
-function saveLogs(l)    { localStorage.setItem('auth_logs', JSON.stringify(l)); }
-function getSession()   { return JSON.parse(localStorage.getItem('auth_session') || 'null'); }
-function saveSession(s) { localStorage.setItem('auth_session', JSON.stringify(s)); }
-function clearSession() { localStorage.removeItem('auth_session'); }
+<!-- ===== MODAL: ADIÇÃO DUIMP ===== -->
+<div class="modal-overlay" id="modalAdicao">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-head">
+      <h3>Adição da DUIMP</h3>
+      <button class="modal-close" id="closeAdicao">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Nº da Adição</label><input type="text" id="adAdicao" placeholder="Ex: 001"></div>
+        <div class="field"><label>NCM</label><input type="text" id="adNcm"></div>
+        <div class="field field-wide"><label>Descrição</label><input type="text" id="adDescricao"></div>
+        <div class="field"><label>Ref. ITEM NO (do pedido)</label><input type="text" id="adItemNo" placeholder="Ex: VW001-001"></div>
+        <div class="field"><label>Qtd. Estatística</label><input type="number" id="adQtd" step="0.001" value="0"></div>
+        <div class="field"><label>Unidade</label><input type="text" id="adUnidade" placeholder="UN, KG..."></div>
+        <div class="field"><label>Vlr. FOB Unit. (USD)</label><input type="number" id="adFobUnit" step="0.01" value="0"></div>
+        <div class="field"><label>Vlr. FOB Total (USD)</label><input type="number" id="adFobTotal" step="0.01" value="0"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarAdicao">Cancelar</button>
+      <button class="btn bk" id="btnSalvarAdicao">Salvar</button>
+    </div>
+  </div>
+</div>
 
-/* =========================================================
-   CARREGAR USUÁRIOS DO GITHUB (sem cache)
-   Busca usuarios.js com timestamp para garantir versão fresca
-   em qualquer computador, independente de cache do browser.
-   ========================================================= */
-async function carregarUsuarios() {
-  try {
-    const r = await fetch('usuarios.js?t=' + Date.now());
-    if (!r.ok) throw new Error('não encontrado');
-    const texto = await r.text();
-    // Extrai o array JSON de dentro de "window.USUARIOS_CONFIG = [...];"
-    const match = texto.match(/window\.USUARIOS_CONFIG\s*=\s*(\[[\s\S]*?\]);/);
-    if (match) {
-      const users = JSON.parse(match[1]);
-      if (Array.isArray(users)) {
-        window._USERS = users;
-        localStorage.setItem('auth_users', JSON.stringify(users));
-      }
-    }
-  } catch(e) {
-    // Fallback: usa o que está no localStorage (acesso offline ou arquivo não encontrado)
-    const salvo = JSON.parse(localStorage.getItem('auth_users') || '[]');
-    if (salvo.length) window._USERS = salvo;
-  }
-}
+<!-- ===== MODAL: ALERTA DE FABRICAÇÃO ===== -->
+<div class="modal-overlay" id="modalAlerta">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head" id="alertaHead">
+      <h3 id="alertaTitulo"></h3>
+      <div id="alertaBadge"></div>
+    </div>
+    <div class="modal-body">
+      <div id="alertaInfoBox"></div>
+      <div class="alerta-timeline" id="alertaTimeline"></div>
+      <div class="field" style="margin-top:18px">
+        <label id="alertaLabelObs">Observação / update do fornecedor</label>
+        <textarea id="alertaObs" rows="3" style="padding:9px 11px;border:1.5px solid #e2e0de;border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical;width:100%" placeholder="Descreva o status recebido do fornecedor..."></textarea>
+      </div>
+      <div id="alertaNegociacao" style="margin-top:14px">
+        <div class="negoc-label">📅 Nova data negociada com o fornecedor</div>
+        <div class="field" style="margin-top:6px">
+          <label>Nova data de despacho acordada</label>
+          <input type="date" id="alertaNovaData">
+        </div>
+        <small class="negoc-hint">Opcional · Permitido apenas 1 renegociação por etapa · deixe em branco para não alterar o prazo</small>
+      </div>
+      <div id="alertaNegociacaoInfo" style="display:none;margin-top:14px"></div>
+      <div class="alerta-counter" id="alertaCounter" style="display:none"></div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between">
+      <button class="btn bgray" id="btnAlertaSnooze">⏰ Verificar depois</button>
+      <button class="btn bo" id="btnAlertaRegistrar">✔ Registrar update</button>
+    </div>
+  </div>
+</div>
 
-/* =========================================================
-   AUTENTICAÇÃO
-   ========================================================= */
-function autenticar(nome, senha) {
-  if (nome.trim() === ADMIN_NOME && senha === ADMIN_SENHA) {
-    return { id: '__admin__', nome: ADMIN_NOME, isAdmin: true, projetos: PROJETOS.map(p => p.id) };
-  }
-  const user = getUsers().find(u => u.nome.toLowerCase() === nome.trim().toLowerCase() && u.senha === senha);
-  return user || null;
-}
+<!-- ===== MODAL: CONFIRMAR EXCLUSÃO ===== -->
+<div class="modal-overlay" id="modalExcluir">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head">
+      <h3>Excluir Pedido</h3>
+      <button class="modal-close" id="closeExcluir">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="excluirDesc" style="font-size:.9rem;font-weight:600;color:#1a1a1a;margin-bottom:14px"></p>
+      <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:.8rem;color:#991b1b">
+        ⚠️ O pedido será marcado como <strong>cancelado</strong> e movido para o Histórico. Esta ação não pode ser desfeita.
+      </div>
+      <div class="field">
+        <label>Justificativa do cancelamento *</label>
+        <textarea id="excluirJustificativa" rows="4" style="padding:9px 11px;border:1.5px solid #e2e0de;border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical;width:100%" placeholder="Descreva o motivo do cancelamento..."></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarExcluir">Voltar</button>
+      <button class="btn btn-del-confirm" id="btnConfirmarExcluir">🗑 Confirmar Cancelamento</button>
+    </div>
+  </div>
+</div>
 
-const LOGS_URL = 'https://script.google.com/macros/s/AKfycbwDQZ4dAfEJ9eZs0CV4ceRvj6Pe_QNTaVuuZwT6285JWhcmlL-mpYR_YK7A6ikVkS27/exec';
+<!-- ===== MODAL: HISTÓRICO DE PEDIDOS ===== -->
+<div class="modal-overlay" id="modalHistorico">
+  <div class="modal-box modal-xl">
+    <div class="modal-head">
+      <h3>📋 Histórico de Pedidos</h3>
+      <button class="modal-close" id="closeHistorico">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="filtro-chips" id="historicoFiltros">
+        <button class="filtro-chip active" data-filtro="aberto">Em Aberto</button>
+        <button class="filtro-chip" data-filtro="cancelado">Cancelados</button>
+        <button class="filtro-chip" data-filtro="todos">Todos</button>
+      </div>
+      <div class="table-wrap" style="max-height:65vh">
+        <table id="tblHistorico">
+          <thead><tr>
+            <th>Referência</th><th>Fornecedor</th><th>País</th>
+            <th>Data Pedido</th><th>Etapa</th><th>Status</th>
+            <th>Motivo Cancelamento</th><th>Data Cancelamento</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="closeHistoricoBtn">Fechar</button>
+    </div>
+  </div>
+</div>
 
-function registrarLog(user, acao, projeto = '—') {
-  const agora = new Date();
-  const entrada = {
-    id: Date.now(),
-    userId: user.id,
-    nome: user.nome,
-    acao,
-    projeto,
-    data: agora.toLocaleDateString('pt-BR'),
-    hora: agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  };
-
-  // Salva localmente (fallback)
-  const logs = getLogs();
-  logs.unshift(entrada);
-  saveLogs(logs.slice(0, 500));
-
-  // Envia para Google Sheets (centralizado, visível para todos os computadores)
-  fetch(LOGS_URL, {
-    method: 'POST',
-    body: JSON.stringify(entrada)
-  }).catch(() => {}); // falha silenciosa se offline
-}
-
-/* =========================================================
-   UI: LOGIN
-   ========================================================= */
-document.getElementById('btnLogin').addEventListener('click', fazerLogin);
-document.getElementById('loginSenha').addEventListener('keydown', e => { if (e.key === 'Enter') fazerLogin(); });
-document.getElementById('loginNome').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginSenha').focus(); });
-
-function fazerLogin() {
-  const nome  = document.getElementById('loginNome').value;
-  const senha = document.getElementById('loginSenha').value;
-  const user  = autenticar(nome, senha);
-
-  if (!user) {
-    const err = document.getElementById('loginError');
-    err.style.display = 'block';
-    document.getElementById('loginSenha').value = '';
-    return;
-  }
-
-  saveSession(user);
-  registrarLog(user, 'Login');
-  iniciarSessao(user);
-}
-
-function iniciarSessao(user) {
-  document.getElementById('loginOverlay').style.display = 'none';
-  document.getElementById('headerUser').textContent = '👤 ' + user.nome;
-  document.getElementById('btnAdminPanel').style.display = user.isAdmin ? 'inline-flex' : 'none';
-  renderProjetos(user);
-}
-
-document.getElementById('btnSair').addEventListener('click', () => {
-  const user = getSession();
-  if (user) registrarLog(user, 'Logout');
-  clearSession();
-  location.reload();
-});
-
-/* =========================================================
-   UI: CARDS DE PROJETOS
-   ========================================================= */
-function renderProjetos(user) {
-  const grid = document.getElementById('foldersGrid');
-  grid.innerHTML = '';
-  const acessiveis = PROJETOS.filter(p => user.projetos.includes(p.id));
-
-  if (!acessiveis.length) {
-    grid.innerHTML = '<p style="color:#999;font-size:.9rem">Nenhum projeto liberado para este usuário. Solicite ao administrador.</p>';
-    return;
-  }
-
-  acessiveis.forEach(p => {
-    const card = document.createElement('a');
-    card.className = 'folder-card';
-    card.href = '#';
-    card.title = 'Abrir ' + p.nome;
-    card.innerHTML = `
-      <div class="folder-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p.icon}</svg></div>
-      <div class="folder-info"><div class="folder-name">${p.nome}</div><div class="folder-desc">${p.desc}</div></div>
-      <div class="folder-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>`;
-    card.addEventListener('click', e => {
-      e.preventDefault();
-      registrarLog(user, 'Acesso', p.nome);
-      window.location.href = p.href;
-    });
-    grid.appendChild(card);
-  });
-}
-
-/* =========================================================
-   UI: PAINEL ADMIN — TABS
-   ========================================================= */
-document.getElementById('btnAdminPanel').addEventListener('click', () => {
-  document.getElementById('modalAdmin').classList.add('open');
-  renderTabelaUsuarios();
-  renderTabelaLogs();
-});
-document.getElementById('closeAdmin').addEventListener('click', () => document.getElementById('modalAdmin').classList.remove('open'));
-
-document.querySelectorAll('.admin-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.admin-tab-panel').forEach(p => p.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-    if (tab.dataset.tab === 'registros') renderTabelaLogs();
-  });
-});
-
-/* =========================================================
-   UI: PAINEL ADMIN — USUÁRIOS
-   ========================================================= */
-function buildProjetosCheck(selecionados = []) {
-  const wrap = document.getElementById('projetosCheck');
-  wrap.innerHTML = '';
-  PROJETOS.forEach(p => {
-    const lbl = document.createElement('label');
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.value = p.id;
-    chk.checked = selecionados.includes(p.id);
-    lbl.appendChild(chk);
-    lbl.appendChild(document.createTextNode(' ' + p.nome));
-    wrap.appendChild(lbl);
-  });
-}
-
-buildProjetosCheck();
-
-document.getElementById('btnSalvarUsuario').addEventListener('click', () => {
-  const nome  = document.getElementById('uNome').value.trim();
-  const senha = document.getElementById('uSenha').value;
-  const editId = document.getElementById('uEditId').value;
-
-  if (!nome || !senha) { alert('Preencha nome e senha.'); return; }
-  if (nome.toLowerCase() === ADMIN_NOME.toLowerCase()) { alert('Nome reservado.'); return; }
-
-  const projetos = Array.from(document.querySelectorAll('#projetosCheck input:checked')).map(c => c.value);
-  if (!projetos.length) { alert('Selecione ao menos um projeto.'); return; }
-
-  const users = getUsers();
-  if (editId) {
-    const idx = users.findIndex(u => u.id === editId);
-    if (idx >= 0) { users[idx].nome = nome; users[idx].senha = senha; users[idx].projetos = projetos; }
-  } else {
-    if (users.some(u => u.nome.toLowerCase() === nome.toLowerCase())) { alert('Já existe um usuário com este nome.'); return; }
-    users.push({ id: 'u_' + Date.now(), nome, senha, projetos, isAdmin: false });
-  }
-
-  saveUsers(users);
-  limparFormUsuario();
-  renderTabelaUsuarios();
-});
-
-document.getElementById('btnCancelarEdicao').addEventListener('click', limparFormUsuario);
-
-function limparFormUsuario() {
-  document.getElementById('uNome').value = '';
-  document.getElementById('uSenha').value = '';
-  document.getElementById('uEditId').value = '';
-  document.getElementById('btnCancelarEdicao').style.display = 'none';
-  buildProjetosCheck();
-}
-
-function editarUsuario(id) {
-  const user = getUsers().find(u => u.id === id);
-  if (!user) return;
-  document.getElementById('uNome').value = user.nome;
-  document.getElementById('uSenha').value = user.senha;
-  document.getElementById('uEditId').value = user.id;
-  document.getElementById('btnCancelarEdicao').style.display = 'inline-block';
-  buildProjetosCheck(user.projetos);
-  document.getElementById('uNome').focus();
-}
-
-function excluirUsuario(id) {
-  if (!confirm('Excluir este usuário?')) return;
-  saveUsers(getUsers().filter(u => u.id !== id));
-  renderTabelaUsuarios();
-}
-
-function renderTabelaUsuarios() {
-  const tbody = document.querySelector('#tblUsuarios tbody');
-  const users = getUsers();
-  tbody.innerHTML = '';
-  if (!users.length) {
-    tbody.innerHTML = '<tr class="tbl-empty"><td colspan="3">Nenhum usuário cadastrado.</td></tr>';
-    return;
-  }
-  users.forEach(u => {
-    const badges = u.projetos.map(pid => {
-      const p = PROJETOS.find(x => x.id === pid);
-      return `<span class="badge-proj">${p ? p.nome : pid}</span>`;
-    }).join('');
-    tbody.innerHTML += `<tr>
-      <td><strong>${u.nome}</strong></td>
-      <td>${badges}</td>
-      <td style="white-space:nowrap">
-        <button class="btn-danger" onclick="editarUsuario('${u.id}')">Editar</button>
-        &nbsp;
-        <button class="btn-danger" onclick="excluirUsuario('${u.id}')">Excluir</button>
-      </td>
-    </tr>`;
-  });
-}
-
-/* =========================================================
-   UI: PAINEL ADMIN — REGISTROS
-   ========================================================= */
-document.getElementById('btnLimparLogs').addEventListener('click', () => {
-  if (confirm('Limpar todo o registro de acessos?')) { saveLogs([]); renderTabelaLogs(); }
-});
-
-function renderTabelaLogs() {
-  const tbody = document.querySelector('#tblLogs tbody');
-  const logs = getLogs();
-  tbody.innerHTML = '';
-  if (!logs.length) {
-    tbody.innerHTML = '<tr class="tbl-empty"><td colspan="5">Nenhum registro neste computador ainda.</td></tr>';
-    return;
-  }
-  logs.forEach(l => {
-    tbody.innerHTML += `<tr>
-      <td>${l.data  || '—'}</td>
-      <td>${l.hora  || '—'}</td>
-      <td><strong>${l.nome   || '—'}</strong></td>
-      <td>${l.acao  || '—'}</td>
-      <td>${l.projeto || '—'}</td>
-    </tr>`;
-  });
-}
-
-/* =========================================================
-   EXPORTAR usuarios.js
-   ========================================================= */
-function exportarUsuarios() {
-  const json = JSON.stringify(getUsers(), null, 2);
-  const content = 'window.USUARIOS_CONFIG = ' + json + ';\n';
-  const blob = new Blob([content], { type: 'application/javascript' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'usuarios.js';
-  a.click();
-}
-
-/* =========================================================
-   INICIALIZAÇÃO
-   ========================================================= */
-document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', {
-  weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
-});
-
-// Carrega usuarios.js forçando versão fresca, depois libera o botão de login
-carregarUsuarios().finally(() => {
-  document.getElementById('loginCarregando').style.display = 'none';
-  const btn = document.getElementById('btnLogin');
-  btn.disabled = false;
-  btn.style.opacity = '1';
-
-  const sessao = getSession();
-  if (sessao) {
-    iniciarSessao(sessao);
-  } else {
-    document.getElementById('loginNome').focus();
-  }
-});
-</script>
-
+<script src="script.js"></script>
 </body>
 </html>
