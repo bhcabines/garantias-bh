@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BH Cabines — Importações</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-in">
+    <a href="../index.html" class="btn-menu-back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <div class="hdr-title">
+      <h1>Gestão de Importações</h1>
+      <small>Kanban · Prazos · Conferência DUIMP</small>
+    </div>
+    <div class="ml hdr-right">
+      <span class="header-date" id="headerDate"></span>
+      <a href="../index.html" class="btn-menu">🏠 Menu</a>
+    </div>
+  </div>
+</header>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <button class="btn bo" id="btnNovoPedido">+ Novo Pedido</button>
+  <button class="btn bgray" id="btnHistorico">📋 Histórico de Pedidos</button>
+  <div class="toolbar-filters">
+    <input type="text" id="filtroKanban" placeholder="Buscar pedido, fornecedor...">
+  </div>
+  <div class="legenda">
+    <span class="leg ok">✔ No prazo</span>
+    <span class="leg atencao">⚠ Atenção</span>
+    <span class="leg atrasado">⛔ Atrasado</span>
+  </div>
+</div>
+
+<!-- KANBAN BOARD -->
+<div class="kanban-board" id="kanbanBoard"></div>
+
+<!-- ===== MODAL: PEDIDO (criar / detalhe) ===== -->
+<div class="modal-overlay" id="modalPedido">
+  <div class="modal-box modal-xl">
+    <div class="modal-head">
+      <h3 id="modalPedidoTitulo">Novo Pedido de Importação</h3>
+      <button class="modal-close" id="closePedido">&times;</button>
+    </div>
+
+    <div class="modal-tabs">
+      <button class="mtab active" data-tab="dados">📋 Dados</button>
+      <button class="mtab" data-tab="itens">📦 Itens do Pedido</button>
+      <button class="mtab" data-tab="duimp">📄 DUIMP</button>
+      <button class="mtab" data-tab="comparacao">🔍 Comparação</button>
+      <button class="mtab" data-tab="alteracoes">📝 Histórico</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- TAB: DADOS -->
+      <div class="mtab-panel active" id="tab-dados">
+        <div class="form-grid">
+          <div class="field"><label>Referência do Pedido *</label><input type="text" id="pReferencia" placeholder="Ex: VW001 - Jun/2026"></div>
+          <div class="field"><label>Fornecedor *</label><input type="text" id="pFornecedor" placeholder="Nome do fornecedor"></div>
+          <div class="field"><label>País</label><input type="text" id="pPais" value="China"></div>
+          <div class="field"><label>Data do Pedido *</label><input type="date" id="pDataPedido"></div>
+        </div>
+
+        <div class="section-label">⏱ Prazos (em dias) — preenchidos conforme acordado com o fornecedor</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Prazo de Fabricação / Despacho (dias)</label>
+            <input type="number" id="pPrazoFabricacao" min="0" placeholder="Ex: 120">
+          </div>
+          <div class="field">
+            <label>Prazo de Transporte Marítimo (dias)</label>
+            <input type="number" id="pPrazoTransporte" min="0" placeholder="Ex: 30">
+          </div>
+          <div class="field">
+            <label>Prazo de Desembaraço (dias)</label>
+            <input type="number" id="pPrazoDesembaraco" min="0" placeholder="Ex: 15">
+          </div>
+        </div>
+
+        <div class="section-label">📅 Datas de Acompanhamento</div>
+        <div class="form-grid">
+          <div class="field"><label>Data de Embarque</label><input type="date" id="pDataEmbarcado"></div>
+          <div class="field"><label>Chegada ao Porto</label><input type="date" id="pDataPorto"></div>
+          <div class="field"><label>Início do Desembaraço</label><input type="date" id="pDataDesembaraco"></div>
+          <div class="field"><label>Data de Entrega</label><input type="date" id="pDataEntregue"></div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field field-wide"><label>Observações</label><input type="text" id="pObs" placeholder="Notas gerais sobre o pedido"></div>
+          <div class="field">
+            <label>Etapa atual</label>
+            <select id="pEtapa"></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: ITENS -->
+      <div class="mtab-panel" id="tab-itens">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span class="section-label" style="margin:0">Itens do pedido</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div id="pedidoXlsxDrop" class="xlsx-drop-btn">
+              <label class="btn bgray btn-sm xlsx-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Importar .xlsx
+                <input type="file" id="pedidoXlsxInput" accept=".xlsx,.xls" style="display:none">
+              </label>
+            </div>
+            <button class="btn bgray btn-sm" id="btnAddItemManualPedido">+ Adicionar item</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="tblItensPedido">
+            <thead><tr><th>ITEM NO</th><th>Descrição</th><th>OE NO</th><th>QTY Pedida</th><th>Preço Unit. (USD)</th><th>Total (USD)</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="total-bar" id="totalPedidoBar"></div>
+      </div>
+
+      <!-- TAB: DUIMP -->
+      <div class="mtab-panel" id="tab-duimp">
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="field"><label>Nº da DUIMP</label><input type="text" id="dNumero" placeholder="Ex: 26/0000000-0"></div>
+          <div class="field"><label>Data de Registro</label><input type="date" id="dDataRegistro"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="section-label" style="margin:0">Adições da DUIMP</span>
+          <button class="btn bgray btn-sm" id="btnAddAdicao">+ Adicionar adição</button>
+        </div>
+        <div class="table-wrap">
+          <table id="tblDuimp">
+            <thead><tr>
+              <th>Adição</th><th>NCM</th><th>Descrição</th><th>Ref. ITEM NO</th>
+              <th>Qtd. Estatística</th><th>Unidade</th><th>Vlr. FOB Unit. (USD)</th><th>Vlr. FOB Total (USD)</th><th></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB: COMPARAÇÃO -->
+      <div class="mtab-panel" id="tab-comparacao">
+        <div id="comparacaoContent">
+          <div class="alert-info">Para gerar a comparação, preencha os <strong>Itens do Pedido</strong> e as <strong>Adições da DUIMP</strong>, depois clique em "Comparar".</div>
+        </div>
+        <button class="btn bo" id="btnComparar" style="margin-top:14px">🔍 Comparar Pedido × DUIMP</button>
+      </div>
+
+      <!-- TAB: HISTÓRICO DE ALTERAÇÕES -->
+      <div class="mtab-panel" id="tab-alteracoes">
+        <div id="alteracoesContent">
+          <div class="alert-info">Histórico de alterações de datas deste pedido.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarPedido">Cancelar</button>
+      <button class="btn bk" id="btnSalvarPedido">Salvar Pedido</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: AVANÇAR ETAPA ===== -->
+<div class="modal-overlay" id="modalEtapa">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-head">
+      <h3 id="modalEtapaTitulo">Avançar Etapa</h3>
+      <button class="modal-close" id="closeEtapa">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="modalEtapaDesc" style="font-size:.85rem;color:#666;margin-bottom:16px"></p>
+      <div class="field">
+        <label id="modalEtapaLabelData">Data</label>
+        <input type="date" id="etapaData">
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Observação (opcional)</label>
+        <input type="text" id="etapaObs" placeholder="Nota sobre esta etapa">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarEtapa">Cancelar</button>
+      <button class="btn bo" id="btnConfirmarEtapa">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ITEM DE PEDIDO (manual) ===== -->
+<div class="modal-overlay" id="modalItemPedido">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <h3>Item do Pedido</h3>
+      <button class="modal-close" id="closeItemPedido">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>ITEM NO *</label><input type="text" id="ipItemNo" placeholder="Ex: VW001-001"></div>
+        <div class="field field-wide"><label>Descrição</label><input type="text" id="ipDescricao"></div>
+        <div class="field field-wide"><label>OE NO</label><input type="text" id="ipOeNo"></div>
+        <div class="field"><label>QTY Pedida</label><input type="number" id="ipQtd" step="1" value="0"></div>
+        <div class="field"><label>Preço Unit. (USD)</label><input type="number" id="ipPreco" step="0.01" value="0"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarItemPedido">Cancelar</button>
+      <button class="btn bk" id="btnSalvarItemPedido">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ADIÇÃO DUIMP ===== -->
+<div class="modal-overlay" id="modalAdicao">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-head">
+      <h3>Adição da DUIMP</h3>
+      <button class="modal-close" id="closeAdicao">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Nº da Adição</label><input type="text" id="adAdicao" placeholder="Ex: 001"></div>
+        <div class="field"><label>NCM</label><input type="text" id="adNcm"></div>
+        <div class="field field-wide"><label>Descrição</label><input type="text" id="adDescricao"></div>
+        <div class="field"><label>Ref. ITEM NO (do pedido)</label><input type="text" id="adItemNo" placeholder="Ex: VW001-001"></div>
+        <div class="field"><label>Qtd. Estatística</label><input type="number" id="adQtd" step="0.001" value="0"></div>
+        <div class="field"><label>Unidade</label><input type="text" id="adUnidade" placeholder="UN, KG..."></div>
+        <div class="field"><label>Vlr. FOB Unit. (USD)</label><input type="number" id="adFobUnit" step="0.01" value="0"></div>
+        <div class="field"><label>Vlr. FOB Total (USD)</label><input type="number" id="adFobTotal" step="0.01" value="0"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarAdicao">Cancelar</button>
+      <button class="btn bk" id="btnSalvarAdicao">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ALERTA DE FABRICAÇÃO ===== -->
+<div class="modal-overlay" id="modalAlerta">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head" id="alertaHead">
+      <h3 id="alertaTitulo"></h3>
+      <div id="alertaBadge"></div>
+    </div>
+    <div class="modal-body">
+      <div id="alertaInfoBox"></div>
+      <div class="alerta-timeline" id="alertaTimeline"></div>
+      <div class="field" style="margin-top:18px">
+        <label id="alertaLabelObs">Observação / update do fornecedor</label>
+        <textarea id="alertaObs" rows="3" style="padding:9px 11px;border:1.5px solid #e2e0de;border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical;width:100%" placeholder="Descreva o status recebido do fornecedor..."></textarea>
+      </div>
+      <div id="alertaNegociacao" style="margin-top:14px">
+        <div class="negoc-label">📅 Nova data negociada com o fornecedor</div>
+        <div class="field" style="margin-top:6px">
+          <label>Nova data de despacho acordada</label>
+          <input type="date" id="alertaNovaData">
+        </div>
+        <small class="negoc-hint">Opcional · Permitido apenas 1 renegociação por etapa · deixe em branco para não alterar o prazo</small>
+      </div>
+      <div id="alertaNegociacaoInfo" style="display:none;margin-top:14px"></div>
+      <div class="alerta-counter" id="alertaCounter" style="display:none"></div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between">
+      <button class="btn bgray" id="btnAlertaSnooze">⏰ Verificar depois</button>
+      <button class="btn bo" id="btnAlertaRegistrar">✔ Registrar update</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CONFIRMAR EXCLUSÃO ===== -->
+<div class="modal-overlay" id="modalExcluir">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head">
+      <h3>Excluir Pedido</h3>
+      <button class="modal-close" id="closeExcluir">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="excluirDesc" style="font-size:.9rem;font-weight:600;color:#1a1a1a;margin-bottom:14px"></p>
+      <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:.8rem;color:#991b1b">
+        ⚠️ O pedido será marcado como <strong>cancelado</strong> e movido para o Histórico. Esta ação não pode ser desfeita.
+      </div>
+      <div class="field">
+        <label>Justificativa do cancelamento *</label>
+        <textarea id="excluirJustificativa" rows="4" style="padding:9px 11px;border:1.5px solid #e2e0de;border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical;width:100%" placeholder="Descreva o motivo do cancelamento..."></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarExcluir">Voltar</button>
+      <button class="btn btn-del-confirm" id="btnConfirmarExcluir">🗑 Confirmar Cancelamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: HISTÓRICO DE PEDIDOS ===== -->
+<div class="modal-overlay" id="modalHistorico">
+  <div class="modal-box modal-xl">
+    <div class="modal-head">
+      <h3>📋 Histórico de Pedidos</h3>
+      <button class="modal-close" id="closeHistorico">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="filtro-chips" id="historicoFiltros">
+        <button class="filtro-chip active" data-filtro="aberto">Em Aberto</button>
+        <button class="filtro-chip" data-filtro="cancelado">Cancelados</button>
+        <button class="filtro-chip" data-filtro="todos">Todos</button>
+      </div>
+      <div class="table-wrap" style="max-height:65vh">
+        <table id="tblHistorico">
+          <thead><tr>
+            <th>Referência</th><th>Fornecedor</th><th>País</th>
+            <th>Data Pedido</th><th>Etapa</th><th>Status</th>
+            <th>Motivo Cancelamento</th><th>Data Cancelamento</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="closeHistoricoBtn">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
