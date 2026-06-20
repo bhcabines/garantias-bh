@@ -22,8 +22,53 @@ let _adicaoEditandoIdx = null;
 let _etapaCallbackId = null;
 let _etapaCallbackDir = null;
 
-/* ====== STORAGE ====== */
-function salvar()  { localStorage.setItem('imp_pedidos', JSON.stringify(STATE.pedidos)); }
+/* ====== SERVIDOR (Google Apps Script) ====== */
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbwDQZ4dAfEJ9eZs0CV4ceRvj6Pe_QNTaVuuZwT6285JWhcmlL-mpYR_YK7A6ikVkS27/exec';
+let _syncTimer = null;
+
+async function carregarDoServidor(){
+  mostrarStatus('Carregando pedidos...');
+  try {
+    const res = await fetch(SYNC_URL + '?action=getImportacoes&t=' + Date.now());
+    const json = await res.json();
+    if(json.ok && Array.isArray(json.data)){
+      STATE.pedidos = json.data;
+      localStorage.setItem('imp_pedidos', JSON.stringify(STATE.pedidos));
+      mostrarStatus('');
+      return;
+    }
+  } catch(e){
+    console.warn('Servidor indisponível, usando cache local.');
+  }
+  STATE.pedidos = JSON.parse(localStorage.getItem('imp_pedidos') || '[]');
+  mostrarStatus('');
+}
+
+function sincronizarComServidor(){
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(async ()=>{
+    try {
+      await fetch(SYNC_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'saveImportacoes', data: STATE.pedidos })
+      });
+    } catch(e){ console.warn('Erro ao sincronizar:', e); }
+  }, 800);
+}
+
+function mostrarStatus(msg){
+  let el = document.getElementById('syncStatus');
+  if(!el){ el = document.createElement('div'); el.id='syncStatus'; el.style.cssText='position:fixed;bottom:16px;right:20px;background:#1a1a1a;color:#fff;padding:8px 16px;border-radius:8px;font-size:.78rem;z-index:9999;transition:opacity .3s'; document.body.appendChild(el); }
+  el.textContent = msg;
+  el.style.opacity = msg ? '1' : '0';
+}
+
+/* ====== STORAGE LOCAL (cache / fallback) ====== */
+function salvar(){
+  localStorage.setItem('imp_pedidos', JSON.stringify(STATE.pedidos));
+  sincronizarComServidor();
+}
 function carregar(){ STATE.pedidos = JSON.parse(localStorage.getItem('imp_pedidos') || '[]'); }
 
 /* ====== UTILITÁRIOS ====== */
@@ -877,11 +922,10 @@ document.getElementById('btnAlertaSnooze').addEventListener('click', ()=>{
 });
 
 /* ====== INICIALIZAÇÃO ====== */
-document.addEventListener('DOMContentLoaded', ()=>{
-  carregar();
+document.addEventListener('DOMContentLoaded', async ()=>{
   initSelectEtapa();
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  await carregarDoServidor();
   renderKanban();
-  // Verifica alertas de fabricação ao abrir o sistema
   setTimeout(verificarAlertasFabricacao, 800);
 });
