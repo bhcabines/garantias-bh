@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BH Cabines — Gestão de Custos</title>
+<title>BH Cabines — Importações</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -11,507 +11,321 @@
 
 <header class="hdr">
   <div class="hdr-in">
-    <a href="../index.html" class="hdr-back" title="Voltar ao painel">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    <a href="/garantias-bh/index.html" class="btn-menu-back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
     </a>
     <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
     <div class="hdr-title">
-      <h1>Gestão de Custos</h1>
-      <small>Custos fixos/variáveis · Entrada de NF-e · Preço de venda</small>
+      <h1>Gestão de Importações</h1>
+      <small>Kanban · Prazos · Conferência DUIMP</small>
     </div>
     <div class="ml hdr-right">
-      <span id="syncIndicador" style="display:none;font-size:.72rem;font-weight:600;color:#666;padding:4px 10px;background:#f3f4f6;border-radius:20px"></span>
       <span class="header-date" id="headerDate"></span>
-      <a href="../index.html" class="btn-menu">🏠 Menu</a>
+      <a href="/garantias-bh/index.html" class="btn-menu">🏠 Menu</a>
     </div>
   </div>
 </header>
 
-<div class="app-layout">
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <button class="btn bo" id="btnNovoPedido">+ Novo Pedido</button>
+  <button class="btn bgray" id="btnHistorico">📋 Histórico de Pedidos</button>
+  <div class="toolbar-filters">
+    <input type="text" id="filtroKanban" placeholder="Buscar pedido, fornecedor...">
+  </div>
+  <div class="legenda">
+    <span class="leg ok">✔ No prazo</span>
+    <span class="leg atencao">⚠ Atenção</span>
+    <span class="leg atrasado">⛔ Atrasado</span>
+  </div>
+</div>
 
-  <!-- ===== MENU LATERAL ===== -->
-  <nav class="side-nav" id="sideNav">
-    <button class="nav-btn active" data-view="dashboard">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
-      <span>Painel</span>
-    </button>
-    <button class="nav-btn" data-view="custos">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-      <span>Custos Fixos/Variáveis</span>
-    </button>
-    <button class="nav-btn" data-view="notas">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><line x1="9" y1="11" x2="16" y2="11"/><line x1="9" y1="15" x2="16" y2="15"/></svg>
-      <span>Entrada de NF-e</span>
-    </button>
-    <button class="nav-btn" data-view="produtos">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-      <span>Custo por Produto</span>
-    </button>
-    <button class="nav-btn" data-view="preco">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-      <span>Preço de Venda</span>
-    </button>
-    <button class="nav-btn" data-view="relatorios">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
-      <span>Relatórios</span>
-    </button>
-    <button class="nav-btn" data-view="config">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      <span>Configurações</span>
-    </button>
-  </nav>
+<!-- KANBAN BOARD -->
+<div class="kanban-board" id="kanbanBoard"></div>
 
-  <!-- ===== CONTEÚDO ===== -->
-  <main class="content">
+<!-- ===== MODAL: PEDIDO (criar / detalhe) ===== -->
+<div class="modal-overlay" id="modalPedido">
+  <div class="modal-box modal-xl">
+    <div class="modal-head">
+      <h3 id="modalPedidoTitulo">Novo Pedido de Importação</h3>
+      <button class="modal-close" id="closePedido">&times;</button>
+    </div>
 
-    <!-- ---------- DASHBOARD ---------- -->
-    <section class="view active" id="view-dashboard">
-      <div class="view-header">
-        <h2>Painel Geral</h2>
-        <p>Resumo consolidado dos custos da empresa e das notas fiscais lançadas.</p>
+    <div class="modal-tabs">
+      <button class="mtab active" data-tab="dados">📋 Dados</button>
+      <button class="mtab" data-tab="itens">📦 Itens do Pedido</button>
+      <button class="mtab" data-tab="duimp">📄 DUIMP</button>
+      <button class="mtab" data-tab="comparacao">🔍 Comparação</button>
+      <button class="mtab" data-tab="alteracoes">📝 Histórico</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- TAB: DADOS -->
+      <div class="mtab-panel active" id="tab-dados">
+        <div class="form-grid">
+          <div class="field"><label>Referência do Pedido *</label><input type="text" id="pReferencia" placeholder="Gerado automaticamente (ex: IMP-001)"></div>
+          <div class="field"><label>Fornecedor *</label><input type="text" id="pFornecedor" placeholder="Nome do fornecedor"></div>
+          <div class="field"><label>País</label><input type="text" id="pPais" value="China"></div>
+          <div class="field"><label>Data do Pedido *</label><input type="date" id="pDataPedido"></div>
+        </div>
+
+        <div class="section-label">⏱ Prazos (em dias) — preenchidos conforme acordado com o fornecedor</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Prazo de Fabricação / Despacho (dias)</label>
+            <input type="number" id="pPrazoFabricacao" min="0" placeholder="Ex: 120">
+          </div>
+          <div class="field">
+            <label>Prazo de Transporte Marítimo (dias)</label>
+            <input type="number" id="pPrazoTransporte" min="0" placeholder="Ex: 30">
+          </div>
+          <div class="field">
+            <label>Prazo de Desembaraço (dias)</label>
+            <input type="number" id="pPrazoDesembaraco" min="0" placeholder="Ex: 15">
+          </div>
+        </div>
+
+        <div class="section-label">📅 Datas de Acompanhamento</div>
+        <div class="form-grid">
+          <div class="field"><label>Data de Embarque</label><input type="date" id="pDataEmbarcado"></div>
+          <div class="field"><label>Chegada ao Porto</label><input type="date" id="pDataPorto"></div>
+          <div class="field"><label>Início do Desembaraço</label><input type="date" id="pDataDesembaraco"></div>
+          <div class="field"><label>Data de Entrega</label><input type="date" id="pDataEntregue"></div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field field-wide"><label>Observações</label><input type="text" id="pObs" placeholder="Notas gerais sobre o pedido"></div>
+          <div class="field">
+            <label>Etapa atual</label>
+            <select id="pEtapa"></select>
+          </div>
+        </div>
       </div>
 
-      <div class="cards-grid">
-        <div class="sum-card">
-          <span class="sum-label">Custos Fixos (mês)</span>
-          <span class="sum-value" id="dashFixos">R$ 0,00</span>
+      <!-- TAB: ITENS -->
+      <div class="mtab-panel" id="tab-itens">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span class="section-label" style="margin:0">Itens do pedido</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div id="pedidoXlsxDrop" class="xlsx-drop-btn">
+              <label class="btn bgray btn-sm xlsx-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Importar .xlsx
+                <input type="file" id="pedidoXlsxInput" accept=".xlsx,.xls" style="display:none">
+              </label>
+            </div>
+            <button class="btn bgray btn-sm" id="btnAddItemManualPedido">+ Adicionar item</button>
+          </div>
         </div>
-        <div class="sum-card">
-          <span class="sum-label">Custos Variáveis (mês)</span>
-          <span class="sum-value" id="dashVariaveis">R$ 0,00</span>
-        </div>
-        <div class="sum-card orange">
-          <span class="sum-label">Total de Despesas</span>
-          <span class="sum-value" id="dashTotalDespesas">R$ 0,00</span>
-        </div>
-        <div class="sum-card">
-          <span class="sum-label">Notas Fiscais Lançadas</span>
-          <span class="sum-value" id="dashQtdNotas">0</span>
-        </div>
-        <div class="sum-card">
-          <span class="sum-label">Notas Fechadas</span>
-          <span class="sum-value good" id="dashNotasFechadas">0</span>
-        </div>
-        <div class="sum-card">
-          <span class="sum-label">Notas Divergentes</span>
-          <span class="sum-value bad" id="dashNotasDivergentes">0</span>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:24px">
-        <h3 class="card-title">Últimas Notas Lançadas</h3>
         <div class="table-wrap">
-          <table id="tblDashNotas">
-            <thead><tr><th>Nº NF</th><th>Fornecedor</th><th>UF</th><th>Valor Final</th><th>Status</th></tr></thead>
+          <table id="tblItensPedido">
+            <thead><tr><th>ITEM NO</th><th>Descrição</th><th>OE NO</th><th>QTY Pedida</th><th>Preço Unit. (USD)</th><th>Total (USD)</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
+        <div class="total-bar" id="totalPedidoBar"></div>
       </div>
-    </section>
 
-    <!-- ---------- CUSTOS FIXOS/VARIÁVEIS ---------- -->
-    <section class="view" id="view-custos">
-      <div class="view-header">
-        <div class="view-header-row">
-          <div>
-            <h2>Custos Fixos e Variáveis</h2>
-            <p>Cadastre todos os gastos mensais da empresa para compor o custo operacional.</p>
-          </div>
-          <button class="btn-help" id="btnExplicarCustos" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 1-1 1.7v.5"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
-            O que é fixo e o que é variável?
-          </button>
+      <!-- TAB: DUIMP -->
+      <div class="mtab-panel" id="tab-duimp">
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="field"><label>Nº da DUIMP</label><input type="text" id="dNumero" placeholder="Ex: 26/0000000-0"></div>
+          <div class="field"><label>Data de Registro</label><input type="date" id="dDataRegistro"></div>
         </div>
-        <div class="help-box" id="boxExplicarCustos" style="display:none">
-          <h4>Custo Fixo</h4>
-          <p>É o gasto que a empresa tem todo mês, com valor estável, independente de quanto ela vende ou produz. Existe mesmo que as vendas sejam zero. Exemplos: aluguel, salários, internet, contabilidade.</p>
-          <h4>Custo Variável</h4>
-          <p>É o gasto que muda de acordo com o volume de vendas ou produção — sobe quando a empresa vende/produz mais, e cai quando vende/produz menos. Exemplos: comissão de vendas, embalagens, frete, matéria-prima, taxas de cartão.</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="section-label" style="margin:0">Adições da DUIMP</span>
+          <button class="btn bgray btn-sm" id="btnAddAdicao">+ Adicionar adição</button>
         </div>
-      </div>
-
-      <div class="card">
-        <h3 class="card-title">Novo Custo</h3>
-        <form id="formCusto" class="form-grid">
-          <div class="field">
-            <label>Nome do custo *</label>
-            <input type="text" id="custoNome" required placeholder="Ex.: Aluguel, Energia, Salários...">
-          </div>
-          <div class="field">
-            <label>Tipo *</label>
-            <select id="custoTipo" required>
-              <option value="fixo">Fixo</option>
-              <option value="variavel">Variável</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Categoria</label>
-            <input type="text" id="custoCategoria" placeholder="Ex.: Administrativo, Operacional...">
-          </div>
-          <div class="field">
-            <label>Valor mensal (R$) *</label>
-            <input type="number" id="custoValor" step="0.01" min="0" required placeholder="0,00">
-          </div>
-          <div class="field">
-            <label>Data de Lançamento</label>
-            <input type="date" id="custoData">
-          </div>
-          <div class="field field-wide">
-            <label>Observações</label>
-            <input type="text" id="custoObs" placeholder="Observações adicionais">
-          </div>
-          <div class="field field-actions">
-            <button type="submit" class="btn bo">+ Adicionar Custo</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="cards-grid" style="margin-top:20px">
-        <div class="sum-card"><span class="sum-label">Total Custos Fixos</span><span class="sum-value" id="totalFixos">R$ 0,00</span></div>
-        <div class="sum-card"><span class="sum-label">Total Custos Variáveis</span><span class="sum-value" id="totalVariaveis">R$ 0,00</span></div>
-        <div class="sum-card orange"><span class="sum-label">Total Geral de Despesas</span><span class="sum-value" id="totalGeral">R$ 0,00</span></div>
-      </div>
-
-      <div class="card" style="margin-top:20px">
-        <h3 class="card-title">Custos Cadastrados</h3>
         <div class="table-wrap">
-          <table id="tblCustos">
-            <thead><tr><th>Nome</th><th>Tipo</th><th>Categoria</th><th>Valor Mensal</th><th>Data</th><th>Observações</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- ENTRADA DE NF-e ---------- -->
-    <section class="view" id="view-notas">
-      <div class="view-header">
-        <h2>Entrada de Nota Fiscal</h2>
-        <p>Registre o custo de entrada de uma compra, via importação de XML ou preenchimento manual.</p>
-      </div>
-
-      <div class="card">
-        <h3 class="card-title">Método de Lançamento</h3>
-        <div class="method-selector">
-          <button class="method-btn active" id="btnMetodoXml" data-metodo="xml">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Importar XML da NF-e
-          </button>
-          <button class="method-btn" id="btnMetodoManual" data-metodo="manual">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Preencher Manualmente
-          </button>
-        </div>
-
-        <div id="xmlUploadArea" class="drop" style="margin-top:18px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <h3>Arraste o arquivo XML aqui ou clique para selecionar</h3>
-          <p>Aceita arquivos de NF-e (.xml)</p>
-          <input type="file" id="xmlInput" accept=".xml">
-        </div>
-      </div>
-
-      <!-- Formulário da nota (preenchido manual ou via XML) -->
-      <div class="card" id="notaFormCard" style="display:none;margin-top:20px">
-        <h3 class="card-title">Dados da Nota Fiscal</h3>
-        <div id="alertaConferenciaTop"></div>
-        <form id="formNota" class="form-grid">
-          <div class="field"><label>Número da NF *</label><input type="text" id="nfNumero" required></div>
-          <div class="field"><label>Data de Lançamento</label><input type="date" id="nfDataLancamento"></div>
-          <div class="field"><label>Fornecedor *</label><input type="text" id="nfFornecedor" required></div>
-          <div class="field"><label>Estado do Fornecedor (UF) *</label>
-            <select id="nfUf" required>
-              <option value="">Selecione...</option>
-              <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option>
-            </select>
-          </div>
-          <div class="field"><label>Valor dos Produtos (R$) *</label><input type="number" id="nfValorProdutos" step="0.01" required></div>
-          <div class="field"><label>Valor do Frete (R$)</label><input type="number" id="nfValorFrete" step="0.01" value="0"></div>
-          <div class="field"><label>% Frete sobre Valor da NF</label><input type="text" id="nfPercFrete" readonly placeholder="calculado"></div>
-          <div class="field"><label>ICMS do Frete (R$)</label><input type="number" id="nfIcmsFrete" step="0.01" value="0"></div>
-          <div class="field"><label>ICMS (R$)</label><input type="number" id="nfIcms" step="0.01" value="0"></div>
-          <div class="field"><label>ST / ICMS-ST (R$)</label><input type="number" id="nfSt" step="0.01" value="0"></div>
-          <div class="field"><label>IPI (R$)</label><input type="number" id="nfIpi" step="0.01" value="0"></div>
-          <div class="field"><label>PIS (R$)</label><input type="number" id="nfPis" step="0.01" value="0"></div>
-          <div class="field"><label>COFINS (R$)</label><input type="number" id="nfCofins" step="0.01" value="0"></div>
-          <div class="field"><label>Outros Custos (R$)</label><input type="number" id="nfOutros" step="0.01" value="0"></div>
-          <div class="field"><label>Descontos (R$)</label><input type="number" id="nfDescontos" step="0.01" value="0"></div>
-          <div class="field"><label>Valor Total da NF (R$) *</label><input type="number" id="nfValorTotal" step="0.01" required></div>
-          <div class="field"><label>Valor Final da Nota (R$)</label><input type="number" id="nfValorFinal" step="0.01" readonly></div>
-          <div class="field">
-            <label>Pagamos PIS/COFINS desta nota?</label>
-            <select id="nfTemPisCofins"><option value="nao">Não</option><option value="sim">Sim</option></select>
-          </div>
-          <div class="field field-wide"><label>Observações</label><input type="text" id="nfObs"></div>
-        </form>
-        <p class="muted" id="hintPisCofins" style="display:none;margin-top:8px">Ao detalhar os produtos, selecione quais itens têm PIS/COFINS a pagar — somente esses terão o valor somado ao custo total.</p>
-
-        <div id="mvaArea" class="mva-box" style="display:none">
-          <strong>Fornecedor sujeito a cálculo de ST (tabela de referência)</strong>
-          <p>Informe o MVA a ser aplicado a todos os produtos desta nota:</p>
-          <div class="field" style="max-width:200px">
-            <label>MVA (%)</label>
-            <input type="number" id="mvaInput" step="0.01" value="0">
-          </div>
-        </div>
-
-        <div class="btn-row-h" style="margin-top:18px">
-          <button class="btn bo" id="btnDetalharProdutos">Detalhar por Produto</button>
-          <button class="btn bk" id="btnSalvarNota">Salvar Nota Fiscal</button>
-          <button class="btn bgray" id="btnCancelarNota">Cancelar / Limpar</button>
-        </div>
-
-        <div class="conferencia-box" id="conferenciaBox" style="display:none">
-          <h4>Conferência de Fechamento</h4>
-          <div class="conf-grid">
-            <div><label>Valor Final da NF</label><span id="confValorFinal">R$ 0,00</span></div>
-            <div><label>ST Adicional (Calculada)</label><span id="confSTAdicional">R$ 0,00</span></div>
-            <div><label>Total Custo da NF</label><span id="confTotalCustoNF">R$ 0,00</span></div>
-            <div><label>Soma dos Produtos Detalhados</label><span id="confSomaProdutos">R$ 0,00</span></div>
-            <div><label>Diferença</label><span id="confDiferenca">R$ 0,00</span></div>
-            <div><label>Status</label><span id="confStatus" class="status-badge">—</span></div>
-          </div>
-          <p class="muted" style="margin-top:8px">Total Custo da NF = Valor Final da NF + ST Adicional (quando calculada pelo sistema para estados com ST de entrada).</p>
-          <div class="btn-row-h" style="margin-top:10px">
-            <button class="btn bgray" id="btnAjustarDiferenca">Ajustar diferença no último item</button>
-            <button class="btn bo" id="btnRegistrarNota">Registrar Nota</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:20px">
-        <h3 class="card-title">Notas Fiscais Lançadas</h3>
-        <div class="table-wrap">
-          <table id="tblNotas">
-            <thead><tr><th>Data</th><th>Nº NF</th><th>Fornecedor</th><th>UF</th><th>Valor da NF</th><th>ST</th><th>IPI</th><th>PIS</th><th>COFINS</th><th>Frete</th><th>ICMS Frete</th><th>Custo Total</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- CUSTO POR PRODUTO ---------- -->
-    <section class="view" id="view-produtos">
-      <div class="view-header">
-        <h2>Cálculo de Custo por Produto</h2>
-        <p>Itens detalhados de todas as notas fiscais lançadas, com o custo de entrada calculado.</p>
-      </div>
-      <div class="card">
-        <div class="field" style="max-width:280px">
-          <label>Número da Nota Fiscal</label>
-          <input type="text" id="filtroNFProdutos" list="listaNFsProdutos" placeholder="Digite o nº da NF...">
-          <datalist id="listaNFsProdutos"></datalist>
-        </div>
-        <div class="table-wrap" style="margin-top:16px">
-          <table id="tblProdutosGeral">
+          <table id="tblDuimp">
             <thead><tr>
-              <th>NF</th><th>Código</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Vlr. Unit.</th><th>Vlr. Total</th>
-              <th>Frete Dil.</th><th>ICMS Frete Dil.</th><th>IPI</th><th>ICMS</th><th>ST</th><th>PIS</th><th>COFINS</th><th>Outros Dil.</th>
-              <th>Custo Total Entrada</th><th>Custo Unit. Real</th><th>Importado</th>
+              <th>Adição</th><th>NCM</th><th>Descrição</th><th>Ref. ITEM NO</th>
+              <th>Qtd. Estatística</th><th>Unidade</th><th>Vlr. FOB Unit. (USD)</th><th>Vlr. FOB Total (USD)</th><th></th>
             </tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </div>
-    </section>
 
-    <!-- ---------- PREÇO DE VENDA ---------- -->
-    <section class="view" id="view-preco">
-      <div class="view-header">
-        <h2>Formação de Preço de Venda</h2>
-        <p>Selecione um produto já lançado e calcule o preço de venda sugerido.</p>
-      </div>
-
-      <div class="card">
-        <form id="formPreco" class="form-grid">
-          <div class="field">
-            <label>Filtrar por Código Interno</label>
-            <input type="text" id="filtroCodigoInterno" placeholder="Digite o código interno...">
-          </div>
-          <div class="field field-wide">
-            <label>Produto *</label>
-            <select id="precoProduto" required></select>
-          </div>
-          <div class="field"><label>Custo Unitário Real (R$)</label><input type="number" id="precoCustoUnitario" step="0.01" readonly></div>
-          <div class="field"><label>Margem Desejada (%)</label><input type="number" id="precoMargem" step="0.01" value="30"></div>
-
-          <div class="field form-group-label">
-            <span class="group-label">Impostos sobre Venda</span>
-          </div>
-          <div class="field"><label>Imp. Estaduais (%)</label><input type="number" id="precoImpostosEstaduais" step="0.01" value="0"></div>
-          <div class="field"><label>Imp. Federais (%)</label><input type="number" id="precoImpostosFederais" step="0.01" value="0"></div>
-          <div class="field"><label>Total Impostos (%)</label><input type="number" id="precoImpostosTotal" step="0.01" readonly placeholder="calculado"></div>
-
-          <div class="field"><label>Comissão (%)</label><input type="number" id="precoComissao" step="0.01" value="0"></div>
-          <div class="field"><label>Taxa de Cartão (%)</label><input type="number" id="precoTaxaCartao" step="0.01" value="0"></div>
-          <div class="field"><label>Frete de Saída (R$)</label><input type="number" id="precoFreteSaida" step="0.01" value="0"></div>
-
-          <div class="field form-group-label">
-            <span class="group-label">Outros Custos</span>
-          </div>
-          <div class="field"><label>Rateio Corporativo (R$)</label><input type="number" id="precoRateioCorp" step="0.01" value="0"></div>
-          <div class="field"><label>Outros Custos do Produto (R$)</label><input type="number" id="precoOutrosCustos" step="0.01" value="0"></div>
-          <div class="field"><label>Total Outros Custos (R$)</label><input type="number" id="precoOutrosCustosTotal" step="0.01" readonly placeholder="calculado"></div>
-
-          <div class="field field-actions"><button type="button" class="btn bo" id="btnCalcularPreco">Calcular Preço de Venda</button></div>
-        </form>
-
-        <div class="result-grid" id="resultadoPrecoDetalhe" style="display:none">
-          <div class="result-card info"><label>Imp. Estaduais</label><span id="rImpEstaduais">0%</span></div>
-          <div class="result-card info"><label>Imp. Federais</label><span id="rImpFederais">0%</span></div>
-          <div class="result-card info"><label>Rateio Corporativo</label><span id="rRateioCorp">R$ 0,00</span></div>
-          <div class="result-card info"><label>Outros Custos Produto</label><span id="rOutrosCustos">R$ 0,00</span></div>
+      <!-- TAB: COMPARAÇÃO -->
+      <div class="mtab-panel" id="tab-comparacao">
+        <div id="comparacaoContent">
+          <div class="alert-info">Para gerar a comparação, preencha os <strong>Itens do Pedido</strong> e as <strong>Adições da DUIMP</strong>, depois clique em "Comparar".</div>
         </div>
+        <button class="btn bo" id="btnComparar" style="margin-top:14px">🔍 Comparar Pedido × DUIMP</button>
+      </div>
 
-        <div class="result-grid" id="resultadoPreco" style="display:none">
-          <div class="result-card"><label>Preço de Venda Sugerido</label><span id="rPrecoVenda">R$ 0,00</span></div>
-          <div class="result-card"><label>Lucro Líquido Estimado</label><span id="rLucro">R$ 0,00</span></div>
-          <div class="result-card"><label>Margem Final</label><span id="rMargemFinal">0%</span></div>
-          <div class="result-card"><label>Markup</label><span id="rMarkup">0%</span></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- RELATÓRIOS ---------- -->
-    <section class="view" id="view-relatorios">
-      <div class="view-header">
-        <h2>Relatórios e Conferência</h2>
-        <p>Visão consolidada de notas, status de fechamento e despesas.</p>
-      </div>
-      <div class="card">
-        <h3 class="card-title">Status de Fechamento das Notas</h3>
-        <div class="table-wrap">
-          <table id="tblRelatorioNotas">
-            <thead><tr><th>Nº NF</th><th>Fornecedor</th><th>Valor Final</th><th>Soma Itens</th><th>Diferença</th><th>Status</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="card" style="margin-top:20px">
-        <h3 class="card-title">Resumo de Despesas</h3>
-        <div class="table-wrap">
-          <table id="tblRelatorioDespesas">
-            <thead><tr><th>Categoria</th><th>Tipo</th><th>Total</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- CONFIGURAÇÕES ---------- -->
-    <section class="view" id="view-config">
-      <div class="view-header">
-        <h2>Configurações</h2>
-        <p>Parâmetros gerais usados nos cálculos do sistema.</p>
-      </div>
-      <div class="card">
-        <h3 class="card-title">Regime Tributário</h3>
-        <div class="field" style="max-width:320px">
-          <label>Regime da empresa</label>
-          <select id="cfgRegime">
-            <option value="normal">Normal (ICMS é crédito, não soma ao custo)</option>
-            <option value="simples">Simples Nacional (ICMS soma ao custo)</option>
-          </select>
-        </div>
-      </div>
-      <div class="card" style="margin-top:20px">
-        <h3 class="card-title">Tabela ST de Entrada (Estados Especiais)</h3>
-        <p class="muted">Estados com regra de ST diferenciada: SC, ES, GO, RN, RS. Envie a planilha "Tabela ST entrada.xlsx" para servir de referência (Alíquota Interna = coluna J).</p>
-        <div class="drop" id="stTableDrop" style="margin-top:14px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <h3>Enviar Tabela ST entrada.xlsx</h3>
-          <p>Arquivo .xlsx</p>
-          <input type="file" id="stTableInput" accept=".xlsx,.xls">
-        </div>
-        <div id="stTableStatus" class="muted" style="margin-top:10px"></div>
-      </div>
-      <div class="card" style="margin-top:20px">
-        <h3 class="card-title">Dados</h3>
-        <div class="btn-row-h">
-          <button class="btn bo" id="btnCarregarExemplo">Carregar Dados de Exemplo</button>
-          <button class="btn bgray" id="btnLimparTudo">Limpar Todos os Dados</button>
-        </div>
-      </div>
-    </section>
-
-  </main>
-</div>
-
-<!-- ===== MODAL: DETALHAMENTO POR PRODUTO ===== -->
-<div class="modal-overlay" id="modalDetalhe">
-  <div class="modal-box modal-wide">
-    <div class="modal-head">
-      <h3>Detalhamento por Produto</h3>
-      <button class="modal-close" id="closeModalDetalhe">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p class="muted">Adicione os itens da nota fiscal. Se a nota foi importada via XML, os itens já vêm preenchidos.</p>
-      <div class="alert warn" id="alertaPisCofinsModal">Marque na coluna "Pagar PIS/COFINS" os itens em que o valor deve ser somado ao custo total — os demais mantêm o PIS/COFINS apenas como informação, sem somar.</div>
-      <div class="table-wrap">
-        <table id="tblItensDetalhe">
-          <thead><tr>
-            <th>Código</th><th>Cód. Interno</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Vlr. Unit.</th><th>Vlr. Total</th><th>% do Total</th>
-            <th>Frete Dil.</th><th>ICMS Frete Dil.</th><th>IPI</th><th>ICMS</th><th>ST</th><th>PIS</th><th>COFINS</th><th>Pagar PIS/COFINS</th><th>Outros Dil.</th>
-            <th>Importado</th><th>Custo Total Entrada</th><th>Custo Unit. Real</th><th></th>
-          </tr></thead>
-          <tbody id="tblItensDetalheBody"></tbody>
-        </table>
-      </div>
-      <button class="btn bgray" id="btnAddItemManual" style="margin-top:12px">+ Adicionar Item Manualmente</button>
-
-      <div class="conferencia-box" id="conferenciaBoxModal">
-        <h4>Conferência de Fechamento</h4>
-        <div class="conf-grid">
-          <div><label>Valor Final da NF</label><span id="confValorFinalModal">R$ 0,00</span></div>
-          <div><label>ST Adicional (Calculada)</label><span id="confSTAdicionalModal">R$ 0,00</span></div>
-          <div><label>Total Custo da NF</label><span id="confTotalCustoNFModal">R$ 0,00</span></div>
-          <div><label>Soma dos Produtos Detalhados</label><span id="confSomaProdutosModal">R$ 0,00</span></div>
-          <div><label>Diferença</label><span id="confDiferencaModal">R$ 0,00</span></div>
-          <div><label>Status</label><span id="confStatusModal" class="status-badge">—</span></div>
-        </div>
-        <div class="btn-row-h" style="margin-top:10px">
-          <button class="btn bgray" id="btnAjustarDiferencaModal">Ajustar diferença no último item</button>
-          <button class="btn bo" id="btnRegistrarNotaModal">Registrar Nota</button>
+      <!-- TAB: HISTÓRICO DE ALTERAÇÕES -->
+      <div class="mtab-panel" id="tab-alteracoes">
+        <div id="alteracoesContent">
+          <div class="alert-info">Histórico de alterações de datas deste pedido.</div>
         </div>
       </div>
     </div>
+
     <div class="modal-foot">
-      <button class="btn bgray" id="btnFecharDetalhe">Fechar</button>
-      <button class="btn bk" id="btnConfirmarDetalhe">Confirmar Detalhamento</button>
+      <button class="btn bgray" id="btnCancelarPedido">Cancelar</button>
+      <button class="btn bk" id="btnSalvarPedido">Salvar Pedido</button>
     </div>
   </div>
 </div>
 
-<!-- ===== MODAL: EDITAR ITEM ===== -->
-<div class="modal-overlay" id="modalItem">
-  <div class="modal-box">
+<!-- ===== MODAL: AVANÇAR ETAPA ===== -->
+<div class="modal-overlay" id="modalEtapa">
+  <div class="modal-box" style="max-width:440px">
     <div class="modal-head">
-      <h3>Editar Item</h3>
-      <button class="modal-close" id="closeModalItem">&times;</button>
+      <h3 id="modalEtapaTitulo">Avançar Etapa</h3>
+      <button class="modal-close" id="closeEtapa">&times;</button>
     </div>
     <div class="modal-body">
-      <form id="formItem" class="form-grid">
-        <div class="field"><label>Código (Fornecedor)</label><input type="text" id="itCodigo"></div>
-        <div class="field"><label>Código Interno</label><input type="text" id="itCodigoInterno" placeholder="Cód. interno do sistema"></div>
-        <div class="field field-wide"><label>Descrição</label><input type="text" id="itDescricao"></div>
-        <div class="field"><label>NCM</label><input type="text" id="itNcm"></div>
-        <div class="field"><label>CFOP</label><input type="text" id="itCfop"></div>
-        <div class="field"><label>Quantidade</label><input type="number" id="itQtd" step="0.0001"></div>
-        <div class="field"><label>Valor Unitário (R$)</label><input type="number" id="itValorUnit" step="0.0001"></div>
-        <div class="field"><label>ICMS do Item (R$)</label><input type="number" id="itIcms" step="0.01"></div>
-        <div class="field"><label>IPI do Item (R$)</label><input type="number" id="itIpi" step="0.01"></div>
-        <div class="field"><label>ST do Item (R$)</label><input type="number" id="itSt" step="0.01"></div>
-        <div class="field"><label>PIS do Item (R$)</label><input type="number" id="itPis" step="0.01"></div>
-        <div class="field"><label>COFINS do Item (R$)</label><input type="number" id="itCofins" step="0.01"></div>
-        <div class="field">
-          <label>Produto Importado?</label>
-          <select id="itImportado"><option value="nao">Não</option><option value="sim">Sim</option></select>
-        </div>
-      </form>
+      <p id="modalEtapaDesc" style="font-size:.85rem;color:#666;margin-bottom:16px"></p>
+      <div class="field">
+        <label id="modalEtapaLabelData">Data</label>
+        <input type="date" id="etapaData">
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Observação (opcional)</label>
+        <input type="text" id="etapaObs" placeholder="Nota sobre esta etapa">
+      </div>
     </div>
     <div class="modal-foot">
-      <button class="btn bgray" id="btnCancelarItem">Cancelar</button>
-      <button class="btn bk" id="btnSalvarItem">Salvar Item</button>
+      <button class="btn bgray" id="btnCancelarEtapa">Cancelar</button>
+      <button class="btn bo" id="btnConfirmarEtapa">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ITEM DE PEDIDO (manual) ===== -->
+<div class="modal-overlay" id="modalItemPedido">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <h3>Item do Pedido</h3>
+      <button class="modal-close" id="closeItemPedido">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>ITEM NO *</label><input type="text" id="ipItemNo" placeholder="Ex: VW001-001"></div>
+        <div class="field field-wide"><label>Descrição</label><input type="text" id="ipDescricao"></div>
+        <div class="field field-wide"><label>OE NO</label><input type="text" id="ipOeNo"></div>
+        <div class="field"><label>QTY Pedida</label><input type="number" id="ipQtd" step="1" value="0"></div>
+        <div class="field"><label>Preço Unit. (USD)</label><input type="number" id="ipPreco" step="0.01" value="0"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarItemPedido">Cancelar</button>
+      <button class="btn bk" id="btnSalvarItemPedido">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ADIÇÃO DUIMP ===== -->
+<div class="modal-overlay" id="modalAdicao">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-head">
+      <h3>Adição da DUIMP</h3>
+      <button class="modal-close" id="closeAdicao">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Nº da Adição</label><input type="text" id="adAdicao" placeholder="Ex: 001"></div>
+        <div class="field"><label>NCM</label><input type="text" id="adNcm"></div>
+        <div class="field field-wide"><label>Descrição</label><input type="text" id="adDescricao"></div>
+        <div class="field"><label>Ref. ITEM NO (do pedido)</label><input type="text" id="adItemNo" placeholder="Ex: VW001-001"></div>
+        <div class="field"><label>Qtd. Estatística</label><input type="number" id="adQtd" step="0.001" value="0"></div>
+        <div class="field"><label>Unidade</label><input type="text" id="adUnidade" placeholder="UN, KG..."></div>
+        <div class="field"><label>Vlr. FOB Unit. (USD)</label><input type="number" id="adFobUnit" step="0.01" value="0"></div>
+        <div class="field"><label>Vlr. FOB Total (USD)</label><input type="number" id="adFobTotal" step="0.01" value="0"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarAdicao">Cancelar</button>
+      <button class="btn bk" id="btnSalvarAdicao">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ALERTA DE FABRICAÇÃO ===== -->
+<div class="modal-overlay" id="modalAlerta">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head" id="alertaHead">
+      <h3 id="alertaTitulo"></h3>
+      <div id="alertaBadge"></div>
+    </div>
+    <div class="modal-body">
+      <div id="alertaInfoBox"></div>
+      <div class="alerta-timeline" id="alertaTimeline"></div>
+      <div class="field" style="margin-top:18px">
+        <label id="alertaLabelObs">Observação / update do fornecedor</label>
+        <textarea id="alertaObs" rows="3" style="padding:9px 11px;border:1.5px solid #e2e0de;border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical;width:100%" placeholder="Descreva o status recebido do fornecedor..."></textarea>
+      </div>
+      <div id="alertaNegociacao" style="margin-top:14px">
+        <div class="negoc-label">📅 Nova data negociada com o fornecedor</div>
+        <div class="field" style="margin-top:6px">
+          <label>Nova data de despacho acordada</label>
+          <input type="date" id="alertaNovaData">
+        </div>
+        <small class="negoc-hint">Opcional · Permitido apenas 1 renegociação por etapa · deixe em branco para não alterar o prazo</small>
+      </div>
+      <div id="alertaNegociacaoInfo" style="display:none;margin-top:14px"></div>
+      <div class="alerta-counter" id="alertaCounter" style="display:none"></div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between">
+      <button class="btn bgray" id="btnAlertaSnooze">⏰ Verificar depois</button>
+      <button class="btn bo" id="btnAlertaRegistrar">✔ Registrar update</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CONFIRMAR EXCLUSÃO ===== -->
+<div class="modal-overlay" id="modalExcluir">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head">
+      <h3>Excluir Pedido</h3>
+      <button class="modal-close" id="closeExcluir">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="excluirDesc" style="font-size:.9rem;font-weight:600;color:#1a1a1a;margin-bottom:14px"></p>
+      <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:.8rem;color:#991b1b">
+        ⚠️ O pedido será marcado como <strong>cancelado</strong> e movido para o Histórico. Esta ação não pode ser desfeita.
+      </div>
+      <div class="field">
+        <label>Justificativa do cancelamento *</label>
+        <textarea id="excluirJustificativa" rows="4" style="padding:9px 11px;border:1.5px solid #e2e0de;border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical;width:100%" placeholder="Descreva o motivo do cancelamento..."></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarExcluir">Voltar</button>
+      <button class="btn btn-del-confirm" id="btnConfirmarExcluir">🗑 Confirmar Cancelamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: HISTÓRICO DE PEDIDOS ===== -->
+<div class="modal-overlay" id="modalHistorico">
+  <div class="modal-box modal-xl">
+    <div class="modal-head">
+      <h3>📋 Histórico de Pedidos</h3>
+      <button class="modal-close" id="closeHistorico">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="filtro-chips" id="historicoFiltros">
+        <button class="filtro-chip active" data-filtro="aberto">Em Aberto</button>
+        <button class="filtro-chip" data-filtro="cancelado">Cancelados</button>
+        <button class="filtro-chip" data-filtro="todos">Todos</button>
+      </div>
+      <div class="table-wrap" style="max-height:65vh">
+        <table id="tblHistorico">
+          <thead><tr>
+            <th>Referência</th><th>Fornecedor</th><th>País</th>
+            <th>Data Pedido</th><th>Etapa</th><th>Status</th>
+            <th>Motivo Cancelamento</th><th>Data Cancelamento</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="closeHistoricoBtn">Fechar</button>
     </div>
   </div>
 </div>
