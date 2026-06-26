@@ -23,6 +23,7 @@ const STATE = {
   },
   notaEmEdicao: null,  // rascunho da nota sendo lançada na tela "Entrada de NF-e"
   metodoAtual: 'xml',
+  tipoNFAtual: 'nacional',
   itemEditandoIndex: null
 };
 
@@ -235,7 +236,10 @@ function novaNotaVazia() {
     icms: 0, st: 0, ipi: 0, pis: 0, cofins: 0,
     outros: 0, descontos: 0, valorTotal: 0, valorFinal: 0,
     obs: '', metodo: 'manual', mva: 0, temPisCofins: false, dataLancamento: hojeISO(),
-    itens: [], status: 'pendente', somaItens: 0, stAdicional: 0, totalCustoNF: 0, diferenca: 0
+    itens: [], status: 'pendente', somaItens: 0, stAdicional: 0, totalCustoNF: 0, diferenca: 0,
+    tipoNF: 'nacional', ii: 0,
+    custosImportacao: { freteInt: 0, seguro: 0, capatazia: 0, afrmm: 0, taxaBancaria: 0, despachante: 0, armazenagem: 0, sda: 0, taxaBL: 0, outros: 0 },
+    numerarioTotal: 0
   };
 }
 
@@ -243,6 +247,8 @@ function initEntradaNota() {
   document.getElementById('nfDataLancamento').value = hojeISO();
   document.getElementById('btnMetodoXml').addEventListener('click', () => selecionarMetodo('xml'));
   document.getElementById('btnMetodoManual').addEventListener('click', () => selecionarMetodo('manual'));
+  document.getElementById('btnTipoNacional').addEventListener('click', () => selecionarTipoNF('nacional'));
+  document.getElementById('btnTipoImportacao').addEventListener('click', () => selecionarTipoNF('importacao'));
 
   const dropArea = document.getElementById('xmlUploadArea');
   const xmlInput = document.getElementById('xmlInput');
@@ -271,6 +277,8 @@ function initEntradaNota() {
   document.getElementById('btnCancelarNota').addEventListener('click', () => {
     STATE.notaEmEdicao = null;
     document.getElementById('notaFormCard').style.display = 'none';
+    document.getElementById('numerarioCard').style.display = 'none';
+    limparNumerario();
     document.getElementById('formNota').reset();
   });
   document.getElementById('btnRegistrarNota').addEventListener('click', registrarNotaEIrParaLista);
@@ -287,9 +295,11 @@ function selecionarMetodo(metodo) {
   if (metodo === 'manual') {
     STATE.notaEmEdicao = novaNotaVazia();
     STATE.notaEmEdicao.metodo = 'manual';
+    STATE.notaEmEdicao.tipoNF = STATE.tipoNFAtual || 'nacional';
     document.getElementById('formNota').reset();
     document.getElementById('nfDataLancamento').value = hojeISO();
     document.getElementById('notaFormCard').style.display = 'block';
+    document.getElementById('numerarioCard').style.display = STATE.tipoNFAtual === 'importacao' ? 'block' : 'none';
     document.getElementById('mvaArea').style.display = 'none';
     document.getElementById('conferenciaBox').style.display = 'none';
   }
@@ -302,8 +312,8 @@ function processarArquivoXml(file) {
       const nota = extrairDadosNota(e.target.result);
       nota.metodo = 'xml';
       STATE.notaEmEdicao = nota;
-      preencherFormularioNota(nota);
       document.getElementById('notaFormCard').style.display = 'block';
+      preencherFormularioNota(nota); // calls selecionarTipoNF which shows/hides numerarioCard
       toggleMvaArea();
     } catch (err) {
       alert('Não foi possível ler este XML de NF-e. Verifique o arquivo. (' + err.message + ')');
@@ -352,6 +362,10 @@ function extrairDadosNota(xmlString) {
   nota.valorTotal = num(lerTag(total, 'vNF'));
   nota.valorFinal = nota.valorTotal;
   nota.icmsFrete = 0; // não vem destacado nos totais padrão da NF-e
+  nota.ii = num(lerTag(total, 'vII'));
+
+  // Detecta NF de importação pela natureza da operação ou CFOP dos itens
+  const natOp = lerTag(ide, 'natOp');
 
   // Itens
   const dets = Array.from(infNFe.getElementsByTagName('det'));
@@ -365,6 +379,7 @@ function extrairDadosNota(xmlString) {
     const pisItem = somaImpostoItem(imposto, 'PIS', ['vPIS']);
     const cofinsItem = somaImpostoItem(imposto, 'COFINS', ['vCOFINS']);
     const stItem = somaImpostoItem(imposto, 'ICMS', ['vICMSST']);
+    const iiItem = somaImpostoItem(imposto, 'II', ['vII']);
     const origemIcms = lerOrigemICMS(imposto);
 
     return {
@@ -375,18 +390,23 @@ function extrairDadosNota(xmlString) {
       qtd: num(lerTag(prod, 'qCom')) || 1,
       valorUnit: num(lerTag(prod, 'vUnCom')),
       valorTotalItem: num(lerTag(prod, 'vProd')),
-      icmsItem, ipiItem, pisItem, cofinsItem, stItem,
+      icmsItem, ipiItem, pisItem, cofinsItem, stItem, iiItem,
       // CST/CSOSN: o 1º dígito (origem) 1 ou 2 = mercadoria estrangeira (importado);
       // 0, 3, 4 ou 5 = mercadoria nacional. Se não vier no XML, cai no heurístico por CFOP.
       importado: origemIcms !== null ? ['1', '2'].includes(origemIcms) : cfop.startsWith('3'),
       origemIcms: origemIcms || '',
       codigoInterno: '',
       pagaPisCofins: false,
-      freteDiluido: 0, icmsFreteDiluido: 0, outrosDiluidos: 0, descontoDiluido: 0,
+      freteDiluido: 0, icmsFreteDiluido: 0, outrosDiluidos: 0, descontoDiluido: 0, numerarioDiluido: 0,
       custoTotalEntrada: 0, custoUnitarioReal: 0,
       mva: 0, aliqInterna: 0, aliqOp: 0
     };
   });
+
+  // Auto-detect import NF by natOp or all CFOPs starting with '3'
+  const isImportacao = natOp.toUpperCase().includes('IMPORTA')
+    || (nota.itens.length > 0 && nota.itens.every(i => i.cfop.startsWith('3')));
+  nota.tipoNF = isImportacao ? 'importacao' : 'nacional';
 
   return nota;
 }
@@ -420,7 +440,7 @@ function somaImpostoItem(impostoEl, grupo, campos) {
 
 /* ---- Formulário manual / preenchido por XML ---- */
 
-function preencherFormularioNota(nota) {
+function preencherFormularioNota(nota, isEditing = false) {
   document.getElementById('nfNumero').value = nota.numero;
   document.getElementById('nfDataLancamento').value = nota.dataLancamento || hojeISO();
   document.getElementById('nfFornecedor').value = nota.fornecedor;
@@ -433,12 +453,18 @@ function preencherFormularioNota(nota) {
   document.getElementById('nfIpi').value = nota.ipi;
   document.getElementById('nfPis').value = nota.pis;
   document.getElementById('nfCofins').value = nota.cofins;
+  document.getElementById('nfII').value = nota.ii || 0;
   document.getElementById('nfOutros').value = nota.outros;
   document.getElementById('nfDescontos').value = nota.descontos;
   document.getElementById('nfValorTotal').value = nota.valorTotal;
   document.getElementById('nfTemPisCofins').value = nota.temPisCofins ? 'sim' : 'nao';
   document.getElementById('hintPisCofins').style.display = nota.temPisCofins ? 'block' : 'none';
   document.getElementById('nfObs').value = nota.obs;
+  const autoDetectado = !isEditing && nota.metodo === 'xml' && nota.tipoNF === 'importacao';
+  selecionarTipoNF(nota.tipoNF || 'nacional', autoDetectado);
+  if (nota.tipoNF === 'importacao' && nota.custosImportacao) {
+    preencherFormularioNumerario(nota.custosImportacao);
+  }
   recalcularCamposNota();
 }
 
@@ -457,12 +483,17 @@ function lerFormularioNota() {
   n.ipi = num(document.getElementById('nfIpi').value);
   n.pis = num(document.getElementById('nfPis').value);
   n.cofins = num(document.getElementById('nfCofins').value);
+  n.ii = num(document.getElementById('nfII').value);
   n.outros = num(document.getElementById('nfOutros').value);
   n.descontos = num(document.getElementById('nfDescontos').value);
   n.valorTotal = num(document.getElementById('nfValorTotal').value);
   n.obs = document.getElementById('nfObs').value.trim();
   n.mva = num(document.getElementById('mvaInput').value);
   n.temPisCofins = document.getElementById('nfTemPisCofins').value === 'sim';
+  n.tipoNF = STATE.tipoNFAtual || 'nacional';
+  if (n.tipoNF === 'importacao') {
+    n.custosImportacao = lerFormularioNumerario();
+  }
   calcularTotaisNota(n);
   return n;
 }
@@ -473,6 +504,206 @@ function calcularTotaisNota(nota) {
     nota.valorProdutos + nota.valorFrete + nota.ipi + nota.st + nota.outros - nota.descontos
   );
   return nota;
+}
+
+function lerFormularioNumerario() {
+  const r = id => parseValorBR(document.getElementById(id).value);
+  return {
+    freteInt:     r('numFreteInt'),
+    seguro:       r('numSeguro'),
+    capatazia:    r('numCapatazia'),
+    afrmm:        r('numAfrmm'),
+    taxaBancaria: r('numTaxaBancaria'),
+    despachante:  r('numDespachante'),
+    armazenagem:  r('numArmazenagem'),
+    sda:          r('numSda'),
+    taxaBL:       r('numTaxaBL'),
+    outros:       r('numOutros')
+  };
+}
+
+function totalNumerario(ci) {
+  if (!ci) return 0;
+  return Object.values(ci).reduce((s, v) => s + num(v), 0);
+}
+
+function fmtBR(v) {
+  return num(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function preencherFormularioNumerario(ci) {
+  document.getElementById('numFreteInt').value     = fmtBR(ci.freteInt);
+  document.getElementById('numSeguro').value       = fmtBR(ci.seguro);
+  document.getElementById('numCapatazia').value    = fmtBR(ci.capatazia);
+  document.getElementById('numAfrmm').value        = fmtBR(ci.afrmm);
+  document.getElementById('numTaxaBancaria').value = fmtBR(ci.taxaBancaria);
+  document.getElementById('numDespachante').value  = fmtBR(ci.despachante);
+  document.getElementById('numArmazenagem').value  = fmtBR(ci.armazenagem);
+  document.getElementById('numSda').value          = fmtBR(ci.sda || 0);
+  document.getElementById('numTaxaBL').value       = fmtBR(ci.taxaBL || 0);
+  document.getElementById('numOutros').value       = fmtBR(ci.outros);
+  atualizarTotalNumerario();
+}
+
+function atualizarTotalNumerario() {
+  document.getElementById('numTotal').value = fmtBR(totalNumerario(lerFormularioNumerario()));
+}
+
+function limparNumerario() {
+  preencherFormularioNumerario({ freteInt:0, seguro:0, capatazia:0, afrmm:0, taxaBancaria:0, despachante:0, armazenagem:0, sda:0, taxaBL:0, outros:0 });
+}
+
+/* ---- Leitura de PDF do Numerário ---- */
+
+function initNumerarioPDF() {
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  document.getElementById('numerarioPDFInput').addEventListener('change', e => {
+    if (e.target.files.length) processarPDFNumerario(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  // Máscara de moeda BR para todos os campos do numerário
+  document.querySelectorAll('#numerarioCard .campo-valor-br:not([readonly])').forEach(input => {
+    input.addEventListener('focus', () => { input.select(); });
+    input.addEventListener('blur', () => {
+      input.value = fmtBR(parseValorBR(input.value));
+      atualizarTotalNumerario();
+    });
+    input.addEventListener('input', atualizarTotalNumerario);
+  });
+}
+
+async function processarPDFNumerario(file) {
+  const statusEl = document.getElementById('numerarioPDFStatus');
+  statusEl.style.display = 'block';
+  statusEl.className = 'numerario-pdf-status info';
+  statusEl.textContent = '⏳ Lendo PDF...';
+
+  try {
+    if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js não carregado');
+
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+
+    let linhasPDF = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+
+      // Agrupa itens por linha usando coordenada Y (arredondada)
+      const mapaLinhas = new Map();
+      for (const item of content.items) {
+        const y = Math.round(item.transform[5]);
+        mapaLinhas.set(y, (mapaLinhas.get(y) || '') + item.str + ' ');
+      }
+      // Ordena de cima para baixo (Y maior = mais alto no PDF)
+      const ordenadas = [...mapaLinhas.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([, t]) => t.trim())
+        .filter(t => t);
+      linhasPDF = linhasPDF.concat(ordenadas);
+    }
+
+    const valores = extrairValoresNumerario(linhasPDF);
+    const encontrados = Object.values(valores).filter(v => v > 0).length;
+
+    preencherFormularioNumerario(valores);
+
+    if (encontrados > 0) {
+      statusEl.className = 'numerario-pdf-status ok';
+      statusEl.textContent = `✅ ${encontrados} campo(s) preenchido(s) automaticamente. Verifique os valores antes de salvar.`;
+    } else {
+      statusEl.className = 'numerario-pdf-status warn';
+      statusEl.textContent = '⚠️ Nenhum valor reconhecido. Preencha manualmente.';
+    }
+  } catch (err) {
+    statusEl.className = 'numerario-pdf-status warn';
+    statusEl.textContent = '⚠️ Erro ao ler o PDF. Verifique se é um PDF de texto (não escaneado) e tente novamente.';
+    console.error('PDF Numerário:', err);
+  }
+}
+
+function parseValorBR(str) {
+  str = (str || '').trim().replace(/\s/g, '');
+  if (!str) return 0;
+  // Formato BR: 1.234,56 → remove separadores de milhar, troca vírgula decimal
+  if (str.includes(',')) return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+  // Formato EN: 1234.56
+  return parseFloat(str) || 0;
+}
+
+function extrairMelhorValor(linha) {
+  // Tenta primeiro o formato BR com centavos: 1.234,56 ou 1234,56
+  const br = [...linha.matchAll(/\d{1,3}(?:\.\d{3})*,\d{2}/g)].map(m => parseValorBR(m[0]));
+  if (br.length) return br[br.length - 1]; // último valor da linha
+
+  // Fallback: qualquer número com separador decimal
+  const dec = [...linha.matchAll(/\d+[.,]\d+/g)].map(m => parseValorBR(m[0]));
+  if (dec.length) return dec[dec.length - 1];
+
+  return 0;
+}
+
+function extrairValoresNumerario(linhas) {
+  const r = { freteInt: 0, seguro: 0, capatazia: 0, afrmm: 0, taxaBancaria: 0, despachante: 0, armazenagem: 0, sda: 0, taxaBL: 0, outros: 0 };
+
+  for (const linha of linhas) {
+    const valor = extrairMelhorValor(linha);
+    if (!valor || valor < 0.01) continue;
+
+    const low = linha.toLowerCase();
+
+    if (/frete\s*(internacional|mar[ií]timo|ocean|a[eé]reo|ext|cif|cfr)/i.test(low)
+        || (/\bfrete\b/i.test(low) && /inter|ocean|ext|sea|air|mar[ií]/i.test(low))) {
+      r.freteInt = Math.max(r.freteInt, valor);
+
+    } else if (/\bseguro\b/i.test(low)) {
+      r.seguro = Math.max(r.seguro, valor);
+
+    } else if (/capatazia|thc\b|terminal\s*handling/i.test(low)) {
+      r.capatazia = Math.max(r.capatazia, valor);
+
+    } else if (/\bafrmm\b|a\.f\.r\.m\.m|marinha\s*mercante|adicional.*marinha|renova[çc][aã]o.*marinha/i.test(low)) {
+      r.afrmm = Math.max(r.afrmm, valor);
+
+    } else if (/taxa\s*banc|comiss[aã]o\s*banc|c[aâ]mbio|spread|iof\b|remessa\s*banc/i.test(low)) {
+      r.taxaBancaria += valor;
+
+    } else if (/despachante|honorár/i.test(low)) {
+      r.despachante += valor;
+
+    } else if (/armazen/i.test(low)) {
+      r.armazenagem += valor;
+
+    } else if (/\bsda\b|servi[çc]o\s*despacho|sistem.*despacho\s*adu/i.test(low)) {
+      r.sda = Math.max(r.sda, valor);
+
+    } else if (/libera[çc][aã]o.*\bbl\b|bl.*libera[çc]|release.*fee|\bbl\b.*taxa|taxa.*\bbl\b/i.test(low)) {
+      r.taxaBL = Math.max(r.taxaBL, valor);
+    }
+    // Ignorados (já vêm no XML): SISCOMEX, II, IPI, ICMS, PIS, COFINS
+  }
+
+  return r;
+}
+
+function selecionarTipoNF(tipo, autoDetectado) {
+  STATE.tipoNFAtual = tipo;
+  document.getElementById('btnTipoNacional').classList.toggle('active', tipo === 'nacional');
+  document.getElementById('btnTipoImportacao').classList.toggle('active', tipo === 'importacao');
+  const isImp = tipo === 'importacao';
+  document.getElementById('fieldNfII').style.display = isImp ? '' : 'none';
+  const card = document.getElementById('numerarioCard');
+  card.style.display = isImp ? 'block' : 'none';
+  // Mostra alerta de solicitação do numerário apenas quando detectado via XML
+  document.getElementById('numerarioAlerta').style.display = isImp && autoDetectado ? 'flex' : 'none';
+  if (isImp && autoDetectado) {
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+  }
+  if (STATE.notaEmEdicao) STATE.notaEmEdicao.tipoNF = tipo;
 }
 
 function recalcularCamposNota() {
@@ -516,6 +747,19 @@ function diluirCustosAdicionais(nota) {
     if (!item.pisItem && nota.pis) item.pisItem = percItem * nota.pis;
     if (!item.cofinsItem && nota.cofins) item.cofinsItem = percItem * nota.cofins;
     if (!item.stItem && nota.st && !UFS_ST_ESPECIAL.includes(nota.uf)) item.stItem = percItem * nota.st;
+    // Para NF de importação, dilui II proporcional caso não tenha vindo por item no XML
+    if (nota.tipoNF === 'importacao' && !item.iiItem && nota.ii) item.iiItem = percItem * nota.ii;
+  });
+  return nota;
+}
+
+function diluirNumerario(nota) {
+  if (nota.tipoNF !== 'importacao') return nota;
+  const totalNum = totalNumerario(nota.custosImportacao);
+  const base = nota.valorProdutos || nota.itens.reduce((s, i) => s + i.valorTotalItem, 0);
+  nota.itens.forEach(item => {
+    const perc = base > 0 ? item.valorTotalItem / base : 0;
+    item.numerarioDiluido = perc * totalNum;
   });
   return nota;
 }
@@ -554,7 +798,7 @@ function calcularST(nota) {
 
 /* ---- Custo unitário por item ---- */
 
-function calcularCustoUnitario(item, regime) {
+function calcularCustoUnitario(item, regime, nota) {
   let custo = item.valorTotalItem
     + item.freteDiluido
     + item.icmsFreteDiluido
@@ -563,12 +807,15 @@ function calcularCustoUnitario(item, regime) {
     + item.outrosDiluidos
     - item.descontoDiluido;
 
-  if (regime === 'simples') custo += item.icmsItem; // sem crédito de ICMS no Simples
-
-  // PIS/COFINS só entram no custo quando o item está marcado em "Pagar PIS/COFINS".
-  // Quando não marcado, os valores continuam aparecendo na tabela, apenas como informação,
-  // sem somar ao custo total de entrada.
-  if (item.pagaPisCofins) custo += item.pisItem + item.cofinsItem;
+  if (nota && nota.tipoNF === 'importacao') {
+    // Importação: ICMS, PIS, COFINS são "por fora" (não no preço do produto) — incluir sempre no custo de entrada.
+    custo += (item.iiItem || 0) + (item.numerarioDiluido || 0) + item.icmsItem + item.pisItem + item.cofinsItem;
+  } else {
+    // Nacional: ICMS embutido no preço; Simples não tem crédito, então adiciona como custo extra.
+    if (regime === 'simples') custo += item.icmsItem;
+    // PIS/COFINS nacionais só entram no custo quando marcado "Pagar PIS/COFINS".
+    if (item.pagaPisCofins) custo += item.pisItem + item.cofinsItem;
+  }
 
   item.custoTotalEntrada = custo;
   item.custoUnitarioReal = item.qtd > 0 ? custo / item.qtd : 0;
@@ -578,8 +825,9 @@ function calcularCustoUnitario(item, regime) {
 function recalcularItensNota(nota) {
   diluirFrete(nota);
   diluirCustosAdicionais(nota);
+  diluirNumerario(nota);
   calcularST(nota);
-  nota.itens.forEach(item => calcularCustoUnitario(item, STATE.config.regimeTributario));
+  nota.itens.forEach(item => calcularCustoUnitario(item, STATE.config.regimeTributario, nota));
   conferirFechamento(nota);
   return nota;
 }
@@ -587,23 +835,31 @@ function recalcularItensNota(nota) {
 /* ---- Conferência de fechamento ---- */
 
 function conferirFechamento(nota) {
-  // Soma dos componentes alocados a cada item (sem PIS/COFINS, que são tratados aparte).
-  const somaItens = nota.itens.reduce((s, i) =>
-    s + i.valorTotalItem + i.freteDiluido + i.icmsFreteDiluido + i.ipiItem + i.stItem + i.outrosDiluidos - i.descontoDiluido, 0);
+  const isImp = nota.tipoNF === 'importacao';
 
-  // Nos estados com ST de entrada calculada pelo sistema (SC/ES/GO/RN/RS), o ST não vem
-  // embutido no valor final da NF (o fornecedor não o calcula) — é um custo adicional que o
-  // comprador se autoassessa. Por isso ele soma ao "Total Custo da NF" em vez de ser tratado
-  // como divergência de fechamento.
-  const stAdicional = UFS_ST_ESPECIAL.includes(nota.uf) ? nota.itens.reduce((s, i) => s + i.stItem, 0) : 0;
-  const totalCustoNF = nota.valorFinal + stAdicional;
-  const diferenca = totalCustoNF - somaItens;
+  // somaItens espelha a lógica de calcularCustoUnitario para cada regime.
+  const somaItens = nota.itens.reduce((s, i) => {
+    let v = i.valorTotalItem + i.freteDiluido + i.icmsFreteDiluido + i.ipiItem + i.stItem + i.outrosDiluidos - i.descontoDiluido;
+    if (isImp) {
+      // Importação: todos os impostos alfandegários são por fora — somam no custo.
+      v += (i.iiItem || 0) + (i.numerarioDiluido || 0) + i.icmsItem + i.pisItem + i.cofinsItem;
+    }
+    return s + v;
+  }, 0);
+
+  // ST adicional via MVA — aplica-se tanto para NF nacional quanto importação em estados ST.
+  const stAdicional = UFS_ST_ESPECIAL.includes(nota.uf)
+    ? nota.itens.reduce((s, i) => s + i.stItem, 0) : 0;
+
+  const numTotal = isImp ? totalNumerario(nota.custosImportacao) : 0;
+  const totalCustoNF = nota.valorFinal + stAdicional + numTotal;
 
   nota.somaItens = somaItens;
   nota.stAdicional = stAdicional;
+  nota.numerarioTotal = numTotal;
   nota.totalCustoNF = totalCustoNF;
-  nota.diferenca = diferenca;
-  nota.status = Math.abs(diferenca) < 0.02 ? 'fechado' : (nota.itens.length ? 'divergente' : 'pendente');
+  nota.diferenca = totalCustoNF - somaItens;
+  nota.status = Math.abs(nota.diferenca) < 0.02 ? 'fechado' : (nota.itens.length ? 'divergente' : 'pendente');
   return nota;
 }
 
@@ -612,7 +868,7 @@ function ajustarDiferencaUltimoItem(nota) {
   conferirFechamento(nota);
   const ultimo = nota.itens[nota.itens.length - 1];
   ultimo.outrosDiluidos += nota.diferenca; // absorve a diferença de arredondamento
-  calcularCustoUnitario(ultimo, STATE.config.regimeTributario);
+  calcularCustoUnitario(ultimo, STATE.config.regimeTributario, nota);
   conferirFechamento(nota);
   return nota;
 }
@@ -632,8 +888,9 @@ function abrirModalDetalhe() {
 function novoItemVazio() {
   return {
     codigo: '', descricao: '', ncm: '', cfop: '', qtd: 1, valorUnit: 0, valorTotalItem: 0,
-    icmsItem: 0, ipiItem: 0, pisItem: 0, cofinsItem: 0, stItem: 0, importado: false, origemIcms: '', pagaPisCofins: false, codigoInterno: '',
-    freteDiluido: 0, icmsFreteDiluido: 0, outrosDiluidos: 0, descontoDiluido: 0,
+    icmsItem: 0, ipiItem: 0, pisItem: 0, cofinsItem: 0, stItem: 0, iiItem: 0,
+    importado: false, origemIcms: '', pagaPisCofins: false, codigoInterno: '',
+    freteDiluido: 0, icmsFreteDiluido: 0, outrosDiluidos: 0, descontoDiluido: 0, numerarioDiluido: 0,
     custoTotalEntrada: 0, custoUnitarioReal: 0, mva: 0, aliqInterna: 0, aliqOp: 0
   };
 }
@@ -645,8 +902,9 @@ function renderTabelaItensDetalhe() {
 
   document.getElementById('alertaPisCofinsModal').style.display = 'block';
 
+  const isImp = n.tipoNF === 'importacao';
   if (!n.itens.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="22">Nenhum item adicionado.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="24">Nenhum item adicionado.</td></tr>';
   } else {
     n.itens.forEach((item, idx) => {
       tbody.innerHTML += `<tr>
@@ -666,6 +924,8 @@ function renderTabelaItensDetalhe() {
         <td class="tr">${fmtMoeda(item.stItem)}</td>
         <td class="tr">${fmtMoeda(item.pisItem)}</td>
         <td class="tr">${fmtMoeda(item.cofinsItem)}</td>
+        <td class="tr">${isImp ? fmtMoeda(item.iiItem || 0) : '—'}</td>
+        <td class="tr">${isImp ? fmtMoeda(item.numerarioDiluido || 0) : '—'}</td>
         <td class="tc"><input type="checkbox" class="chk-pis" ${item.pagaPisCofins ? 'checked' : ''} onchange="togglePagaPisCofins(${idx}, this.checked)"></td>
         <td class="tr">${fmtMoeda(item.outrosDiluidos)}</td>
         <td class="tc">${item.importado ? 'Sim' : 'Não'}</td>
@@ -699,10 +959,26 @@ function togglePagaPisCofins(idx, checked) {
 function renderConferencia(nota, sufixo = '') {
   conferirFechamento(nota);
   document.getElementById('confValorFinal' + sufixo).textContent = fmtMoeda(nota.valorFinal);
-  document.getElementById('confSTAdicional' + sufixo).textContent = fmtMoeda(nota.stAdicional);
   document.getElementById('confTotalCustoNF' + sufixo).textContent = fmtMoeda(nota.totalCustoNF);
   document.getElementById('confSomaProdutos' + sufixo).textContent = fmtMoeda(nota.somaItens);
   document.getElementById('confDiferenca' + sufixo).textContent = fmtMoeda(nota.diferenca);
+
+  const labelEl = document.getElementById('labelSTAdicional' + sufixo);
+  const stImportDiv = document.getElementById('confSTImportDiv' + sufixo);
+  if (nota.tipoNF === 'importacao') {
+    if (labelEl) labelEl.textContent = 'Numerário (Custos Extras)';
+    document.getElementById('confSTAdicional' + sufixo).textContent = fmtMoeda(nota.numerarioTotal || 0);
+    if (stImportDiv) {
+      const hasST = (nota.stAdicional || 0) > 0;
+      stImportDiv.style.display = hasST ? '' : 'none';
+      if (hasST) document.getElementById('confSTImport' + sufixo).textContent = fmtMoeda(nota.stAdicional);
+    }
+  } else {
+    if (labelEl) labelEl.textContent = 'ST Adicional (Calculada)';
+    document.getElementById('confSTAdicional' + sufixo).textContent = fmtMoeda(nota.stAdicional);
+    if (stImportDiv) stImportDiv.style.display = 'none';
+  }
+
   const statusEl = document.getElementById('confStatus' + sufixo);
   statusEl.textContent = nota.status === 'fechado' ? 'Fechado' : 'Divergente';
   statusEl.className = 'status-badge ' + (nota.status === 'fechado' ? 'fechado' : 'divergente');
@@ -780,6 +1056,9 @@ function initModais() {
   document.getElementById('btnFecharDetalhe').addEventListener('click', () => document.getElementById('modalDetalhe').classList.remove('open'));
   document.getElementById('closeModalDetalhe').addEventListener('click', () => document.getElementById('modalDetalhe').classList.remove('open'));
 
+  document.getElementById('btnFecharNumerarioDetalhe').addEventListener('click', () => document.getElementById('modalNumerarioDetalhe').classList.remove('open'));
+  document.getElementById('closeModalNumerarioDetalhe').addEventListener('click', () => document.getElementById('modalNumerarioDetalhe').classList.remove('open'));
+
   document.getElementById('btnConfirmarDetalhe').addEventListener('click', () => {
     renderConferencia(STATE.notaEmEdicao);
     document.getElementById('modalDetalhe').classList.remove('open');
@@ -811,6 +1090,8 @@ function salvarNotaAtual() {
 
   STATE.notaEmEdicao = null;
   document.getElementById('notaFormCard').style.display = 'none';
+  document.getElementById('numerarioCard').style.display = 'none';
+  limparNumerario();
   document.getElementById('formNota').reset();
   alert('Nota fiscal salva com sucesso.');
 }
@@ -824,20 +1105,27 @@ function renderNotasLancadas() {
   const tbody = document.querySelector('#tblNotas tbody');
   tbody.innerHTML = '';
   if (!STATE.notas.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="13">Nenhuma nota lançada ainda.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="15">Nenhuma nota lançada ainda.</td></tr>';
     return;
   }
   STATE.notas.forEach(n => {
     const totalST = n.itens.reduce((s, i) => s + i.stItem, 0);
     const totalIPI = n.itens.reduce((s, i) => s + i.ipiItem, 0);
-    // PIS/COFINS só entram na soma quando o item está marcado como "Pagar PIS/COFINS";
-    // quando não marcado, já está embutido no valor da peça e não deve ser somado aqui.
     const totalPIS = n.itens.reduce((s, i) => s + (i.pagaPisCofins ? i.pisItem : 0), 0);
     const totalCOFINS = n.itens.reduce((s, i) => s + (i.pagaPisCofins ? i.cofinsItem : 0), 0);
     const custoTotal = n.itens.reduce((s, i) => s + i.custoTotalEntrada, 0);
+    const isImp = n.tipoNF === 'importacao';
+    const numTotal = isImp ? (n.numerarioTotal || totalNumerario(n.custosImportacao)) : 0;
 
     const dataFmt = n.dataLancamento ? new Date(n.dataLancamento + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
-    tbody.innerHTML += `<tr>
+    const tipoBadge = isImp
+      ? '<span class="badge-imp">Importação</span>'
+      : '<span class="badge-nac">Nacional</span>';
+    const outrasDespesasCell = isImp
+      ? `<button class="link-detalhe" onclick="abrirDetalheNumerario('${n.id}')" title="Ver detalhamento por peça">${fmtMoeda(numTotal)}</button>`
+      : '—';
+    tbody.innerHTML += `<tr class="${isImp ? 'nf-importacao' : ''}">
+      <td>${tipoBadge}</td>
       <td>${dataFmt}</td><td>${n.numero}</td><td>${n.fornecedor}</td><td>${n.uf}</td>
       <td class="tr">${fmtMoeda(n.valorFinal)}</td>
       <td class="tr">${fmtMoeda(totalST)}</td>
@@ -847,9 +1135,15 @@ function renderNotasLancadas() {
       <td class="tr">${fmtMoeda(n.valorFrete)}</td>
       <td class="tr">${fmtMoeda(n.icmsFrete)}</td>
       <td class="tr"><strong>${fmtMoeda(custoTotal)}</strong></td>
-      <td class="tc"><button class="icon-btn" onclick="removerNota('${n.id}')" title="Remover">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-      </button></td>
+      <td class="tr">${outrasDespesasCell}</td>
+      <td class="tc">
+        <button class="icon-btn" onclick="editarNota('${n.id}')" title="Editar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="icon-btn" onclick="removerNota('${n.id}')" title="Remover">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
+      </td>
     </tr>`;
   });
 }
@@ -861,43 +1155,157 @@ function removerNota(id) {
   renderDashboard();
 }
 
+function editarNota(id) {
+  const nota = STATE.notas.find(n => n.id === id);
+  if (!nota) return;
+
+  // Navigate to the notas view
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelector('.nav-btn[data-view="notas"]').classList.add('active');
+  document.getElementById('view-notas').classList.add('active');
+
+  // Restore method state without resetting notaEmEdicao (selecionarMetodo('manual') would do that)
+  STATE.metodoAtual = nota.metodo || 'xml';
+  document.getElementById('btnMetodoXml').classList.toggle('active', STATE.metodoAtual === 'xml');
+  document.getElementById('btnMetodoManual').classList.toggle('active', STATE.metodoAtual === 'manual');
+  document.getElementById('xmlUploadArea').style.display = STATE.metodoAtual === 'xml' ? 'block' : 'none';
+
+  // Load a deep copy so the original is not mutated until save
+  STATE.notaEmEdicao = JSON.parse(JSON.stringify(nota));
+
+  document.getElementById('notaFormCard').style.display = 'block';
+  preencherFormularioNota(STATE.notaEmEdicao, true);
+  toggleMvaArea();
+  renderConferencia(STATE.notaEmEdicao);
+
+  setTimeout(() => document.getElementById('notaFormCard').scrollIntoView({ behavior: 'smooth' }), 100);
+}
+
+function abrirDetalheNumerario(id) {
+  const nota = STATE.notas.find(n => n.id === id);
+  if (!nota || nota.tipoNF !== 'importacao') return;
+  renderDetalheNumerario(nota);
+  document.getElementById('modalNumerarioDetalhe').classList.add('open');
+}
+
+function renderDetalheNumerario(nota) {
+  document.getElementById('detalheNumerarioTitulo').textContent =
+    `Numerário — NF ${nota.numero} | ${nota.fornecedor}`;
+
+  const ci = nota.custosImportacao || {};
+  const totalBase = nota.itens.reduce((s, i) => s + i.valorTotalItem, 0);
+  const totalNum = totalNumerario(ci);
+
+  const cats = [
+    { key: 'freteInt',     label: 'Frete Int.' },
+    { key: 'seguro',       label: 'Seguro' },
+    { key: 'capatazia',    label: 'Capatazia/THC' },
+    { key: 'afrmm',        label: 'A.F.R.M.M.' },
+    { key: 'taxaBancaria', label: 'Taxa Bancária' },
+    { key: 'despachante',  label: 'Despacho Adu.' },
+    { key: 'armazenagem',  label: 'Armazenagem' },
+    { key: 'sda',          label: 'SDA' },
+    { key: 'taxaBL',       label: 'Taxa BL' },
+    { key: 'outros',       label: 'Outros' },
+  ].filter(c => num(ci[c.key]) > 0);
+
+  const thead = document.getElementById('detalheNumerarioThead');
+  thead.innerHTML = `<tr>
+    <th>Código</th><th>Descrição</th><th class="tr">Qtd</th><th class="tr">Vlr. Unit.</th>
+    <th class="tr">Vlr. Total</th><th class="tr">% Total</th>
+    ${cats.map(c => `<th class="tr">${c.label}</th>`).join('')}
+    <th class="tr">Total Bruto</th><th class="tr">Total Unit. Bruto</th>
+  </tr>`;
+
+  const tbody = document.getElementById('detalheNumerarioBody');
+  tbody.innerHTML = '';
+
+  nota.itens.forEach(item => {
+    const percFrac = totalBase > 0 ? item.valorTotalItem / totalBase : 0;
+    const catVals = cats.map(c => percFrac * num(ci[c.key]));
+    const totalItemNum = catVals.reduce((s, v) => s + v, 0);
+    tbody.innerHTML += `<tr>
+      <td>${item.codigo || '—'}</td>
+      <td>${item.descricao || '—'}</td>
+      <td class="tr">${item.qtd}</td>
+      <td class="tr">${fmtMoeda(item.valorUnit)}</td>
+      <td class="tr">${fmtMoeda(item.valorTotalItem)}</td>
+      <td class="tr">${fmtPerc(percFrac * 100)}</td>
+      ${catVals.map(v => `<td class="tr">${fmtMoeda(v)}</td>`).join('')}
+      <td class="tr"><strong>${fmtMoeda(totalItemNum)}</strong></td>
+      <td class="tr"><strong>${fmtMoeda(item.qtd > 0 ? totalItemNum / item.qtd : 0)}</strong></td>
+    </tr>`;
+  });
+
+  // Totals row
+  const catTotals = cats.map(c => num(ci[c.key]));
+  tbody.innerHTML += `<tr class="detalhe-total-row">
+    <td colspan="5"><strong>TOTAL</strong></td>
+    <td class="tr"><strong>100%</strong></td>
+    ${catTotals.map(v => `<td class="tr"><strong>${fmtMoeda(v)}</strong></td>`).join('')}
+    <td class="tr"><strong>${fmtMoeda(totalNum)}</strong></td>
+    <td></td>
+  </tr>`;
+}
+
 /* ============================== CUSTO POR PRODUTO (visão geral) ============================== */
 
 function initProdutosGeral() {
-  document.getElementById('filtroNFProdutos').addEventListener('input', renderProdutosGeral);
+  ['filtroNFProdutos', 'filtroFornecedorProdutos'].forEach(id =>
+    document.getElementById(id).addEventListener('input', renderProdutosGeral));
+  ['filtroDataInicioProdutos', 'filtroDataFimProdutos'].forEach(id =>
+    document.getElementById(id).addEventListener('change', renderProdutosGeral));
+  document.getElementById('btnLimparFiltrosProdutos').addEventListener('click', () => {
+    ['filtroNFProdutos', 'filtroFornecedorProdutos', 'filtroDataInicioProdutos', 'filtroDataFimProdutos']
+      .forEach(id => { document.getElementById(id).value = ''; });
+    renderProdutosGeral();
+  });
 }
 
 function renderProdutosGeral() {
   const tbody = document.querySelector('#tblProdutosGeral tbody');
   tbody.innerHTML = '';
 
-  const datalist = document.getElementById('listaNFsProdutos');
-  datalist.innerHTML = STATE.notas.map(n => `<option value="${n.numero}">`).join('');
+  document.getElementById('listaNFsProdutos').innerHTML =
+    STATE.notas.map(n => `<option value="${n.numero}">`).join('');
+  document.getElementById('listaFornecedoresProdutos').innerHTML =
+    [...new Set(STATE.notas.map(n => n.fornecedor).filter(Boolean))]
+      .map(f => `<option value="${f}">`).join('');
 
-  const filtro = document.getElementById('filtroNFProdutos').value.trim().toLowerCase();
-  if (!filtro) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="19">Informe o número de uma nota fiscal lançada para visualizar os itens.</td></tr>';
+  const filtroNF   = document.getElementById('filtroNFProdutos').value.trim().toLowerCase();
+  const filtroForn = document.getElementById('filtroFornecedorProdutos').value.trim().toLowerCase();
+  const dataIni    = document.getElementById('filtroDataInicioProdutos').value;
+  const dataFim    = document.getElementById('filtroDataFimProdutos').value;
+
+  if (!filtroNF && !filtroForn && !dataIni && !dataFim) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="21">Informe ao menos um filtro para visualizar os itens.</td></tr>';
     return;
   }
 
   const linhas = [];
   STATE.notas
-    .filter(n => n.numero.toLowerCase().includes(filtro))
-    .forEach(n => n.itens.forEach(item => linhas.push({ nf: n.numero, ...item })));
+    .filter(n => {
+      if (filtroNF   && !n.numero.toLowerCase().includes(filtroNF))       return false;
+      if (filtroForn && !n.fornecedor.toLowerCase().includes(filtroForn)) return false;
+      if (dataIni    && n.dataLancamento < dataIni)                        return false;
+      if (dataFim    && n.dataLancamento > dataFim)                        return false;
+      return true;
+    })
+    .forEach(n => n.itens.forEach(item => linhas.push({ nf: n.numero, nfTipoNF: n.tipoNF, nfFornecedor: n.fornecedor, nfData: n.dataLancamento, ...item })));
 
   if (!linhas.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="19">Nenhum item encontrado para esta nota fiscal.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="21">Nenhum item encontrado para os filtros informados.</td></tr>';
     return;
   }
 
   linhas.forEach(item => {
     const valorTotalCalc = item.qtd * item.valorUnit;
-    // PIS/COFINS só aparecem quando o item está marcado para pagamento; senão já está
-    // embutido no valor da peça e não deve ser exibido aqui.
+    const isImp = item.nfTipoNF === 'importacao';
     const pisExibir = item.pagaPisCofins ? fmtMoeda(item.pisItem) : '—';
     const cofinsExibir = item.pagaPisCofins ? fmtMoeda(item.cofinsItem) : '—';
 
-    tbody.innerHTML += `<tr>
+    tbody.innerHTML += `<tr class="${isImp ? 'nf-importacao' : ''}">
       <td>${item.nf}</td><td>${item.codigo || '—'}</td><td>${item.descricao || '—'}</td>
       <td>${item.ncm || '—'}</td><td>${item.cfop || '—'}</td>
       <td class="tr">${item.qtd}</td><td class="tr">${fmtMoeda(item.valorUnit)}</td>
@@ -905,7 +1313,10 @@ function renderProdutosGeral() {
       <td class="tr">${fmtMoeda(item.freteDiluido)}</td><td class="tr">${fmtMoeda(item.icmsFreteDiluido)}</td>
       <td class="tr">${fmtMoeda(item.ipiItem)}</td><td class="tr">${fmtMoeda(item.icmsItem)}</td>
       <td class="tr">${fmtMoeda(item.stItem)}</td><td class="tr">${pisExibir}</td>
-      <td class="tr">${cofinsExibir}</td><td class="tr">${fmtMoeda(item.outrosDiluidos)}</td>
+      <td class="tr">${cofinsExibir}</td>
+      <td class="tr">${isImp ? fmtMoeda(item.iiItem || 0) : '—'}</td>
+      <td class="tr">${isImp ? fmtMoeda(item.numerarioDiluido || 0) : '—'}</td>
+      <td class="tr">${fmtMoeda(item.outrosDiluidos)}</td>
       <td class="tr"><strong>${fmtMoeda(item.custoTotalEntrada)}</strong></td>
       <td class="tr"><strong>${fmtMoeda(item.custoUnitarioReal)}</strong></td>
       <td class="tc">${item.importado ? 'Sim' : 'Não'}</td>
@@ -1183,6 +1594,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNavegacao();
   initCustos();
   initEntradaNota();
+  initNumerarioPDF();
   initModais();
   initProdutosGeral();
   initPrecoVenda();
