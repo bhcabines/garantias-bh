@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BH Cabines — Gestão de Custos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -192,7 +193,12 @@
 
       <div class="card">
         <h3 class="card-title">Método de Lançamento</h3>
-        <div class="method-selector">
+        <div class="tipo-nf-bar">
+          <span class="tipo-nf-label">Tipo de Nota Fiscal:</span>
+          <button class="tipo-nf-btn active" id="btnTipoNacional">🏭 NF Nacional</button>
+          <button class="tipo-nf-btn" id="btnTipoImportacao">🌐 NF de Importação Direta</button>
+        </div>
+        <div class="method-selector" style="margin-top:14px">
           <button class="method-btn active" id="btnMetodoXml" data-metodo="xml">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Importar XML da NF-e
@@ -234,6 +240,7 @@
           <div class="field"><label>IPI (R$)</label><input type="number" id="nfIpi" step="0.01" value="0"></div>
           <div class="field"><label>PIS (R$)</label><input type="number" id="nfPis" step="0.01" value="0"></div>
           <div class="field"><label>COFINS (R$)</label><input type="number" id="nfCofins" step="0.01" value="0"></div>
+          <div class="field" id="fieldNfII" style="display:none"><label>II — Imposto de Importação (R$)</label><input type="number" id="nfII" step="0.01" value="0"></div>
           <div class="field"><label>Outros Custos (R$)</label><input type="number" id="nfOutros" step="0.01" value="0"></div>
           <div class="field"><label>Descontos (R$)</label><input type="number" id="nfDescontos" step="0.01" value="0"></div>
           <div class="field"><label>Valor Total da NF (R$) *</label><input type="number" id="nfValorTotal" step="0.01" required></div>
@@ -260,22 +267,54 @@
           <button class="btn bk" id="btnSalvarNota">Salvar Nota Fiscal</button>
           <button class="btn bgray" id="btnCancelarNota">Cancelar / Limpar</button>
         </div>
+      </div>
 
-        <div class="conferencia-box" id="conferenciaBox" style="display:none">
-          <h4>Conferência de Fechamento</h4>
-          <div class="conf-grid">
-            <div><label>Valor Final da NF</label><span id="confValorFinal">R$ 0,00</span></div>
-            <div><label>ST Adicional (Calculada)</label><span id="confSTAdicional">R$ 0,00</span></div>
-            <div><label>Total Custo da NF</label><span id="confTotalCustoNF">R$ 0,00</span></div>
-            <div><label>Soma dos Produtos Detalhados</label><span id="confSomaProdutos">R$ 0,00</span></div>
-            <div><label>Diferença</label><span id="confDiferenca">R$ 0,00</span></div>
-            <div><label>Status</label><span id="confStatus" class="status-badge">—</span></div>
+      <div class="card numerario-card-destaque" id="numerarioCard" style="display:none;margin-top:20px">
+        <div class="numerario-alerta" id="numerarioAlerta" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <div>
+            <strong>NF de Importação detectada — preencha os custos do Numerário</strong>
+            <p>Informe os valores do documento de Numerário para completar o cálculo de custo. Esses valores serão rateados proporcionalmente entre os produtos.</p>
           </div>
-          <p class="muted" style="margin-top:8px">Total Custo da NF = Valor Final da NF + ST Adicional (quando calculada pelo sistema para estados com ST de entrada).</p>
-          <div class="btn-row-h" style="margin-top:10px">
-            <button class="btn bgray" id="btnAjustarDiferenca">Ajustar diferença no último item</button>
-            <button class="btn bo" id="btnRegistrarNota">Registrar Nota</button>
-          </div>
+        </div>
+        <div class="numerario-pdf-row">
+          <h3 class="card-title" style="margin-bottom:0">💰 Custos do Numerário <small class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">— despesas não constam no XML; serão rateadas por produto</small></h3>
+          <label class="btn bo numerario-pdf-btn" title="Importar PDF do Numerário">
+            📄 Importar PDF do Numerário
+            <input type="file" id="numerarioPDFInput" accept=".pdf" style="display:none">
+          </label>
+        </div>
+        <div id="numerarioPDFStatus" class="numerario-pdf-status" style="display:none"></div>
+        <div class="form-grid" style="margin-top:14px">
+          <div class="field"><label>Frete Internacional (R$)</label><input type="text" id="numFreteInt" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>Seguro Internacional (R$)</label><input type="text" id="numSeguro" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>Capatazia / THC (R$)</label><input type="text" id="numCapatazia" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>A.F.R.M.M. (R$)</label><input type="text" id="numAfrmm" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>Taxa Bancária / Câmbio (R$)</label><input type="text" id="numTaxaBancaria" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>Despacho Aduaneiro (R$)</label><input type="text" id="numDespachante" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>Armazenagem (R$)</label><input type="text" id="numArmazenagem" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>SDA (R$)</label><input type="text" id="numSda" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>Taxa de Liberação de BL (R$)</label><input type="text" id="numTaxaBL" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>Outros (R$)</label><input type="text" id="numOutros" class="campo-valor-br" value="0,00"></div>
+          <div class="field"><label>Total Numerário (R$)</label><input type="text" id="numTotal" class="campo-valor-br" value="0,00" readonly style="background:#fff7ed;font-weight:700;color:var(--orange)"></div>
+        </div>
+      </div>
+
+      <div class="conferencia-box" id="conferenciaBox" style="display:none">
+        <h4>Conferência de Fechamento</h4>
+        <div class="conf-grid">
+          <div><label>Valor Final da NF</label><span id="confValorFinal">R$ 0,00</span></div>
+          <div><label id="labelSTAdicional">ST Adicional (Calculada)</label><span id="confSTAdicional">R$ 0,00</span></div>
+          <div id="confSTImportDiv" style="display:none"><label>ST Adicional (MVA)</label><span id="confSTImport">R$ 0,00</span></div>
+          <div><label>Total Custo da NF</label><span id="confTotalCustoNF">R$ 0,00</span></div>
+          <div><label>Soma dos Produtos Detalhados</label><span id="confSomaProdutos">R$ 0,00</span></div>
+          <div><label>Diferença</label><span id="confDiferenca">R$ 0,00</span></div>
+          <div><label>Status</label><span id="confStatus" class="status-badge">—</span></div>
+        </div>
+        <p class="muted" style="margin-top:8px">Total Custo da NF = Valor Final da NF + ST Adicional + Numerário (para NF de Importação).</p>
+        <div class="btn-row-h" style="margin-top:10px">
+          <button class="btn bgray" id="btnAjustarDiferenca">Ajustar diferença no último item</button>
+          <button class="btn bo" id="btnRegistrarNota">Registrar Nota</button>
         </div>
       </div>
 
@@ -283,7 +322,7 @@
         <h3 class="card-title">Notas Fiscais Lançadas</h3>
         <div class="table-wrap">
           <table id="tblNotas">
-            <thead><tr><th>Data</th><th>Nº NF</th><th>Fornecedor</th><th>UF</th><th>Valor da NF</th><th>ST</th><th>IPI</th><th>PIS</th><th>COFINS</th><th>Frete</th><th>ICMS Frete</th><th>Custo Total</th><th></th></tr></thead>
+            <thead><tr><th>Tipo</th><th>Data</th><th>Nº NF</th><th>Fornecedor</th><th>UF</th><th>Valor da NF</th><th>ST</th><th>IPI</th><th>PIS</th><th>COFINS</th><th>Frete</th><th>ICMS Frete</th><th>Custo Total</th><th>Outras Despesas</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -297,16 +336,32 @@
         <p>Itens detalhados de todas as notas fiscais lançadas, com o custo de entrada calculado.</p>
       </div>
       <div class="card">
-        <div class="field" style="max-width:280px">
-          <label>Número da Nota Fiscal</label>
-          <input type="text" id="filtroNFProdutos" list="listaNFsProdutos" placeholder="Digite o nº da NF...">
-          <datalist id="listaNFsProdutos"></datalist>
+        <div class="filtros-produtos">
+          <div class="field">
+            <label>Nº da NF</label>
+            <input type="text" id="filtroNFProdutos" list="listaNFsProdutos" placeholder="Nº da NF...">
+            <datalist id="listaNFsProdutos"></datalist>
+          </div>
+          <div class="field">
+            <label>Fornecedor</label>
+            <input type="text" id="filtroFornecedorProdutos" list="listaFornecedoresProdutos" placeholder="Nome do fornecedor...">
+            <datalist id="listaFornecedoresProdutos"></datalist>
+          </div>
+          <div class="field">
+            <label>Data de</label>
+            <input type="date" id="filtroDataInicioProdutos">
+          </div>
+          <div class="field">
+            <label>até</label>
+            <input type="date" id="filtroDataFimProdutos">
+          </div>
+          <button class="btn bgray" id="btnLimparFiltrosProdutos" style="align-self:flex-end">Limpar</button>
         </div>
         <div class="table-wrap" style="margin-top:16px">
           <table id="tblProdutosGeral">
             <thead><tr>
               <th>NF</th><th>Código</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Vlr. Unit.</th><th>Vlr. Total</th>
-              <th>Frete Dil.</th><th>ICMS Frete Dil.</th><th>IPI</th><th>ICMS</th><th>ST</th><th>PIS</th><th>COFINS</th><th>Outros Dil.</th>
+              <th>Frete Dil.</th><th>ICMS Frete Dil.</th><th>IPI</th><th>ICMS</th><th>ST</th><th>PIS</th><th>COFINS</th><th>II</th><th>Numerário Dil.</th><th>Outros Dil.</th>
               <th>Custo Total Entrada</th><th>Custo Unit. Real</th><th>Importado</th>
             </tr></thead>
             <tbody></tbody>
@@ -451,7 +506,7 @@
         <table id="tblItensDetalhe">
           <thead><tr>
             <th>Código</th><th>Cód. Interno</th><th>Descrição</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Vlr. Unit.</th><th>Vlr. Total</th><th>% do Total</th>
-            <th>Frete Dil.</th><th>ICMS Frete Dil.</th><th>IPI</th><th>ICMS</th><th>ST</th><th>PIS</th><th>COFINS</th><th>Pagar PIS/COFINS</th><th>Outros Dil.</th>
+            <th>Frete Dil.</th><th>ICMS Frete Dil.</th><th>IPI</th><th>ICMS</th><th>ST</th><th>PIS</th><th>COFINS</th><th>II</th><th>Numerário Dil.</th><th>Pagar PIS/COFINS</th><th>Outros Dil.</th>
             <th>Importado</th><th>Custo Total Entrada</th><th>Custo Unit. Real</th><th></th>
           </tr></thead>
           <tbody id="tblItensDetalheBody"></tbody>
@@ -463,7 +518,8 @@
         <h4>Conferência de Fechamento</h4>
         <div class="conf-grid">
           <div><label>Valor Final da NF</label><span id="confValorFinalModal">R$ 0,00</span></div>
-          <div><label>ST Adicional (Calculada)</label><span id="confSTAdicionalModal">R$ 0,00</span></div>
+          <div><label id="labelSTAdicionalModal">ST Adicional (Calculada)</label><span id="confSTAdicionalModal">R$ 0,00</span></div>
+          <div id="confSTImportDivModal" style="display:none"><label>ST Adicional (MVA)</label><span id="confSTImportModal">R$ 0,00</span></div>
           <div><label>Total Custo da NF</label><span id="confTotalCustoNFModal">R$ 0,00</span></div>
           <div><label>Soma dos Produtos Detalhados</label><span id="confSomaProdutosModal">R$ 0,00</span></div>
           <div><label>Diferença</label><span id="confDiferencaModal">R$ 0,00</span></div>
@@ -512,6 +568,27 @@
     <div class="modal-foot">
       <button class="btn bgray" id="btnCancelarItem">Cancelar</button>
       <button class="btn bk" id="btnSalvarItem">Salvar Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: NUMERÁRIO DETALHADO ===== -->
+<div class="modal-overlay" id="modalNumerarioDetalhe">
+  <div class="modal-box modal-wide">
+    <div class="modal-head">
+      <h3 id="detalheNumerarioTitulo">Detalhamento do Numerário</h3>
+      <button class="modal-close" id="closeModalNumerarioDetalhe">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="table-wrap">
+        <table id="tblNumerarioDetalhe" class="tbl-detalhe-num">
+          <thead id="detalheNumerarioThead"></thead>
+          <tbody id="detalheNumerarioBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnFecharNumerarioDetalhe">Fechar</button>
     </div>
   </div>
 </div>
