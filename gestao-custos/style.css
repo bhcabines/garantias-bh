@@ -91,6 +91,46 @@ input[readonly]{background:#f2f2f2;color:#777}
 .bgray{background:#6b7280;color:var(--white)}.bgray:hover{background:#52555c}
 .btn-row-h{display:flex;gap:10px;flex-wrap:wrap}
 
+/* ===== Tipo NF selector ===== */
+.tipo-nf-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.tipo-nf-label{font-size:.78rem;font-weight:700;color:var(--dark);white-space:nowrap}
+.tipo-nf-btn{padding:7px 16px;border-radius:20px;border:1.5px solid var(--border);background:var(--white);cursor:pointer;font-size:.78rem;font-weight:600;color:var(--dark);transition:all .15s}
+.tipo-nf-btn:hover{border-color:var(--orange);color:var(--orange)}
+.tipo-nf-btn.active{border-color:var(--orange);background:var(--orange);color:var(--white)}
+
+/* ===== Campos de valor em R$ (formato BR) ===== */
+.campo-valor-br{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ===== Numerário card — cabeçalho com botão PDF ===== */
+.numerario-pdf-row{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.numerario-pdf-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:700;white-space:nowrap}
+.numerario-pdf-status{font-size:.78rem;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.numerario-pdf-status.info{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+.numerario-pdf-status.ok{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0}
+.numerario-pdf-status.warn{background:#fff7ed;color:#c2410c;border:1px solid #fed7aa}
+
+/* ===== Numerário card — alerta de solicitação ===== */
+.numerario-card-destaque{border-color:#fed7aa}
+.numerario-alerta{display:flex;align-items:flex-start;gap:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px 16px;margin-bottom:16px}
+.numerario-alerta svg{width:22px;height:22px;flex-shrink:0;color:#c2410c;margin-top:1px}
+.numerario-alerta strong{font-size:.82rem;font-weight:700;color:#c2410c;display:block;margin-bottom:3px}
+.numerario-alerta p{font-size:.78rem;color:#7c4a1e;line-height:1.45;margin:0}
+
+/* ===== NF de Importação — row highlight & badges ===== */
+tr.nf-importacao td{background:#fff7ed}
+.badge-imp{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.68rem;font-weight:700;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;white-space:nowrap}
+.badge-nac{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.68rem;font-weight:700;background:#f3f4f6;color:#515053;border:1px solid #e2e0de;white-space:nowrap}
+.link-detalhe{background:none;border:none;padding:0;font-size:inherit;font-family:inherit;color:var(--orange);font-weight:600;cursor:pointer;text-decoration:underline dotted;white-space:nowrap}
+.link-detalhe:hover{color:#c2410c;text-decoration:underline}
+.detalhe-total-row td{background:#f3f4f6;border-top:2px solid var(--border)}
+.tbl-detalhe-num th,.tbl-detalhe-num td{font-size:.78rem;white-space:nowrap}
+
+/* ===== Filtros de produtos ===== */
+.filtros-produtos{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.filtros-produtos .field{margin:0;min-width:140px}
+.filtros-produtos .field:first-child{min-width:110px}
+.filtros-produtos .field:nth-child(2){min-width:200px;flex:1}
+
 /* ===== Method selector ===== */
 .method-selector{display:flex;gap:12px;flex-wrap:wrap}
 .method-btn{flex:1;min-width:220px;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;border:1.5px solid var(--border);border-radius:12px;background:var(--white);cursor:pointer;font-size:.85rem;font-weight:700;color:var(--dark);transition:all .15s}
