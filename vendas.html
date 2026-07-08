@@ -87,6 +87,8 @@ tfoot td{background:#f0f0f0;border:1px solid #ddd;padding:5px 8px;font-weight:70
 .tag{background:var(--or);color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700}
 .novo-val{color:var(--or);font-weight:700}
 .sem-uf{color:#ccc;font-style:italic}
+.ipi-pct-inp{width:52px;text-align:right;border:1px solid #e0e0e0;border-radius:4px;padding:2px 4px;font-size:11px;font-family:inherit;background:#fffbf5}
+.ipi-pct-inp:focus{outline:none;border-color:var(--or);background:#fff}
 
 /* ── Toggle BHC ── */
 .toggle{width:36px;height:19px;background:#ddd;border-radius:19px;border:none;cursor:pointer;position:relative;transition:.2s;flex-shrink:0;display:inline-block}
@@ -211,6 +213,7 @@ tfoot td{background:#f0f0f0;border:1px solid #ddd;padding:5px 8px;font-weight:70
                 <th>Descrição</th>
                 <th class="tc">Importado</th>
                 <th class="tr">Vlr.Líq. <small style="font-weight:400;text-transform:none">(orig.)</small></th>
+                <th class="tr">% IPI</th>
                 <th class="tr novo">Novo Vlr.Líq.</th>
                 <th class="tr novo">Novo Total</th>
               </tr>
@@ -512,6 +515,7 @@ function montarTela(){
           </div>
         </td>
         <td class="tr">${fBR(it.vlrLiq)}</td>
+        <td class="tr"><input class="ipi-pct-inp" id="ipiPct-${i}" value="${fBR(r2(it.ipiPct*100))}" onchange="setIpiPct(${i},this.value)">%</td>
         <td class="tr" id="nLiq-${i}"><span class="sem-uf">—</span></td>
         <td class="tr" id="nTot-${i}"><span class="sem-uf">—</span></td>
       </tr>`).join('');
@@ -521,6 +525,7 @@ function montarTela(){
     document.getElementById('tf').innerHTML=`<tr>
       <td colspan="5" class="tr" style="font-size:10px">TOTAL ORIGINAL</td>
       <td class="tr">${fBR(sL)}</td>
+      <td></td>
       <td class="tr" id="tfNL"><span class="sem-uf">—</span></td>
       <td class="tr" id="tfNT"><span class="sem-uf">—</span></td>
     </tr>`;
@@ -548,6 +553,12 @@ function toggleBHC(i){
   lbl.textContent=it.bhc?'BHC':'—';
   lbl.style.color=it.bhc?'var(--or)':'#aaa';
   recalcular();
+}
+
+function setIpiPct(i, v){
+  // Aceita "5" ou "5,00" como 5% → armazena como fração 0.05
+  DATA.itens[i].ipiPct = r2(pBR(v)) / 100;
+  if(UF_SEL) recalcular();
 }
 
 // ══════════════════════════════════════════════════════════════
