@@ -77,5 +77,14 @@ window.USUARIOS_CONFIG = [
       "importacoes"
     ],
     "isAdmin": false
+  },
+  {
+    "id": "u_1783540247913",
+    "nome": "vendas",
+    "senha": "123",
+    "projetos": [
+      "vendas"
+    ],
+    "isAdmin": false
   }
 ];
