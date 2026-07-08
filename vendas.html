@@ -365,7 +365,7 @@ async function lerPDF(buf){
     ci.vlrLiq=ci.mv.length>0?ci.mv[0].v:0;
     ci.vlrTot=ci.mv.length>1?ci.mv[ci.mv.length-1].v:ci.vlrLiq;
     const ipiTot=ci.mv.length>=3?ci.mv[2].v:0;
-    ci.ipiUnit=ci.qty>0?r2(ipiTot/ci.qty):0;
+    ci.ipiUnit=r2(ipiTot);
     ci.ipiPct=ci.vlrLiq>0?ci.ipiUnit/ci.vlrLiq:0;
     delete ci.mv; itens.push(ci); ci=null;
   };
@@ -448,7 +448,7 @@ function lerExcel(buf){
       const ipiTot=cols.ipi>=0?pBR(r[cols.ipi]):0;
       const tot=cols.tot>=0?pBR(r[cols.tot]):r2(liq*qty);
       const bhc=/\bBHC\b/i.test(desc+' '+local);
-      const ipiUnit=qty>0?r2(ipiTot/qty):0;
+      const ipiUnit=r2(ipiTot);
       itens.push({local,qty,cod:codVal,desc,bhc,vlrLiq:liq,ipiUnit,ipiPct:liq>0?ipiUnit/liq:0,vlrTot:tot});
     }
   }
@@ -465,7 +465,7 @@ function lerExcel(buf){
       const liq=moneys[0].v,tot=moneys[moneys.length-1].v;
       const ipiTot=moneys.length>=3?moneys[2].v:0;
       const bhc=/\bBHC\b/i.test(desc+' '+local);
-      const ipiUnit=qty>0?r2(ipiTot/qty):0;
+      const ipiUnit=r2(ipiTot);
       itens.push({local,qty,cod:r[cIdx],desc,bhc,vlrLiq:liq,ipiUnit,ipiPct:liq>0?ipiUnit/liq:0,vlrTot:tot});
     }
   }
