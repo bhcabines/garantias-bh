@@ -254,6 +254,7 @@ tbody td{padding:7px 10px;vertical-align:middle}
             <th class="td-center" style="color:var(--gr)">ML Menor</th>
             <th class="td-center" style="color:#666">ML Médio</th>
             <th class="td-center">Anúncios</th>
+            <th class="td-center" style="color:#7c3aed">G. Shopping</th>
             <th class="td-center">Ações</th>
           </tr>
         </thead>
@@ -276,6 +277,7 @@ function carregarCreds(){
 const GAPI_KEY='AIzaSyBEQ7dB0AIlB56KTE2JkhH4uMJqkPQwVAA';
 const GAPI_CX='921c096823d9d4403';
 const ML_WORKER_URL='https://bernardoelias-ml-pesquisa.web.val.run';
+const BD_SERP_URL='https://bernardoelias--c9d07c687c6611f1ada01607ee4eb77e.web.val.run';
 
 let TIPO='codigo';
 let itensBusca=[];   // [{termo, cod, marca, desc, preco}]
@@ -545,6 +547,23 @@ async function testarML(){
   btn.disabled=false;
 }
 
+// ── Busca Google Shopping via Bright Data ────────────────────
+async function buscarGoogleShopping(item){
+  const query=buildQuery(item);
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),18000);
+  try{
+    const r=await fetch(`${BD_SERP_URL}/?q=${encodeURIComponent(query)}`,{signal:ctrl.signal});
+    clearTimeout(t);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
+    return{items:d.results||[],total:d.total||0};
+  }catch(e){
+    clearTimeout(t);
+    return{items:[],total:0,erro:e.message};
+  }
+}
+
 // ── Iniciar busca em lote ─────────────────────────────────────
 async function iniciarBusca(){
   // Não chama contarItens() aqui — sobrescreveria dados extras do Excel
@@ -570,10 +589,9 @@ async function iniciarBusca(){
     document.getElementById('progTxt').textContent=`Pesquisando: "${termo}" (${i+1} de ${total})`;
     document.getElementById('progDelay').textContent='';
 
-    const ml=await buscarML(item);
-    const goog={items:[]};
+    const [ml, gshop] = await Promise.all([buscarML(item), buscarGoogleShopping(item)]);
 
-    const r={termo,ml,goog,idx:i,extra:{cod:item.cod,marca:item.marca,desc:item.desc,preco:item.preco}};
+    const r={termo,ml,gshop,idx:i,extra:{cod:item.cod,marca:item.marca,desc:item.desc,preco:item.preco}};
     resultados.push(r);
     renderLinha(r,i);
 
@@ -607,6 +625,8 @@ function renderLinha(r,idx){
   const tb=document.getElementById('resTbody');
   const ml=r.ml;
   const temML=ml.items&&ml.items.length>0;
+  const gs=r.gshop||{items:[]};
+  const temGS=gs.items&&gs.items.length>0;
 
   // Preços ML
   let precoMin='—', precoMed='—', totalML=ml.total||0, unicosML=ml.unicos||0;
@@ -667,6 +687,11 @@ function renderLinha(r,idx){
         ?`<span class="qtd-badge" title="${totalML.toLocaleString()} anúncios no total">${unicosML} únicos</span>`
         :'<span style="color:#ccc">0</span>'}
     </td>
+    <td class="td-center">
+      ${temGS
+        ?`<div style="font-weight:700;color:#7c3aed;font-size:13px">R$ ${fBR(gs.items[0].price)}</div><div style="font-size:9.5px;color:#888">${gs.items[0].store.slice(0,18)}</div>`
+        :`<span style="color:#ccc">—</span>${gs.erro?`<div style="font-size:9px;color:#dc2626">erro</div>`:''}` }
+    </td>
     <td class="td-center" style="white-space:nowrap;display:flex;gap:3px;justify-content:center;flex-wrap:wrap;padding:6px 4px">
       <button class="btn blight btn-sm" onclick="toggleDet(${idx})" title="Ver detalhes ML + Google">🔍</button>
       <a class="btn blight btn-sm" href="${urlML(ex.cod?ex:r.termo)}" target="_blank" title="Ver busca no ML">🛒 ML</a>
@@ -680,7 +705,7 @@ function renderLinha(r,idx){
   trDet.id='det-'+idx;
   trDet.style.display='none';
   const td=document.createElement('td');
-  td.colSpan=8;
+  td.colSpan=9;
   td.innerHTML=buildDet(r);
   trDet.appendChild(td);
   tb.appendChild(trDet);
@@ -688,7 +713,10 @@ function renderLinha(r,idx){
 
 function buildDet(r){
   const ml=r.ml;
+  const gs=r.gshop||{items:[]};
   const itRef=r.extra&&r.extra.cod?r.extra:r.termo;
+
+  // ML
   let mlHtml='<div class="det-titulo">🛒 Mercado Livre</div>';
   if(ml.queries&&ml.queries.length){
     mlHtml+=`<div style="font-size:10px;color:#aaa;margin-bottom:6px">Buscas: ${ml.queries.map(q=>`<code style="background:#f3f4f6;padding:1px 4px;border-radius:3px">${q}</code>`).join(' · ')}</div>`;
@@ -712,7 +740,23 @@ function buildDet(r){
     <a href="${urlGoogle(itRef)}" target="_blank" class="btn bb btn-sm">🌐 Google Busca</a>
     <a href="${urlML(itRef)}" target="_blank" class="btn blight btn-sm">🛒 Ver no ML</a>
   </div>`;
-  return`<div class="det-wrap"><div>${mlHtml}</div></div>`;
+
+  // Google Shopping
+  let gsHtml='<div class="det-titulo" style="color:#7c3aed">🛍️ Google Shopping</div>';
+  if(gs.items&&gs.items.length){
+    gsHtml+=gs.items.map(it=>`
+      <div class="ml-item">
+        <div class="mi-info">
+          <div class="mi-cond">${it.store||'—'}</div>
+          <div class="mi-nome">${it.title}</div>
+          <div class="mi-preco" style="color:#7c3aed">R$ ${fBR(it.price)}</div>
+        </div>
+      </div>`).join('');
+  }else{
+    gsHtml+=`<p style="font-size:11.5px;color:#aaa;padding:6px 0">${gs.erro?'Erro: '+gs.erro:'Nenhum resultado encontrado.'}</p>`;
+  }
+
+  return`<div class="det-wrap"><div class="det-grid">${mlHtml}${gsHtml}</div></div>`;
 }
 
 async function testarGoogle(){
