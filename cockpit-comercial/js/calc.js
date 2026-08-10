@@ -83,24 +83,21 @@ Cockpit.Calc = (function () {
     return out;
   }
 
-  // [{data, telemarketing, balcao, total}], ordenado cronologicamente
+  // [{data, porSetor:{TELEMARKETING:x, BALCAO:y, ...}, total}], ordenado cronologicamente.
+  // Genérico para quantos setores existirem em Cockpit.State.SETORES.
   function agregarPorDia(linhasDoMes) {
     const porDia = {};
     (linhasDoMes || []).forEach(function (r) {
-      if (!porDia[r.data]) porDia[r.data] = { data: r.data, TELEMARKETING: 0, BALCAO: 0 };
-      if (porDia[r.data][r.setor] !== undefined) {
-        porDia[r.data][r.setor] += Number(r.vendas) || 0;
+      if (!porDia[r.data]) {
+        porDia[r.data] = { data: r.data, porSetor: {}, total: 0 };
+        Cockpit.State.SETORES.forEach(function (s) { porDia[r.data].porSetor[s] = 0; });
+      }
+      if (porDia[r.data].porSetor[r.setor] !== undefined) {
+        porDia[r.data].porSetor[r.setor] += Number(r.vendas) || 0;
+        porDia[r.data].total += Number(r.vendas) || 0;
       }
     });
-    return Object.keys(porDia).sort().map(function (data) {
-      const d = porDia[data];
-      return {
-        data: data,
-        telemarketing: d.TELEMARKETING,
-        balcao: d.BALCAO,
-        total: d.TELEMARKETING + d.BALCAO
-      };
-    });
+    return Object.keys(porDia).sort().map(function (data) { return porDia[data]; });
   }
 
   // Ranking por vendedor a partir do roster + linhas do período filtrado.

@@ -43,6 +43,13 @@ Cockpit.DashboardGeral = (function () {
       return '<option value="' + v.codigo + '">' + v.nome + '</option>';
     }).join('');
     selVend.value = vendedorAtual;
+
+    const selSetor = document.getElementById('filtroSetor');
+    const setorAtual = selSetor.value;
+    selSetor.innerHTML = '<option value="">Todos</option>' + Cockpit.State.SETORES.map(function (s) {
+      return '<option value="' + s + '">' + Cockpit.State.setorLabel(s) + '</option>';
+    }).join('');
+    selSetor.value = setorAtual;
   }
 
   function wireFiltros() {
@@ -87,14 +94,13 @@ Cockpit.DashboardGeral = (function () {
   function render() {
     const f = getFiltros();
     const cfg = Cockpit.State.getConfig();
-    const metaCfg = cfg[chaveMesAno(f.mes, f.ano)] || { metaGeral: 0, metaTelemarketing: 0, metaBalcao: 0, diasTrabalhados: 0 };
+    const metaCfg = cfg[chaveMesAno(f.mes, f.ano)] || { metaGeral: 0, metasPorSetor: {}, diasTrabalhados: 0 };
+    const metasPorSetor = metaCfg.metasPorSetor || {};
 
     const linhas = getVendasFiltradas(false);
     const linhasAmbosSetores = getVendasFiltradas(true);
 
-    const metaUsada = f.setor === 'TELEMARKETING' ? metaCfg.metaTelemarketing
-      : f.setor === 'BALCAO' ? metaCfg.metaBalcao
-      : metaCfg.metaGeral;
+    const metaUsada = f.setor ? (metasPorSetor[f.setor] || 0) : metaCfg.metaGeral;
 
     const vendasAcumuladas = linhas.reduce(function (s, r) { return s + (Number(r.vendas) || 0); }, 0);
     const diasComDados = Cockpit.Calc.diasImportadosNoMes(linhas);
@@ -111,12 +117,17 @@ Cockpit.DashboardGeral = (function () {
     document.getElementById('cardMediaDiaria').textContent = fmt(mediaDiaria);
 
     const porSetor = Cockpit.Calc.agregarPorSetor(linhasAmbosSetores);
-    document.getElementById('cardTeleAcum').textContent = fmt(porSetor.TELEMARKETING.total);
-    document.getElementById('cardTeleMeta').textContent = fmt(metaCfg.metaTelemarketing);
-    document.getElementById('cardTelePerc').textContent = fmtPerc(Cockpit.Calc.percAtingido(porSetor.TELEMARKETING.total, metaCfg.metaTelemarketing));
-    document.getElementById('cardBalcaoAcum').textContent = fmt(porSetor.BALCAO.total);
-    document.getElementById('cardBalcaoMeta').textContent = fmt(metaCfg.metaBalcao);
-    document.getElementById('cardBalcaoPerc').textContent = fmtPerc(Cockpit.Calc.percAtingido(porSetor.BALCAO.total, metaCfg.metaBalcao));
+    document.getElementById('cardsSetorGrid').innerHTML = Cockpit.State.SETORES.map(function (s) {
+      const total = porSetor[s] ? porSetor[s].total : 0;
+      const meta = metasPorSetor[s] || 0;
+      return '<div class="sum-card sum-card-setor">' +
+        '<span class="sum-label">' + Cockpit.State.setorLabel(s) + '</span>' +
+        '<div class="setor-mini-stats">' +
+          '<div><small>Acumulado</small><strong>' + fmt(total) + '</strong></div>' +
+          '<div><small>Meta</small><strong>' + fmt(meta) + '</strong></div>' +
+          '<div><small>%</small><strong>' + fmtPerc(Cockpit.Calc.percAtingido(total, meta)) + '</strong></div>' +
+        '</div></div>';
+    }).join('');
 
     const roster = Cockpit.State.getVendedores();
     const ranking = Cockpit.Calc.rankingVendedores(linhas, roster);
@@ -160,12 +171,11 @@ Cockpit.DashboardGeral = (function () {
   function linhaCorrida(v, pendente) {
     const perc = pendente ? 0 : Math.min(v.percAtingidoIndividual, 100);
     const completo = !pendente && v.percAtingidoIndividual >= 100;
-    const badgeClasse = v.setor === 'TELEMARKETING' ? 'tele' : 'balcao';
     const percLabel = pendente ? 'Meta pendente' : fmtPerc(v.percAtingidoIndividual);
     return '<div class="corrida-row' + (pendente ? ' pendente' : '') + '">' +
       '<div class="corrida-label">' +
         '<span class="corrida-nome">' + v.nome + '</span>' +
-        '<span class="badge-setor ' + badgeClasse + '">' + Cockpit.State.setorLabel(v.setor) + '</span>' +
+        Cockpit.State.setorBadgeHtml(v.setor) +
         '<span class="corrida-perc">' + percLabel + '</span>' +
       '</div>' +
       '<div class="corrida-track">' +

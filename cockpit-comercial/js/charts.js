@@ -17,10 +17,6 @@ Cockpit.Charts = (function () {
     if (Math.abs(v) >= 1000) return 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + 'k';
     return fmtMoeda(v);
   }
-  function cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
-
   // vendedores: [{nome, acumulado}]
   function renderParticipacao(canvasId, vendedores) {
     const ctx = document.getElementById(canvasId);
@@ -64,7 +60,9 @@ Cockpit.Charts = (function () {
     });
   }
 
-  // dias: [{data, telemarketing, balcao, total}], metaDiariaGeral: number
+  // dias: [{data, porSetor:{TELEMARKETING:x, BALCAO:y, ...}, total}], metaDiariaGeral: number
+  // Um dataset de barra empilhada por setor cadastrado (Cockpit.State.SETORES) — genérico,
+  // não fica preso a Telemarketing/Balcão.
   function renderDiarioSetor(canvasId, dias, metaDiariaGeral) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
@@ -75,29 +73,24 @@ Cockpit.Charts = (function () {
       return partes.length === 3 ? partes[2] + '/' + partes[1] : d.data;
     });
 
+    const datasetsSetor = Cockpit.State.SETORES.map(function (s) {
+      return {
+        type: 'bar', label: Cockpit.State.setorLabel(s),
+        data: (dias || []).map(function (d) { return (d.porSetor && d.porSetor[s]) || 0; }),
+        backgroundColor: Cockpit.State.setorCor(s).chart,
+        stack: 'vendas', order: 2
+      };
+    });
+
     chartDiarioSetor = new Chart(ctx, {
       data: {
         labels: labels,
-        datasets: [
-          {
-            type: 'bar', label: 'Telemarketing',
-            data: (dias || []).map(function (d) { return d.telemarketing; }),
-            backgroundColor: cssVar('--chart-tele') || '#F2A365',
-            stack: 'vendas', order: 2
-          },
-          {
-            type: 'bar', label: 'Balcão',
-            data: (dias || []).map(function (d) { return d.balcao; }),
-            backgroundColor: cssVar('--chart-balcao') || '#EA5B0C',
-            stack: 'vendas', order: 2
-          },
-          {
-            type: 'line', label: 'Meta Diária Geral',
-            data: (dias || []).map(function () { return metaDiariaGeral || 0; }),
-            borderColor: '#515053', borderDash: [6, 4], borderWidth: 2,
-            pointRadius: 0, fill: false, order: 1
-          }
-        ]
+        datasets: datasetsSetor.concat([{
+          type: 'line', label: 'Meta Diária Geral',
+          data: (dias || []).map(function () { return metaDiariaGeral || 0; }),
+          borderColor: '#515053', borderDash: [6, 4], borderWidth: 2,
+          pointRadius: 0, fill: false, order: 1
+        }])
       },
       options: {
         maintainAspectRatio: false,

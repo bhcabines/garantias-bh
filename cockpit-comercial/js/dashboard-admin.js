@@ -44,7 +44,7 @@ Cockpit.DashboardAdmin = (function () {
     selMes.addEventListener('change', carregarMetaDoFormulario);
     document.getElementById('metaAno').addEventListener('change', carregarMetaDoFormulario);
 
-    ['metaGeral', 'metaTelemarketing', 'metaBalcao', 'metaDias'].forEach(function (id) {
+    ['metaGeral', 'metaDias'].forEach(function (id) {
       document.getElementById(id).addEventListener('input', atualizarCalculoMetaDiaria);
     });
 
@@ -54,15 +54,36 @@ Cockpit.DashboardAdmin = (function () {
     renderTabelaMetas();
   }
 
+  // Gera um input de meta por setor (um por Cockpit.State.SETORES) — assim, adicionar
+  // um novo setor no cadastro não exige mexer nesta tela.
+  function renderCamposSetorMetas(valores) {
+    const grid = document.getElementById('metasPorSetorGrid');
+    grid.innerHTML = Cockpit.State.SETORES.map(function (s) {
+      const v = valores && valores[s] !== undefined && valores[s] !== null ? valores[s] : '';
+      return '<div class="field"><label>Meta ' + Cockpit.State.setorLabel(s) + ' (R$)</label>' +
+        '<input type="number" step="0.01" min="0" data-setor-meta="' + s + '" value="' + v + '"></div>';
+    }).join('');
+    grid.querySelectorAll('[data-setor-meta]').forEach(function (inp) {
+      inp.addEventListener('input', atualizarCalculoMetaDiaria);
+    });
+  }
+
+  function lerMetasPorSetor() {
+    const out = {};
+    document.querySelectorAll('#metasPorSetorGrid [data-setor-meta]').forEach(function (inp) {
+      out[inp.dataset.setorMeta] = Number(inp.value) || 0;
+    });
+    return out;
+  }
+
   function carregarMetaDoFormulario() {
     const mes = document.getElementById('metaMesSel').value;
     const ano = document.getElementById('metaAno').value;
     const cfg = Cockpit.State.getConfig();
     const item = cfg[chaveMesAno(mes, ano)];
     document.getElementById('metaGeral').value = item ? item.metaGeral : '';
-    document.getElementById('metaTelemarketing').value = item ? item.metaTelemarketing : '';
-    document.getElementById('metaBalcao').value = item ? item.metaBalcao : '';
     document.getElementById('metaDias').value = item ? item.diasTrabalhados : '';
+    renderCamposSetorMetas(item ? item.metasPorSetor : null);
     document.getElementById('alertaSomaMetas').innerHTML = '';
     atualizarCalculoMetaDiaria();
   }
@@ -70,30 +91,33 @@ Cockpit.DashboardAdmin = (function () {
   function atualizarCalculoMetaDiaria() {
     const dias = Number(document.getElementById('metaDias').value) || 0;
     const geral = Number(document.getElementById('metaGeral').value) || 0;
-    const tele = Number(document.getElementById('metaTelemarketing').value) || 0;
-    const balcao = Number(document.getElementById('metaBalcao').value) || 0;
-    document.getElementById('calcMetaDiariaGeral').textContent = fmt(Cockpit.Calc.metaDiaria(geral, dias));
-    document.getElementById('calcMetaDiariaTele').textContent = fmt(Cockpit.Calc.metaDiaria(tele, dias));
-    document.getElementById('calcMetaDiariaBalcao').textContent = fmt(Cockpit.Calc.metaDiaria(balcao, dias));
+    const metasPorSetor = lerMetasPorSetor();
+
+    let html = '<div class="sum-card"><span class="sum-label">Meta Diária Geral</span><span class="sum-value">' +
+      fmt(Cockpit.Calc.metaDiaria(geral, dias)) + '</span></div>';
+    Cockpit.State.SETORES.forEach(function (s) {
+      html += '<div class="sum-card"><span class="sum-label">Meta Diária ' + Cockpit.State.setorLabel(s) + '</span><span class="sum-value">' +
+        fmt(Cockpit.Calc.metaDiaria(metasPorSetor[s] || 0, dias)) + '</span></div>';
+    });
+    document.getElementById('calcMetasDiariasGrid').innerHTML = html;
   }
 
   function salvarMetas() {
     const mes = document.getElementById('metaMesSel').value;
     const ano = document.getElementById('metaAno').value;
     const geral = Number(document.getElementById('metaGeral').value) || 0;
-    const tele = Number(document.getElementById('metaTelemarketing').value) || 0;
-    const balcao = Number(document.getElementById('metaBalcao').value) || 0;
     const dias = Number(document.getElementById('metaDias').value) || 0;
+    const metasPorSetor = lerMetasPorSetor();
 
     const alertaEl = document.getElementById('alertaSomaMetas');
     if (!geral || !dias) {
       alertaEl.innerHTML = '<div class="alert error">Preencha Meta Geral e Dias Trabalhados.</div>';
       return;
     }
-    const soma = tele + balcao;
+    const soma = Object.keys(metasPorSetor).reduce(function (s, k) { return s + metasPorSetor[k]; }, 0);
     const diff = Math.abs(soma - geral);
     if (diff > 0.01) {
-      alertaEl.innerHTML = '<div class="alert error">Meta Telemarketing + Meta Balcão (' + fmt(soma) +
+      alertaEl.innerHTML = '<div class="alert error">A soma das metas por setor (' + fmt(soma) +
         ') não bate com a Meta Geral (' + fmt(geral) + '). Diferença: ' + fmt(diff) + '. Ajuste os valores antes de salvar.</div>';
       return;
     }
@@ -102,7 +126,7 @@ Cockpit.DashboardAdmin = (function () {
     const cfg = Cockpit.State.getConfig();
     const chave = chaveMesAno(mes, ano);
     cfg[chave] = {
-      metaGeral: geral, metaTelemarketing: tele, metaBalcao: balcao, diasTrabalhados: dias,
+      metaGeral: geral, metasPorSetor: metasPorSetor, diasTrabalhados: dias,
       atualizadoEm: new Date().toISOString(), atualizadoPor: Cockpit.Auth.currentUserName()
     };
     Cockpit.State.saveConfigLocal(cfg);
@@ -118,15 +142,14 @@ Cockpit.DashboardAdmin = (function () {
     const tbody = document.querySelector('#tblMetas tbody');
     const chaves = Object.keys(cfg).sort().reverse();
     if (!chaves.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Nenhuma meta cadastrada ainda.</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Nenhuma meta cadastrada ainda.</td></tr>';
       return;
     }
     tbody.innerHTML = chaves.map(function (chave) {
       const c = cfg[chave];
       const partes = chave.split('-');
       const label = MESES[Number(partes[1]) - 1] + '/' + partes[0];
-      return '<tr><td>' + label + '</td><td>' + fmt(c.metaGeral) + '</td><td>' + fmt(c.metaTelemarketing) +
-        '</td><td>' + fmt(c.metaBalcao) + '</td><td>' + c.diasTrabalhados + '</td><td>' +
+      return '<tr><td>' + label + '</td><td>' + fmt(c.metaGeral) + '</td><td>' + c.diasTrabalhados + '</td><td>' +
         fmt(Cockpit.Calc.metaDiaria(c.metaGeral, c.diasTrabalhados)) + '</td></tr>';
     }).join('');
   }
@@ -236,7 +259,7 @@ Cockpit.DashboardAdmin = (function () {
       return;
     }
     tbody.innerHTML = lista.map(function (v) {
-      const badgeSetor = '<span class="badge-setor ' + (v.setor === 'TELEMARKETING' ? 'tele' : 'balcao') + '">' + Cockpit.State.setorLabel(v.setor) + '</span>';
+      const badgeSetor = Cockpit.State.setorBadgeHtml(v.setor);
       const badgeStatus = '<span class="badge-status ' + (v.ativo ? 'ativo' : 'inativo') + '">' + (v.ativo ? 'Ativo' : 'Inativo') + '</span>';
       const meta = v.metaIndividual === null || v.metaIndividual === undefined ? '<span class="muted">pendente</span>' : fmt(v.metaIndividual);
       return '<tr><td>' + v.codigo + '</td><td>' + v.nome + '</td><td>' + badgeSetor + '</td><td>' + meta + '</td><td>' + badgeStatus + '</td>' +
@@ -302,7 +325,7 @@ Cockpit.DashboardAdmin = (function () {
         totalVendas += l.vendas;
         const setorCel = l.vendedorNaoCadastrado
           ? '<span class="badge-status inativo">não identificado</span>'
-          : '<span class="badge-setor ' + (l.setor === 'TELEMARKETING' ? 'tele' : 'balcao') + '">' + Cockpit.State.setorLabel(l.setor) + '</span>';
+          : Cockpit.State.setorBadgeHtml(l.setor);
         return '<tr><td>' + l.vendedorCodigo + '</td><td>' + l.vendedorNome + '</td><td>' + setorCel + '</td><td>' +
           fmt(l.vendas) + '</td><td>' + l.numVendas + '</td><td>' + fmt(l.ticketMedio) + '</td><td>' + fmt(l.metaDiariaErp) + '</td></tr>';
       }).join('') + '<tr style="font-weight:700;background:#f3f4f6"><td colspan="3">Total</td><td>' + fmt(totalVendas) + '</td><td colspan="3"></td></tr>';

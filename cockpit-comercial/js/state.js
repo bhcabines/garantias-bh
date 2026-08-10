@@ -6,9 +6,26 @@
 window.Cockpit = window.Cockpit || {};
 
 Cockpit.State = (function () {
-  const SETORES = ['TELEMARKETING', 'BALCAO'];
-  const SETOR_LABELS = { TELEMARKETING: 'Telemarketing', BALCAO: 'Balcão' };
+  const SETORES = ['TELEMARKETING', 'BALCAO', 'ECOMMERCE', 'APOIO'];
+  const SETOR_LABELS = { TELEMARKETING: 'Telemarketing', BALCAO: 'Balcão', ECOMMERCE: 'E-commerce', APOIO: 'Apoio' };
   function setorLabel(s) { return SETOR_LABELS[s] || s || '—'; }
+
+  // Paleta por setor (badge bg/fg + cor sólida do gráfico). Cicla se houver mais
+  // setores do que cores cadastradas — nunca quebra ao adicionar um novo setor.
+  const SETOR_PALETA = [
+    { bg: 'rgba(234,91,12,.08)', fg: '#EA5B0C', chart: '#EA5B0C' }, // Telemarketing
+    { bg: '#f3f4f6',             fg: '#515053', chart: '#F2A365' }, // Balcão
+    { bg: '#eff6ff',             fg: '#1d4ed8', chart: '#2563EB' }, // E-commerce
+    { bg: '#f0fdf4',             fg: '#15803d', chart: '#16A34A' }  // Apoio
+  ];
+  function setorCor(s) {
+    const idx = SETORES.indexOf(s);
+    return SETOR_PALETA[idx >= 0 ? idx % SETOR_PALETA.length : 0];
+  }
+  function setorBadgeHtml(s) {
+    const c = setorCor(s);
+    return '<span class="badge-setor" style="background:' + c.bg + ';color:' + c.fg + '">' + setorLabel(s) + '</span>';
+  }
 
   const LS_CONFIG = 'cockpit_config';
   const LS_VENDEDORES = 'cockpit_vendedores';
@@ -51,6 +68,8 @@ Cockpit.State = (function () {
     SETORES: SETORES,
     SETOR_LABELS: SETOR_LABELS,
     setorLabel: setorLabel,
+    setorCor: setorCor,
+    setorBadgeHtml: setorBadgeHtml,
     getConfig: getConfig,
     saveConfigLocal: saveConfigLocal,
     getVendedores: getVendedores,

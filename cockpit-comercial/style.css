@@ -11,8 +11,6 @@
   --good:#16a34a;
   --warn:#d97706;
   --bad:#dc2626;
-  --chart-tele:#F2A365;
-  --chart-balcao:#EA5B0C;
 }
 
 *{margin:0;padding:0;box-sizing:border-box}
@@ -121,8 +119,6 @@ tbody tr:nth-child(even){background:#fafafa}
 
 /* ===== Badges de setor ===== */
 .badge-setor{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.68rem;font-weight:700;white-space:nowrap}
-.badge-setor.tele{background:var(--orange-dim);color:var(--orange);border:1px solid #fed7aa}
-.badge-setor.balcao{background:#f3f4f6;color:var(--dark);border:1px solid var(--border)}
 .badge-status{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.68rem;font-weight:700}
 .badge-status.ativo{background:#dcfce7;color:#15803d}
 .badge-status.inativo{background:#f3f4f6;color:#999}
