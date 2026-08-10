@@ -36,6 +36,9 @@ Cockpit.Sync = (function () {
       nome: Cockpit.Auth.currentUserName()
     });
   }
+  function deleteVendas(dataStr) {
+    return post({ action: 'deleteCockpitVendas', data: { data: dataStr }, nome: Cockpit.Auth.currentUserName() });
+  }
 
   return {
     fetchConfig: fetchConfig,
@@ -43,6 +46,7 @@ Cockpit.Sync = (function () {
     fetchVendedores: fetchVendedores,
     pushVendedores: pushVendedores,
     fetchVendas: fetchVendas,
-    pushVendas: pushVendas
+    pushVendas: pushVendas,
+    deleteVendas: deleteVendas
   };
 })();

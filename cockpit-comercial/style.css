@@ -90,6 +90,7 @@ input[readonly]{background:#f2f2f2;color:#777}
 .bo{background:var(--orange);color:var(--white)}.bo:hover{background:#c84a08}
 .bk{background:var(--good);color:var(--white)}.bk:hover{background:#0f7a37}
 .bgray{background:#6b7280;color:var(--white)}.bgray:hover{background:#52555c}
+.bred{background:var(--bad);color:var(--white)}.bred:hover{background:#b91c1c}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-row-h{display:flex;gap:10px;flex-wrap:wrap}
 

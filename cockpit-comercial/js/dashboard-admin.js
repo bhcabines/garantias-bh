@@ -491,7 +491,10 @@ Cockpit.DashboardAdmin = (function () {
       const importadoEmFmt = d.importadoEm ? new Date(d.importadoEm).toLocaleString('pt-BR') : '—';
       return '<tr><td>' + formatarDataBR(data) + '</td><td>' + Object.keys(d.codigos).length + '</td><td>' + fmt(d.total) +
         '</td><td>' + importadoEmFmt + '</td><td>' + (d.importadoPor || '—') + '</td>' +
-        '<td><button class="btn bgray" data-reimportar="' + data + '">Reimportar / Substituir</button></td></tr>';
+        '<td style="white-space:nowrap">' +
+          '<button class="btn bgray" data-reimportar="' + data + '">Reimportar / Substituir</button> ' +
+          '<button class="btn bred" data-excluir="' + data + '">Excluir</button>' +
+        '</td></tr>';
     }).join('');
 
     tbody.querySelectorAll('[data-reimportar]').forEach(function (btn) {
@@ -499,6 +502,29 @@ Cockpit.DashboardAdmin = (function () {
         ativarTab('importar');
         document.getElementById('importData').value = btn.dataset.reimportar;
       });
+    });
+
+    tbody.querySelectorAll('[data-excluir]').forEach(function (btn) {
+      btn.addEventListener('click', function () { excluirImportacao(btn.dataset.excluir); });
+    });
+  }
+
+  function excluirImportacao(dataStr) {
+    const qtd = Cockpit.State.getVendas().filter(function (r) { return String(r.data) === String(dataStr); }).length;
+    if (!confirm('Excluir os ' + qtd + ' registro(s) importados para ' + formatarDataBR(dataStr) + '? Essa ação não pode ser desfeita.')) return;
+
+    Cockpit.Sync.deleteVendas(dataStr).then(function (resp) {
+      if (!resp || !resp.ok) {
+        alert('Não foi possível excluir: ' + (resp && resp.erro ? resp.erro : 'erro desconhecido'));
+        return;
+      }
+      const restante = Cockpit.State.getVendas().filter(function (r) { return String(r.data) !== String(dataStr); });
+      Cockpit.State.saveVendasLocal(restante);
+      renderHistorico();
+      if (window.Cockpit.DashboardGeral) Cockpit.DashboardGeral.render();
+      alert('Importação de ' + formatarDataBR(dataStr) + ' excluída.');
+    }).catch(function () {
+      alert('Falha de conexão ao excluir. Verifique a internet e tente novamente.');
     });
   }
 
