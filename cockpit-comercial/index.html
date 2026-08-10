@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BH Cabines — Cockpit Comercial</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-in">
+    <a href="../index.html" class="hdr-back" title="Voltar ao painel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <div class="hdr-title">
+      <h1>Cockpit Comercial</h1>
+      <small>Metas · Desempenho da equipe · Indicadores comerciais</small>
+    </div>
+    <div class="ml hdr-right">
+      <span id="syncIndicador" style="display:none;font-size:.72rem;font-weight:600;color:#666;padding:4px 10px;background:#f3f4f6;border-radius:20px"></span>
+      <span class="header-date" id="headerDate"></span>
+      <a href="../index.html" class="btn-menu">🏠 Menu</a>
+    </div>
+  </div>
+</header>
+
+<div class="app-layout">
+
+  <!-- ===== MENU LATERAL ===== -->
+  <nav class="side-nav" id="sideNav">
+    <button class="nav-btn active" data-view="geral">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      <span>Visão Geral</span>
+    </button>
+    <button class="nav-btn" data-view="admin">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>Administração</span>
+    </button>
+  </nav>
+
+  <!-- ===== CONTEÚDO ===== -->
+  <main class="content">
+
+    <!-- ================= VISÃO GERAL ================= -->
+    <section class="view active" id="view-geral">
+      <div class="view-header">
+        <h2>Visão Geral Comercial</h2>
+        <p>Acompanhamento de metas, desempenho da equipe e indicadores do mês.</p>
+      </div>
+
+      <div class="card">
+        <div class="filtros-produtos">
+          <div class="field">
+            <label>Mês</label>
+            <select id="filtroMes"></select>
+          </div>
+          <div class="field">
+            <label>Ano</label>
+            <select id="filtroAno"></select>
+          </div>
+          <div class="field">
+            <label>Vendedor</label>
+            <select id="filtroVendedor"><option value="">Todos</option></select>
+          </div>
+          <div class="field">
+            <label>Setor</label>
+            <select id="filtroSetor">
+              <option value="">Todos</option>
+              <option value="TELEMARKETING">Telemarketing</option>
+              <option value="BALCAO">Balcão</option>
+            </select>
+          </div>
+          <button class="btn bgray" id="btnLimparFiltros" style="align-self:flex-end">Limpar</button>
+        </div>
+      </div>
+
+      <div class="cards-grid" style="margin-top:20px">
+        <div class="sum-card"><span class="sum-label">Vendas Acumuladas (mês)</span><span class="sum-value" id="cardVendasAcum">R$ 0,00</span></div>
+        <div class="sum-card"><span class="sum-label">Meta Geral</span><span class="sum-value" id="cardMetaGeral">R$ 0,00</span></div>
+        <div class="sum-card orange"><span class="sum-label">% da Meta Atingido</span><span class="sum-value" id="cardPercAtingido">0%</span></div>
+        <div class="sum-card"><span class="sum-label">Valor Restante</span><span class="sum-value" id="cardValorRestante">R$ 0,00</span></div>
+        <div class="sum-card"><span class="sum-label">Meta Diária</span><span class="sum-value" id="cardMetaDiaria">R$ 0,00</span></div>
+        <div class="sum-card"><span class="sum-label">Média Diária Realizada</span><span class="sum-value" id="cardMediaDiaria">R$ 0,00</span></div>
+      </div>
+
+      <div class="cards-grid setor-grid" style="margin-top:16px">
+        <div class="sum-card sum-card-setor">
+          <span class="sum-label">Telemarketing</span>
+          <div class="setor-mini-stats">
+            <div><small>Acumulado</small><strong id="cardTeleAcum">R$ 0,00</strong></div>
+            <div><small>Meta</small><strong id="cardTeleMeta">R$ 0,00</strong></div>
+            <div><small>%</small><strong id="cardTelePerc">0%</strong></div>
+          </div>
+        </div>
+        <div class="sum-card sum-card-setor">
+          <span class="sum-label">Balcão</span>
+          <div class="setor-mini-stats">
+            <div><small>Acumulado</small><strong id="cardBalcaoAcum">R$ 0,00</strong></div>
+            <div><small>Meta</small><strong id="cardBalcaoMeta">R$ 0,00</strong></div>
+            <div><small>%</small><strong id="cardBalcaoPerc">0%</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="charts-grid" style="margin-top:20px">
+        <div class="card">
+          <h3 class="card-title">Participação por Vendedor</h3>
+          <div class="chart-wrap"><canvas id="chartParticipacao"></canvas></div>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Vendas Diárias por Setor</h3>
+          <div class="chart-wrap"><canvas id="chartDiarioSetor"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card corrida-card" style="margin-top:20px">
+        <h3 class="card-title">🏁 Corrida Comercial</h3>
+        <p class="muted" style="margin-bottom:14px">Cada caminhão mostra o quanto o vendedor já percorreu em direção à própria meta individual.</p>
+        <div id="corridaContainer"></div>
+      </div>
+    </section>
+
+    <!-- ================= ADMINISTRAÇÃO ================= -->
+    <section class="view" id="view-admin">
+      <div class="view-header">
+        <h2>Administração</h2>
+        <p>Metas mensais, cadastro de vendedores e importação do relatório diário de vendas.</p>
+      </div>
+
+      <div class="admin-tabs">
+        <button class="admin-tab active" data-tab="metas">Metas do Mês</button>
+        <button class="admin-tab" data-tab="vendedores">Vendedores</button>
+        <button class="admin-tab" data-tab="importar">Importar Vendas</button>
+        <button class="admin-tab" data-tab="historico">Histórico de Importações</button>
+      </div>
+
+      <!-- ---- METAS ---- -->
+      <div class="admin-tab-panel active" id="tab-metas">
+        <div class="card">
+          <h3 class="card-title">Metas do Mês</h3>
+          <div class="form-grid">
+            <div class="field">
+              <label>Mês</label>
+              <select id="metaMesSel"></select>
+            </div>
+            <div class="field">
+              <label>Ano</label>
+              <input type="number" id="metaAno" min="2020" max="2100">
+            </div>
+            <div class="field"><label>Meta Geral (R$) *</label><input type="number" id="metaGeral" step="0.01" min="0"></div>
+            <div class="field"><label>Meta Telemarketing (R$) *</label><input type="number" id="metaTelemarketing" step="0.01" min="0"></div>
+            <div class="field"><label>Meta Balcão (R$) *</label><input type="number" id="metaBalcao" step="0.01" min="0"></div>
+            <div class="field"><label>Dias Trabalhados *</label><input type="number" id="metaDias" min="1" max="31"></div>
+          </div>
+          <div id="alertaSomaMetas"></div>
+          <div class="cards-grid" style="margin-top:16px">
+            <div class="sum-card"><span class="sum-label">Meta Diária Geral</span><span class="sum-value" id="calcMetaDiariaGeral">R$ 0,00</span></div>
+            <div class="sum-card"><span class="sum-label">Meta Diária Telemarketing</span><span class="sum-value" id="calcMetaDiariaTele">R$ 0,00</span></div>
+            <div class="sum-card"><span class="sum-label">Meta Diária Balcão</span><span class="sum-value" id="calcMetaDiariaBalcao">R$ 0,00</span></div>
+          </div>
+          <div class="btn-row-h" style="margin-top:16px">
+            <button class="btn bo" id="btnSalvarMetas">Salvar Metas do Mês</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:20px">
+          <h3 class="card-title">Metas já cadastradas</h3>
+          <div class="table-wrap">
+            <table id="tblMetas">
+              <thead><tr><th>Mês/Ano</th><th>Meta Geral</th><th>Meta Telemarketing</th><th>Meta Balcão</th><th>Dias Trabalhados</th><th>Meta Diária Geral</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- VENDEDORES ---- -->
+      <div class="admin-tab-panel" id="tab-vendedores">
+        <div class="card">
+          <h3 class="card-title">Novo Vendedor</h3>
+          <form id="formVendedor" class="form-grid">
+            <div class="field"><label>Código *</label><input type="text" id="vendCodigo" required></div>
+            <div class="field field-wide"><label>Nome *</label><input type="text" id="vendNome" required></div>
+            <div class="field"><label>Setor *</label><select id="vendSetor" required></select></div>
+            <div class="field"><label>Meta Individual (R$)</label><input type="number" id="vendMetaIndividual" step="0.01" min="0" placeholder="opcional"></div>
+            <div class="field">
+              <label>Status</label>
+              <select id="vendAtivo"><option value="true">Ativo</option><option value="false">Inativo</option></select>
+            </div>
+            <input type="hidden" id="vendEditId">
+            <div class="field field-actions">
+              <button type="submit" class="btn bo">+ Salvar Vendedor</button>
+              <button type="button" class="btn bgray" id="btnCancelarEdicaoVendedor" style="display:none">Cancelar edição</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card" style="margin-top:20px">
+          <h3 class="card-title">Vendedores Cadastrados</h3>
+          <div class="table-wrap">
+            <table id="tblVendedores">
+              <thead><tr><th>Código</th><th>Nome</th><th>Setor</th><th>Meta Individual</th><th>Status</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- IMPORTAR VENDAS ---- -->
+      <div class="admin-tab-panel" id="tab-importar">
+        <div class="card">
+          <h3 class="card-title">Importar Relatório Diário de Vendas</h3>
+          <div class="drop" id="importDrop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <h3>Arraste o arquivo .xls aqui ou clique para selecionar</h3>
+            <p>Aceita o "Relatorio Diario Vendas.xls" exportado do ERP (aba "Geral")</p>
+            <input type="file" id="importInput" accept=".xls,.xlsx">
+          </div>
+
+          <div class="field" style="max-width:220px;margin-top:16px">
+            <label>Data de referência *</label>
+            <input type="date" id="importData">
+          </div>
+
+          <div id="importNaoIdentificados" style="display:none;margin-top:18px"></div>
+
+          <div class="table-wrap" style="margin-top:16px">
+            <table id="tblImportPreview">
+              <thead><tr><th>Código</th><th>Vendedor</th><th>Setor</th><th>Vendas</th><th>Nº Vendas</th><th>Ticket Médio</th><th>Meta Diária (ERP)</th></tr></thead>
+              <tbody><tr class="empty-row"><td colspan="7">Nenhum arquivo carregado ainda.</td></tr></tbody>
+            </table>
+          </div>
+
+          <div class="btn-row-h" style="margin-top:16px">
+            <button class="btn bo" id="btnConfirmarImportacao" disabled>Confirmar Importação</button>
+            <button class="btn bgray" id="btnLimparImportacao">Limpar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- HISTÓRICO ---- -->
+      <div class="admin-tab-panel" id="tab-historico">
+        <div class="card">
+          <h3 class="card-title">Histórico de Importações</h3>
+          <div class="table-wrap">
+            <table id="tblHistoricoImportacoes">
+              <thead><tr><th>Data</th><th>Vendedores</th><th>Total do Dia</th><th>Importado em</th><th>Por</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ===== MODAL: SENHA DO PAINEL ADMINISTRATIVO ===== -->
+<div class="modal-overlay" id="modalSenhaAdmin">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-head">
+      <h3>🔒 Área Restrita</h3>
+      <button class="modal-close" id="closeModalSenhaAdmin">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted" style="margin-bottom:14px">Informe a senha de acesso à Administração do Cockpit Comercial.</p>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="senhaAdminInput" placeholder="••••••••">
+      </div>
+      <div class="login-error" id="senhaAdminErro" style="display:none">Senha incorreta.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarSenhaAdmin">Cancelar</button>
+      <button class="btn bo" id="btnConfirmarSenhaAdmin">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: VENDEDOR NÃO IDENTIFICADO ===== -->
+<div class="modal-overlay" id="modalVendedorRapido">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>Vendedor não cadastrado</h3>
+      <button class="modal-close" id="closeModalVendedorRapido">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted" style="margin-bottom:14px">O código <strong id="vrCodigo"></strong> ("<span id="vrNomeErp"></span>") não está no cadastro de vendedores. Mapeie para um vendedor existente ou cadastre agora.</p>
+
+      <div class="field">
+        <label>Mapear para vendedor existente</label>
+        <select id="vrSelectExistente"><option value="">— selecionar —</option></select>
+      </div>
+
+      <div style="margin:14px 0;text-align:center;color:#bbb;font-size:.75rem;text-transform:uppercase;letter-spacing:.4px">ou</div>
+
+      <div class="form-grid">
+        <div class="field field-wide"><label>Nome</label><input type="text" id="vrNovoNome"></div>
+        <div class="field"><label>Setor *</label><select id="vrNovoSetor"></select></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarVendedorRapido">Cancelar</button>
+      <button class="btn bo" id="btnResolverVendedorRapido">Resolver</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: DUPLICIDADE DE IMPORTAÇÃO ===== -->
+<div class="modal-overlay" id="modalDuplicidade">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-head">
+      <h3>⚠️ Dados já importados</h3>
+      <button class="modal-close" id="closeModalDuplicidade">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="duplicidadeMensagem">Já existem dados importados para esta data.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarDuplicidade">Cancelar</button>
+      <button class="btn bo" id="btnSubstituirDuplicidade">Substituir dados desta data</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/state.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/calc.js"></script>
+<script src="js/import.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/dashboard-admin.js"></script>
+<script src="js/dashboard-geral.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
