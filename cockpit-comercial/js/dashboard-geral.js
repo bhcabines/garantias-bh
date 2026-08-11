@@ -130,7 +130,7 @@ Cockpit.DashboardGeral = (function () {
     }).join('');
 
     const roster = Cockpit.State.getVendedores();
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster);
+    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metasPorSetor);
     Cockpit.Charts.renderParticipacao('chartParticipacao', ranking);
 
     const dias = Cockpit.Calc.agregarPorDia(linhas);
@@ -140,15 +140,18 @@ Cockpit.DashboardGeral = (function () {
   }
 
   function renderCorrida(filtros) {
+    const cfg = Cockpit.State.getConfig();
+    const metaCfg = cfg[chaveMesAno(filtros.mes, filtros.ano)] || { metasPorSetor: {} };
+
     const roster = Cockpit.State.getVendedores().filter(function (v) {
-      if (!v.ativo) return false;
+      if (v.status === 'inativo') return false;
       if (filtros.setor && v.setor !== filtros.setor) return false;
       if (filtros.vendedorCodigo && v.codigo !== filtros.vendedorCodigo) return false;
       return true;
     });
 
     const linhas = getVendasFiltradas(false);
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster);
+    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metaCfg.metasPorSetor || {});
 
     const container = document.getElementById('corridaContainer');
     if (!ranking.length) {

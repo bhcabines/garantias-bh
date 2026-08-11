@@ -3,6 +3,13 @@
    Bootstrap: carrega dados (servidor vence o cache local, mesmo padrão de
    gestao-custos/script.js), religa a navegação entre os dois painéis e
    inicializa os dois módulos de dashboard.
+
+   Exceção importante ao "servidor vence": se o servidor voltar vazio mas o
+   navegador já tiver dados locais, isso quase sempre significa que um envio
+   anterior falhou silenciosamente (ex.: implantação do Apps Script desatualizada)
+   — nesse caso, em vez de apagar o que só existe localmente, reenviamos o dado
+   local para o servidor. Foi exatamente isso que apagou o cadastro de
+   vendedores da primeira vez; essa proteção evita que se repita.
    ============================================================================ */
 (function () {
   function setHeaderDate() {
@@ -31,8 +38,22 @@
       const vendedores = res[1];
       const vendasResp = res[2];
 
-      if (config && typeof config === 'object') Cockpit.State.saveConfigLocal(config);
-      if (Array.isArray(vendedores)) Cockpit.State.saveVendedoresLocal(vendedores);
+      if (config && typeof config === 'object') {
+        if (Object.keys(config).length === 0 && Object.keys(Cockpit.State.getConfig()).length > 0) {
+          Cockpit.Sync.pushConfig(Cockpit.State.getConfig()).catch(function () {});
+        } else {
+          Cockpit.State.saveConfigLocal(config);
+        }
+      }
+
+      if (Array.isArray(vendedores)) {
+        if (vendedores.length === 0 && Cockpit.State.getVendedores().length > 0) {
+          Cockpit.Sync.pushVendedores(Cockpit.State.getVendedores()).catch(function () {});
+        } else {
+          Cockpit.State.saveVendedoresLocal(vendedores);
+        }
+      }
+
       if (vendasResp && vendasResp.ok && Array.isArray(vendasResp.data)) {
         // Números vêm do Google Sheets como valores já numéricos/strings; normaliza os campos de valor.
         const linhas = vendasResp.data.map(function (r) {

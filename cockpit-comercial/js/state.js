@@ -23,9 +23,16 @@ Cockpit.State = (function () {
     return SETOR_PALETA[idx >= 0 ? idx % SETOR_PALETA.length : 0];
   }
   function setorBadgeHtml(s) {
+    if (!s) return '<span class="badge-setor" style="background:#f3f4f6;color:#999">Setor pendente</span>';
     const c = setorCor(s);
     return '<span class="badge-setor" style="background:' + c.bg + ';color:' + c.fg + '">' + setorLabel(s) + '</span>';
   }
+
+  // Status do vendedor — "férias" existe desde já no cadastro; o efeito dela sobre
+  // metas diárias será definido depois (ver seção correspondente no cadastro).
+  const STATUS_VENDEDOR = ['ativo', 'inativo', 'ferias'];
+  const STATUS_LABELS = { ativo: 'Ativo', inativo: 'Inativo', ferias: 'Férias' };
+  function statusLabel(s) { return STATUS_LABELS[s] || s || '—'; }
 
   const LS_CONFIG = 'cockpit_config';
   const LS_VENDEDORES = 'cockpit_vendedores';
@@ -40,8 +47,14 @@ Cockpit.State = (function () {
   }
 
   function getVendedores() {
-    try { return JSON.parse(localStorage.getItem(LS_VENDEDORES)) || []; }
-    catch (e) { return []; }
+    try {
+      const arr = JSON.parse(localStorage.getItem(LS_VENDEDORES)) || [];
+      // Compatibilidade com cadastros antigos que só tinham o booleano "ativo".
+      return arr.map(function (v) {
+        if (!v.status) v.status = v.ativo === false ? 'inativo' : 'ativo';
+        return v;
+      });
+    } catch (e) { return []; }
   }
   function saveVendedoresLocal(arr) {
     localStorage.setItem(LS_VENDEDORES, JSON.stringify(arr || []));
@@ -70,6 +83,9 @@ Cockpit.State = (function () {
     setorLabel: setorLabel,
     setorCor: setorCor,
     setorBadgeHtml: setorBadgeHtml,
+    STATUS_VENDEDOR: STATUS_VENDEDOR,
+    STATUS_LABELS: STATUS_LABELS,
+    statusLabel: statusLabel,
     getConfig: getConfig,
     saveConfigLocal: saveConfigLocal,
     getVendedores: getVendedores,

@@ -163,10 +163,9 @@
             <div class="field"><label>Código *</label><input type="text" id="vendCodigo" required></div>
             <div class="field field-wide"><label>Nome *</label><input type="text" id="vendNome" required></div>
             <div class="field"><label>Setor *</label><select id="vendSetor" required></select></div>
-            <div class="field"><label>Meta Individual (R$)</label><input type="number" id="vendMetaIndividual" step="0.01" min="0" placeholder="opcional"></div>
             <div class="field">
               <label>Status</label>
-              <select id="vendAtivo"><option value="true">Ativo</option><option value="false">Inativo</option></select>
+              <select id="vendStatus"></select>
             </div>
             <input type="hidden" id="vendEditId">
             <div class="field field-actions">
@@ -174,13 +173,17 @@
               <button type="button" class="btn bgray" id="btnCancelarEdicaoVendedor" style="display:none">Cancelar edição</button>
             </div>
           </form>
+          <p class="muted" style="margin-top:14px">A meta individual não é cadastrada aqui — ela é calculada automaticamente a partir da meta do setor (aba "Metas do Mês"), dividida entre os vendedores com status Ativo daquele setor.</p>
+          <div class="btn-row-h" style="margin-top:14px">
+            <button type="button" class="btn bgray" id="btnSeedVendedoresModelo">Cadastrar vendedores do relatório modelo</button>
+          </div>
         </div>
 
         <div class="card" style="margin-top:20px">
           <h3 class="card-title">Vendedores Cadastrados</h3>
           <div class="table-wrap">
             <table id="tblVendedores">
-              <thead><tr><th>Código</th><th>Nome</th><th>Setor</th><th>Meta Individual</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th>Código</th><th>Nome</th><th>Setor</th><th>Status</th><th></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>

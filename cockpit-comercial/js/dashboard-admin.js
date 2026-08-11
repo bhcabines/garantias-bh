@@ -157,14 +157,33 @@ Cockpit.DashboardAdmin = (function () {
   /* ---------------------------------------------------------------------
      VENDEDORES
      --------------------------------------------------------------------- */
+  // Vendedores da planilha-modelo ("Relatorio Diario Vendas.xls") — código + nome,
+  // usados só pra agilizar o primeiro cadastro. Setor fica em branco de propósito:
+  // o admin escolhe o setor certo de cada um editando a linha na tabela abaixo.
+  const VENDEDORES_MODELO = [
+    { codigo: '0047486', nome: 'Bernardo Elias Ferri' },
+    { codigo: '0028622', nome: 'Bruno Henrique Carvalho' },
+    { codigo: '0000089', nome: 'Felipe de Souza' },
+    { codigo: '0000095', nome: 'Gabriel Carvalho Ferreira' },
+    { codigo: '0000091', nome: 'Iago Marques Lemos' },
+    { codigo: '0000096', nome: 'Jarbas Ubiratan França' },
+    { codigo: '0000092', nome: 'Julio dos Santos Viana' },
+    { codigo: '0000090', nome: 'Marcelo Alves Santana' },
+    { codigo: '0600581', nome: 'Maria de Fatima Queiroz' },
+    { codigo: '0000094', nome: 'Thiago Moreira Leao' },
+    { codigo: '0028932', nome: 'Welligton Alves de Souza' }
+  ];
+
   function initVendedoresTab() {
-    popularSelectSetor(document.getElementById('vendSetor'));
+    popularSelectSetor(document.getElementById('vendSetor'), '— selecionar setor —');
+    popularSelectStatus(document.getElementById('vendStatus'));
 
     document.getElementById('formVendedor').addEventListener('submit', function (e) {
       e.preventDefault();
       salvarVendedor();
     });
     document.getElementById('btnCancelarEdicaoVendedor').addEventListener('click', limparFormVendedor);
+    document.getElementById('btnSeedVendedoresModelo').addEventListener('click', seedVendedoresModelo);
 
     document.querySelector('#tblVendedores tbody').addEventListener('click', function (e) {
       const btn = e.target.closest('[data-action]');
@@ -177,20 +196,25 @@ Cockpit.DashboardAdmin = (function () {
     renderTabelaVendedores();
   }
 
-  function popularSelectSetor(select, comTodos) {
-    let html = (comTodos ? '<option value="">Todos</option>' : '');
+  function popularSelectSetor(select, placeholder) {
+    let html = placeholder ? '<option value="">' + placeholder + '</option>' : '';
     html += Cockpit.State.SETORES.map(function (s) {
       return '<option value="' + s + '">' + Cockpit.State.setorLabel(s) + '</option>';
     }).join('');
     select.innerHTML = html;
   }
 
+  function popularSelectStatus(select) {
+    select.innerHTML = Cockpit.State.STATUS_VENDEDOR.map(function (s) {
+      return '<option value="' + s + '">' + Cockpit.State.statusLabel(s) + '</option>';
+    }).join('');
+  }
+
   function salvarVendedor() {
     const codigo = document.getElementById('vendCodigo').value.trim();
     const nome = document.getElementById('vendNome').value.trim();
     const setor = document.getElementById('vendSetor').value;
-    const metaStr = document.getElementById('vendMetaIndividual').value;
-    const ativo = document.getElementById('vendAtivo').value === 'true';
+    const status = document.getElementById('vendStatus').value;
     const editId = document.getElementById('vendEditId').value;
 
     if (!codigo || !nome || !setor) { alert('Preencha código, nome e setor.'); return; }
@@ -200,7 +224,6 @@ Cockpit.DashboardAdmin = (function () {
     if (duplicado) { alert('Já existe um vendedor cadastrado com este código.'); return; }
 
     const agora = new Date().toISOString();
-    const metaIndividual = metaStr === '' ? null : Number(metaStr);
 
     if (editId) {
       const idx = lista.findIndex(function (v) { return v.id === editId; });
@@ -208,12 +231,13 @@ Cockpit.DashboardAdmin = (function () {
         lista[idx].codigo = codigo;
         lista[idx].nome = nome;
         lista[idx].setor = setor;
-        lista[idx].metaIndividual = metaIndividual;
-        lista[idx].ativo = ativo;
+        lista[idx].status = status;
+        delete lista[idx].ativo;
+        delete lista[idx].metaIndividual;
         lista[idx].atualizadoEm = agora;
       }
     } else {
-      lista.push({ id: 'v_' + codigo, codigo: codigo, nome: nome, setor: setor, ativo: ativo, metaIndividual: metaIndividual, criadoEm: agora, atualizadoEm: agora });
+      lista.push({ id: 'v_' + codigo, codigo: codigo, nome: nome, setor: setor, status: status, criadoEm: agora, atualizadoEm: agora });
     }
 
     Cockpit.State.saveVendedoresLocal(lista);
@@ -226,6 +250,7 @@ Cockpit.DashboardAdmin = (function () {
   function limparFormVendedor() {
     document.getElementById('formVendedor').reset();
     document.getElementById('vendEditId').value = '';
+    document.getElementById('vendStatus').value = 'ativo';
     document.getElementById('btnCancelarEdicaoVendedor').style.display = 'none';
   }
 
@@ -234,9 +259,8 @@ Cockpit.DashboardAdmin = (function () {
     if (!v) return;
     document.getElementById('vendCodigo').value = v.codigo;
     document.getElementById('vendNome').value = v.nome;
-    document.getElementById('vendSetor').value = v.setor;
-    document.getElementById('vendMetaIndividual').value = v.metaIndividual === null || v.metaIndividual === undefined ? '' : v.metaIndividual;
-    document.getElementById('vendAtivo').value = v.ativo ? 'true' : 'false';
+    document.getElementById('vendSetor').value = v.setor || '';
+    document.getElementById('vendStatus').value = v.status || 'ativo';
     document.getElementById('vendEditId').value = v.id;
     document.getElementById('btnCancelarEdicaoVendedor').style.display = 'inline-flex';
     document.getElementById('vendCodigo').focus();
@@ -251,18 +275,35 @@ Cockpit.DashboardAdmin = (function () {
     if (window.Cockpit.DashboardGeral) Cockpit.DashboardGeral.populateFiltros();
   }
 
+  function seedVendedoresModelo() {
+    const lista = Cockpit.State.getVendedores();
+    const agora = new Date().toISOString();
+    let adicionados = 0;
+    VENDEDORES_MODELO.forEach(function (m) {
+      if (lista.some(function (v) { return v.codigo === m.codigo; })) return;
+      lista.push({ id: 'v_' + m.codigo, codigo: m.codigo, nome: m.nome, setor: '', status: 'ativo', criadoEm: agora, atualizadoEm: agora });
+      adicionados++;
+    });
+    if (!adicionados) { alert('Todos os vendedores do relatório modelo já estão cadastrados.'); return; }
+
+    Cockpit.State.saveVendedoresLocal(lista);
+    Cockpit.Sync.pushVendedores(lista).catch(function () {});
+    renderTabelaVendedores();
+    if (window.Cockpit.DashboardGeral) Cockpit.DashboardGeral.populateFiltros();
+    alert(adicionados + ' vendedor(es) adicionado(s) sem setor definido. Clique em ✏️ em cada um pra escolher o setor certo.');
+  }
+
   function renderTabelaVendedores() {
     const lista = Cockpit.State.getVendedores();
     const tbody = document.querySelector('#tblVendedores tbody');
     if (!lista.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Nenhum vendedor cadastrado ainda.</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Nenhum vendedor cadastrado ainda.</td></tr>';
       return;
     }
     tbody.innerHTML = lista.map(function (v) {
       const badgeSetor = Cockpit.State.setorBadgeHtml(v.setor);
-      const badgeStatus = '<span class="badge-status ' + (v.ativo ? 'ativo' : 'inativo') + '">' + (v.ativo ? 'Ativo' : 'Inativo') + '</span>';
-      const meta = v.metaIndividual === null || v.metaIndividual === undefined ? '<span class="muted">pendente</span>' : fmt(v.metaIndividual);
-      return '<tr><td>' + v.codigo + '</td><td>' + v.nome + '</td><td>' + badgeSetor + '</td><td>' + meta + '</td><td>' + badgeStatus + '</td>' +
+      const badgeStatus = '<span class="badge-status ' + v.status + '">' + Cockpit.State.statusLabel(v.status) + '</span>';
+      return '<tr><td>' + v.codigo + '</td><td>' + v.nome + '</td><td>' + badgeSetor + '</td><td>' + badgeStatus + '</td>' +
         '<td><button class="icon-btn" data-action="editar" data-id="' + v.id + '" title="Editar">✏️</button>' +
         '<button class="icon-btn" data-action="excluir" data-id="' + v.id + '" title="Excluir">🗑️</button></td></tr>';
     }).join('');
@@ -389,7 +430,7 @@ Cockpit.DashboardAdmin = (function () {
       const setor = document.getElementById('vrNovoSetor').value;
       if (!nome || !setor) { alert('Selecione um vendedor existente ou informe nome e setor para cadastrar um novo.'); return; }
       const agora = new Date().toISOString();
-      vendedorResolvido = { id: 'v_' + codigo, codigo: codigo, nome: nome, setor: setor, ativo: true, metaIndividual: null, criadoEm: agora, atualizadoEm: agora };
+      vendedorResolvido = { id: 'v_' + codigo, codigo: codigo, nome: nome, setor: setor, status: 'ativo', criadoEm: agora, atualizadoEm: agora };
       lista.push(vendedorResolvido);
     }
 

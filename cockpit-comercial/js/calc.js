@@ -101,25 +101,38 @@ Cockpit.Calc = (function () {
   }
 
   // Ranking por vendedor a partir do roster + linhas do período filtrado.
-  // percAtingidoIndividual é null (não 0/NaN) quando metaIndividual não está definida —
-  // todo renderer (ex.: Corrida Comercial) precisa checar esse null explicitamente.
-  function rankingVendedores(linhasDoMes, roster) {
+  // Meta individual NÃO é cadastrada manualmente — ela é a meta do setor (configurada
+  // em Metas do Mês) dividida entre os vendedores com status "ativo" daquele setor.
+  // percAtingidoIndividual é null (não 0/NaN) quando não há meta de setor definida ou
+  // quando o vendedor não está "ativo" — todo renderer (ex.: Corrida Comercial) precisa
+  // checar esse null explicitamente.
+  function rankingVendedores(linhasDoMes, roster, metasPorSetor) {
+    metasPorSetor = metasPorSetor || {};
+
     const totaisPorCodigo = {};
     (linhasDoMes || []).forEach(function (r) {
       totaisPorCodigo[r.vendedorCodigo] = (totaisPorCodigo[r.vendedorCodigo] || 0) + (Number(r.vendas) || 0);
     });
 
+    const ativosPorSetor = {};
+    (roster || []).forEach(function (v) {
+      if (v.status === 'ativo') ativosPorSetor[v.setor] = (ativosPorSetor[v.setor] || 0) + 1;
+    });
+
     const lista = (roster || []).map(function (v) {
       const acumulado = totaisPorCodigo[v.codigo] || 0;
-      const temMeta = v.metaIndividual !== null && v.metaIndividual !== undefined && v.metaIndividual !== '';
+      const metaSetor = metasPorSetor[v.setor] || 0;
+      const qtdAtivosSetor = ativosPorSetor[v.setor] || 0;
+      const temMeta = v.status === 'ativo' && metaSetor > 0 && qtdAtivosSetor > 0;
+      const metaIndividual = temMeta ? (metaSetor / qtdAtivosSetor) : null;
       return {
         codigo: v.codigo,
         nome: v.nome,
         setor: v.setor,
-        ativo: v.ativo,
+        status: v.status,
         acumulado: acumulado,
-        metaIndividual: temMeta ? Number(v.metaIndividual) : null,
-        percAtingidoIndividual: temMeta ? percAtingido(acumulado, v.metaIndividual) : null
+        metaIndividual: metaIndividual,
+        percAtingidoIndividual: metaIndividual !== null ? percAtingido(acumulado, metaIndividual) : null
       };
     });
 
