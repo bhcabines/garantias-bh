@@ -105,6 +105,7 @@
       Cockpit.DashboardAdmin.renderTabelaMetas();
       Cockpit.DashboardAdmin.renderTabelaVendedores();
       Cockpit.DashboardAdmin.renderHistorico();
+      Cockpit.DashboardAdmin.refreshMetasForm();
     });
   });
 })();

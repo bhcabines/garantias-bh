@@ -76,6 +76,45 @@ Cockpit.DashboardAdmin = (function () {
     return out;
   }
 
+  // Lista de vendedores presentes no mês (afeta a divisão da meta individual).
+  // Se vendedoresPresentes ainda não foi salvo pra esse mês, o padrão marca
+  // todo mundo com status "ativo" no cadastro atual.
+  function renderVendedoresPresentes(vendedoresPresentes) {
+    const roster = Cockpit.State.getVendedores();
+    const container = document.getElementById('vendedoresPresentesGrid');
+    if (!roster.length) {
+      container.innerHTML = '<p class="muted">Nenhum vendedor cadastrado ainda.</p>';
+      return;
+    }
+    const selecionados = vendedoresPresentes
+      ? new Set(vendedoresPresentes)
+      : new Set(roster.filter(function (v) { return v.status === 'ativo'; }).map(function (v) { return v.codigo; }));
+
+    container.innerHTML = roster.map(function (v) {
+      const checked = selecionados.has(v.codigo) ? 'checked' : '';
+      const statusNota = v.status !== 'ativo' ? ' <span class="muted">(' + Cockpit.State.statusLabel(v.status) + ' no cadastro)</span>' : '';
+      return '<label class="presente-item"><input type="checkbox" data-presente="' + v.codigo + '" ' + checked + '>' +
+        '<span class="presente-nome">' + v.nome + '</span>' + Cockpit.State.setorBadgeHtml(v.setor) + statusNota + '</label>';
+    }).join('');
+  }
+
+  function lerVendedoresPresentes() {
+    return Array.prototype.map.call(
+      document.querySelectorAll('#vendedoresPresentesGrid [data-presente]:checked'),
+      function (inp) { return inp.dataset.presente; }
+    );
+  }
+
+  // Chamado sempre que o cadastro de vendedores muda (novo/editado/excluído), pra
+  // manter a lista de presença da aba Metas do Mês em dia sem perder marcações
+  // que o admin já tenha feito manualmente nessa visita à tela.
+  function refreshVendedoresPresentesSeVisivel() {
+    const grid = document.getElementById('vendedoresPresentesGrid');
+    if (grid && grid.children.length) {
+      renderVendedoresPresentes(lerVendedoresPresentes());
+    }
+  }
+
   function carregarMetaDoFormulario() {
     const mes = document.getElementById('metaMesSel').value;
     const ano = document.getElementById('metaAno').value;
@@ -84,6 +123,7 @@ Cockpit.DashboardAdmin = (function () {
     document.getElementById('metaGeral').value = item ? item.metaGeral : '';
     document.getElementById('metaDias').value = item ? item.diasTrabalhados : '';
     renderCamposSetorMetas(item ? item.metasPorSetor : null);
+    renderVendedoresPresentes(item ? item.vendedoresPresentes : null);
     document.getElementById('alertaSomaMetas').innerHTML = '';
     atualizarCalculoMetaDiaria();
   }
@@ -108,6 +148,7 @@ Cockpit.DashboardAdmin = (function () {
     const geral = Number(document.getElementById('metaGeral').value) || 0;
     const dias = Number(document.getElementById('metaDias').value) || 0;
     const metasPorSetor = lerMetasPorSetor();
+    const vendedoresPresentes = lerVendedoresPresentes();
 
     const alertaEl = document.getElementById('alertaSomaMetas');
     if (!geral || !dias) {
@@ -126,7 +167,7 @@ Cockpit.DashboardAdmin = (function () {
     const cfg = Cockpit.State.getConfig();
     const chave = chaveMesAno(mes, ano);
     cfg[chave] = {
-      metaGeral: geral, metasPorSetor: metasPorSetor, diasTrabalhados: dias,
+      metaGeral: geral, metasPorSetor: metasPorSetor, diasTrabalhados: dias, vendedoresPresentes: vendedoresPresentes,
       atualizadoEm: new Date().toISOString(), atualizadoPor: Cockpit.Auth.currentUserName()
     };
     Cockpit.State.saveConfigLocal(cfg);
@@ -245,6 +286,7 @@ Cockpit.DashboardAdmin = (function () {
     limparFormVendedor();
     renderTabelaVendedores();
     if (window.Cockpit.DashboardGeral) Cockpit.DashboardGeral.populateFiltros();
+    refreshVendedoresPresentesSeVisivel();
   }
 
   function limparFormVendedor() {
@@ -273,6 +315,7 @@ Cockpit.DashboardAdmin = (function () {
     Cockpit.Sync.pushVendedores(lista).catch(function () {});
     renderTabelaVendedores();
     if (window.Cockpit.DashboardGeral) Cockpit.DashboardGeral.populateFiltros();
+    refreshVendedoresPresentesSeVisivel();
   }
 
   function seedVendedoresModelo() {
@@ -290,6 +333,7 @@ Cockpit.DashboardAdmin = (function () {
     Cockpit.Sync.pushVendedores(lista).catch(function () {});
     renderTabelaVendedores();
     if (window.Cockpit.DashboardGeral) Cockpit.DashboardGeral.populateFiltros();
+    refreshVendedoresPresentesSeVisivel();
     alert(adicionados + ' vendedor(es) adicionado(s) sem setor definido. Clique em ✏️ em cada um pra escolher o setor certo.');
   }
 
@@ -441,6 +485,7 @@ Cockpit.DashboardAdmin = (function () {
     fecharModalVendedorRapido();
     renderPreview();
     renderTabelaVendedores();
+    refreshVendedoresPresentesSeVisivel();
   }
 
   function confirmarImportacao() {
@@ -584,6 +629,7 @@ Cockpit.DashboardAdmin = (function () {
     init: init,
     renderTabelaVendedores: renderTabelaVendedores,
     renderTabelaMetas: renderTabelaMetas,
-    renderHistorico: renderHistorico
+    renderHistorico: renderHistorico,
+    refreshMetasForm: carregarMetaDoFormulario
   };
 })();

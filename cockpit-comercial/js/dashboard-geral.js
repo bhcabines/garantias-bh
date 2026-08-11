@@ -130,7 +130,7 @@ Cockpit.DashboardGeral = (function () {
     }).join('');
 
     const roster = Cockpit.State.getVendedores();
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metasPorSetor);
+    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metasPorSetor, metaCfg.vendedoresPresentes);
     Cockpit.Charts.renderParticipacao('chartParticipacao', ranking);
 
     const dias = Cockpit.Calc.agregarPorDia(linhas);
@@ -151,7 +151,7 @@ Cockpit.DashboardGeral = (function () {
     });
 
     const linhas = getVendasFiltradas(false);
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metaCfg.metasPorSetor || {});
+    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes);
 
     const container = document.getElementById('corridaContainer');
     if (!ranking.length) {

@@ -102,34 +102,42 @@ Cockpit.Calc = (function () {
 
   // Ranking por vendedor a partir do roster + linhas do período filtrado.
   // Meta individual NÃO é cadastrada manualmente — ela é a meta do setor (configurada
-  // em Metas do Mês) dividida entre os vendedores com status "ativo" daquele setor.
+  // em Metas do Mês) dividida entre os vendedores "presentes" naquele mês específico
+  // (lista marcada na própria aba Metas do Mês — não é o status geral do cadastro,
+  // pois alguém pode estar de férias só num mês, sem mudar o cadastro permanente).
+  // Se presentesCodigos não for informado, cai no padrão: todo mundo com status "ativo".
   // percAtingidoIndividual é null (não 0/NaN) quando não há meta de setor definida ou
-  // quando o vendedor não está "ativo" — todo renderer (ex.: Corrida Comercial) precisa
-  // checar esse null explicitamente.
-  function rankingVendedores(linhasDoMes, roster, metasPorSetor) {
+  // quando o vendedor não está marcado como presente naquele mês — todo renderer
+  // (ex.: Corrida Comercial) precisa checar esse null explicitamente.
+  function rankingVendedores(linhasDoMes, roster, metasPorSetor, presentesCodigos) {
     metasPorSetor = metasPorSetor || {};
+    const presentesSet = presentesCodigos
+      ? new Set(presentesCodigos)
+      : new Set((roster || []).filter(function (v) { return v.status === 'ativo'; }).map(function (v) { return v.codigo; }));
 
     const totaisPorCodigo = {};
     (linhasDoMes || []).forEach(function (r) {
       totaisPorCodigo[r.vendedorCodigo] = (totaisPorCodigo[r.vendedorCodigo] || 0) + (Number(r.vendas) || 0);
     });
 
-    const ativosPorSetor = {};
+    const presentesPorSetor = {};
     (roster || []).forEach(function (v) {
-      if (v.status === 'ativo') ativosPorSetor[v.setor] = (ativosPorSetor[v.setor] || 0) + 1;
+      if (presentesSet.has(v.codigo)) presentesPorSetor[v.setor] = (presentesPorSetor[v.setor] || 0) + 1;
     });
 
     const lista = (roster || []).map(function (v) {
       const acumulado = totaisPorCodigo[v.codigo] || 0;
       const metaSetor = metasPorSetor[v.setor] || 0;
-      const qtdAtivosSetor = ativosPorSetor[v.setor] || 0;
-      const temMeta = v.status === 'ativo' && metaSetor > 0 && qtdAtivosSetor > 0;
-      const metaIndividual = temMeta ? (metaSetor / qtdAtivosSetor) : null;
+      const qtdPresentesSetor = presentesPorSetor[v.setor] || 0;
+      const presente = presentesSet.has(v.codigo);
+      const temMeta = presente && metaSetor > 0 && qtdPresentesSetor > 0;
+      const metaIndividual = temMeta ? (metaSetor / qtdPresentesSetor) : null;
       return {
         codigo: v.codigo,
         nome: v.nome,
         setor: v.setor,
         status: v.status,
+        presente: presente,
         acumulado: acumulado,
         metaIndividual: metaIndividual,
         percAtingidoIndividual: metaIndividual !== null ? percAtingido(acumulado, metaIndividual) : null
