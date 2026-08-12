@@ -175,14 +175,19 @@ Cockpit.DashboardGeral = (function () {
     const perc = pendente ? 0 : Math.min(v.percAtingidoIndividual, 100);
     const completo = !pendente && v.percAtingidoIndividual >= 100;
     const percLabel = pendente ? 'Meta pendente' : fmtPerc(v.percAtingidoIndividual);
+    const valoresLabel = pendente ? fmt(v.acumulado) + ' vendido' : fmt(v.acumulado) + ' de ' + fmt(v.metaIndividual);
+    const metaFimPista = pendente ? '' : '<span class="corrida-meta-label">' + fmt(v.metaIndividual) + '</span>';
+
     return '<div class="corrida-row' + (pendente ? ' pendente' : '') + '">' +
       '<div class="corrida-label">' +
         '<span class="corrida-nome">' + v.nome + '</span>' +
         Cockpit.State.setorBadgeHtml(v.setor) +
+        '<span class="corrida-valores">' + valoresLabel + '</span>' +
         '<span class="corrida-perc">' + percLabel + '</span>' +
       '</div>' +
       '<div class="corrida-track">' +
         '<div class="corrida-linha-chegada"></div>' +
+        metaFimPista +
         '<button type="button" class="corrida-truck' + (completo ? ' completo' : '') + '" style="left:' + perc + '%" ' + (pendente ? 'disabled' : '') +
           ' title="' + v.nome + (pendente ? ' — meta individual ainda não cadastrada' : ' — ' + percLabel + ' da meta') + '">' + TRUCK_SVG + (completo ? '🏁' : '') + '</button>' +
       '</div>' +

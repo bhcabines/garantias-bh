@@ -82,6 +82,9 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 .field-actions{display:flex;align-items:flex-end;gap:10px}
 label{font-size:.7rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px}
 input,select{padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;background:var(--white);color:var(--black);width:100%}
+.campo-valor-br{text-align:right;font-variant-numeric:tabular-nums}
+.sum-card-sub{font-size:.72rem;color:#999;margin-top:2px}
+.sum-card-sub.up{color:var(--warn)}
 input:focus,select:focus{outline:none;border-color:var(--orange)}
 input[readonly]{background:#f2f2f2;color:#777}
 
@@ -164,16 +167,18 @@ tbody tr:nth-child(even){background:#fafafa}
 .corrida-row{display:flex;flex-direction:column;gap:6px}
 .corrida-label{display:flex;align-items:center;gap:10px;font-size:.82rem}
 .corrida-nome{font-weight:700;color:var(--black)}
+.corrida-valores{font-size:.78rem;color:var(--dark)}
 .corrida-perc{margin-left:auto;font-weight:700;color:var(--orange);font-size:.85rem}
 .corrida-row.pendente .corrida-perc{color:#bbb;font-weight:600;font-style:italic}
 .corrida-track{
-  position:relative;height:34px;border-radius:20px;
+  position:relative;height:34px;border-radius:20px;margin-top:18px;
   background:#e9e7e5;
   background-image:repeating-linear-gradient(90deg,#d8d5d1 0 18px,transparent 18px 34px);
   background-position:0 50%;background-size:100% 2px;background-repeat:no-repeat;
   overflow:visible;
 }
 .corrida-linha-chegada{position:absolute;top:-4px;bottom:-4px;left:100%;width:0;border-left:3px dashed var(--good);transform:translateX(-1.5px)}
+.corrida-meta-label{position:absolute;bottom:calc(100% + 4px);right:0;font-size:.68rem;font-weight:700;color:var(--good);white-space:nowrap}
 .corrida-truck{
   position:absolute;top:50%;transform:translate(-50%,-50%);
   width:34px;height:34px;border-radius:50%;

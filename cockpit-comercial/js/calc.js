@@ -17,11 +17,11 @@ Cockpit.Calc = (function () {
     return isNaN(n) ? 0 : n;
   }
 
-  // "1.234,56" (texto BR) ou número -> 1234.56
+  // "R$ 1.234,56" / "1.234,56" (texto BR, com ou sem prefixo de moeda) ou número -> 1234.56
   function parseNumeroBR(v) {
     if (typeof v === 'number') return v;
     if (!v) return 0;
-    const limpo = String(v).trim().replace(/\./g, '').replace(',', '.');
+    const limpo = String(v).trim().replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
     const n = parseFloat(limpo);
     return isNaN(n) ? 0 : n;
   }

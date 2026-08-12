@@ -32,6 +32,15 @@ Cockpit.DashboardAdmin = (function () {
   /* ---------------------------------------------------------------------
      METAS DO MÊS
      --------------------------------------------------------------------- */
+  // Aplica o padrão de moeda BR já usado em Gestão de Custos: seleciona tudo ao focar
+  // (facilita sobrescrever) e formata como "R$ X.XXX.XXX,XX" ao sair do campo.
+  function wireMascaraMoeda(input) {
+    input.addEventListener('focus', function () { input.select(); });
+    input.addEventListener('blur', function () {
+      input.value = fmt(Cockpit.Calc.parseNumeroBR(input.value));
+    });
+  }
+
   function initMetasTab() {
     const selMes = document.getElementById('metaMesSel');
     selMes.innerHTML = MESES.map(function (m, i) { return '<option value="' + (i + 1) + '">' + m + '</option>'; }).join('');
@@ -44,9 +53,10 @@ Cockpit.DashboardAdmin = (function () {
     selMes.addEventListener('change', carregarMetaDoFormulario);
     document.getElementById('metaAno').addEventListener('change', carregarMetaDoFormulario);
 
-    ['metaGeral', 'metaDias'].forEach(function (id) {
-      document.getElementById(id).addEventListener('input', atualizarCalculoMetaDiaria);
-    });
+    const metaGeralInput = document.getElementById('metaGeral');
+    wireMascaraMoeda(metaGeralInput);
+    metaGeralInput.addEventListener('input', atualizarCalculoMetaDiaria);
+    document.getElementById('metaDias').addEventListener('input', atualizarCalculoMetaDiaria);
 
     document.getElementById('btnSalvarMetas').addEventListener('click', salvarMetas);
 
@@ -59,11 +69,12 @@ Cockpit.DashboardAdmin = (function () {
   function renderCamposSetorMetas(valores) {
     const grid = document.getElementById('metasPorSetorGrid');
     grid.innerHTML = Cockpit.State.SETORES.map(function (s) {
-      const v = valores && valores[s] !== undefined && valores[s] !== null ? valores[s] : '';
+      const v = valores && valores[s] !== undefined && valores[s] !== null ? fmt(valores[s]) : '';
       return '<div class="field"><label>Meta ' + Cockpit.State.setorLabel(s) + ' (R$)</label>' +
-        '<input type="number" step="0.01" min="0" data-setor-meta="' + s + '" value="' + v + '"></div>';
+        '<input type="text" inputmode="decimal" class="campo-valor-br" placeholder="R$ 0,00" data-setor-meta="' + s + '" value="' + v + '"></div>';
     }).join('');
     grid.querySelectorAll('[data-setor-meta]').forEach(function (inp) {
+      wireMascaraMoeda(inp);
       inp.addEventListener('input', atualizarCalculoMetaDiaria);
     });
   }
@@ -71,7 +82,7 @@ Cockpit.DashboardAdmin = (function () {
   function lerMetasPorSetor() {
     const out = {};
     document.querySelectorAll('#metasPorSetorGrid [data-setor-meta]').forEach(function (inp) {
-      out[inp.dataset.setorMeta] = Number(inp.value) || 0;
+      out[inp.dataset.setorMeta] = Cockpit.Calc.parseNumeroBR(inp.value);
     });
     return out;
   }
@@ -96,6 +107,11 @@ Cockpit.DashboardAdmin = (function () {
       return '<label class="presente-item"><input type="checkbox" data-presente="' + v.codigo + '" ' + checked + '>' +
         '<span class="presente-nome">' + v.nome + '</span>' + Cockpit.State.setorBadgeHtml(v.setor) + statusNota + '</label>';
     }).join('');
+
+    // Recalcula a meta individual na hora, assim que uma presença é marcada/desmarcada.
+    container.querySelectorAll('[data-presente]').forEach(function (chk) {
+      chk.addEventListener('change', atualizarCalculoMetaDiaria);
+    });
   }
 
   function lerVendedoresPresentes() {
@@ -120,7 +136,7 @@ Cockpit.DashboardAdmin = (function () {
     const ano = document.getElementById('metaAno').value;
     const cfg = Cockpit.State.getConfig();
     const item = cfg[chaveMesAno(mes, ano)];
-    document.getElementById('metaGeral').value = item ? item.metaGeral : '';
+    document.getElementById('metaGeral').value = item && item.metaGeral ? fmt(item.metaGeral) : '';
     document.getElementById('metaDias').value = item ? item.diasTrabalhados : '';
     renderCamposSetorMetas(item ? item.metasPorSetor : null);
     renderVendedoresPresentes(item ? item.vendedoresPresentes : null);
@@ -128,16 +144,49 @@ Cockpit.DashboardAdmin = (function () {
     atualizarCalculoMetaDiaria();
   }
 
+  // Recalculado a cada tecla digitada nos campos de meta e a cada marcar/desmarcar
+  // presença — por isso não pode depender de nada async. Pra cada setor, mostra a
+  // Meta Diária e, logo abaixo, a Meta Individual (meta do setor ÷ vendedores
+  // marcados como presentes), com a diferença em relação ao cenário "todos ativos
+  // presentes" quando alguém está desmarcado.
   function atualizarCalculoMetaDiaria() {
     const dias = Number(document.getElementById('metaDias').value) || 0;
-    const geral = Number(document.getElementById('metaGeral').value) || 0;
+    const geral = Cockpit.Calc.parseNumeroBR(document.getElementById('metaGeral').value);
     const metasPorSetor = lerMetasPorSetor();
+    const roster = Cockpit.State.getVendedores();
+    const presentesCodigos = lerVendedoresPresentes();
+    const presentesSet = new Set(presentesCodigos);
+
+    const presentesPorSetor = {};
+    const ativosPorSetor = {};
+    roster.forEach(function (v) {
+      if (presentesSet.has(v.codigo)) presentesPorSetor[v.setor] = (presentesPorSetor[v.setor] || 0) + 1;
+      if (v.status === 'ativo') ativosPorSetor[v.setor] = (ativosPorSetor[v.setor] || 0) + 1;
+    });
 
     let html = '<div class="sum-card"><span class="sum-label">Meta Diária Geral</span><span class="sum-value">' +
       fmt(Cockpit.Calc.metaDiaria(geral, dias)) + '</span></div>';
+
     Cockpit.State.SETORES.forEach(function (s) {
+      const metaSetor = metasPorSetor[s] || 0;
+      const qtdPresentes = presentesPorSetor[s] || 0;
+      const qtdAtivos = ativosPorSetor[s] || 0;
+      const metaIndividual = qtdPresentes > 0 ? metaSetor / qtdPresentes : null;
+      const metaIndividualBase = qtdAtivos > 0 ? metaSetor / qtdAtivos : null;
+
+      let sub;
+      if (metaIndividual === null) {
+        sub = '<div class="sum-card-sub">Meta Individual: sem vendedor presente</div>';
+      } else {
+        sub = '<div class="sum-card-sub">Meta Individual: ' + fmt(metaIndividual) + '</div>';
+        if (metaIndividualBase !== null && Math.abs(metaIndividual - metaIndividualBase) > 0.01) {
+          const diferenca = metaIndividual - metaIndividualBase;
+          sub += '<div class="sum-card-sub up">' + (diferenca > 0 ? '+' : '') + fmt(diferenca) + ' vs. todos ativos presentes</div>';
+        }
+      }
+
       html += '<div class="sum-card"><span class="sum-label">Meta Diária ' + Cockpit.State.setorLabel(s) + '</span><span class="sum-value">' +
-        fmt(Cockpit.Calc.metaDiaria(metasPorSetor[s] || 0, dias)) + '</span></div>';
+        fmt(Cockpit.Calc.metaDiaria(metaSetor, dias)) + '</span>' + sub + '</div>';
     });
     document.getElementById('calcMetasDiariasGrid').innerHTML = html;
   }
@@ -145,7 +194,7 @@ Cockpit.DashboardAdmin = (function () {
   function salvarMetas() {
     const mes = document.getElementById('metaMesSel').value;
     const ano = document.getElementById('metaAno').value;
-    const geral = Number(document.getElementById('metaGeral').value) || 0;
+    const geral = Cockpit.Calc.parseNumeroBR(document.getElementById('metaGeral').value);
     const dias = Number(document.getElementById('metaDias').value) || 0;
     const metasPorSetor = lerMetasPorSetor();
     const vendedoresPresentes = lerVendedoresPresentes();
