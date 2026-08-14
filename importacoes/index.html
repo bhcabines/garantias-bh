@@ -251,22 +251,22 @@
       <button class="modal-close" id="closeMapeamentoXlsx">&times;</button>
     </div>
     <div class="modal-body">
-      <p class="alert-info" style="margin-bottom:14px">Cada fornecedor manda a planilha com colunas em ordem/nome diferente. Confira a linha de cabeçalho e diga o que cada coluna significa antes de importar — o sistema lembra da próxima vez que vier um cabeçalho igual.</p>
+      <p class="alert-info" style="margin-bottom:14px">Cada fornecedor manda a planilha com um layout diferente (às vezes com blocos de endereço/data antes da tabela de itens). Veja a planilha crua abaixo, escolha a partir de qual linha começam os itens de verdade, e diga em qual coluna letra está cada informação.</p>
 
-      <div class="field" style="max-width:220px;margin-bottom:14px">
-        <label>Linha do cabeçalho</label>
-        <input type="number" id="mapLinhaCabecalho" min="1" value="1">
+      <div class="field" style="max-width:260px;margin-bottom:14px">
+        <label>A partir de qual linha começam os itens?</label>
+        <input type="number" id="mapLinhaInicial" min="1" value="1">
       </div>
 
-      <div class="section-label" style="margin-top:0">Prévia do arquivo (linha destacada = cabeçalho)</div>
-      <div class="table-wrap" style="max-height:180px;margin-bottom:18px">
-        <table id="tblPreviaBruta"><tbody></tbody></table>
+      <div class="section-label" style="margin-top:0">Prévia do arquivo (linha destacada = 1ª linha de item)</div>
+      <div class="table-wrap" style="max-height:220px;margin-bottom:18px">
+        <table id="tblPreviaBruta"><thead></thead><tbody></tbody></table>
       </div>
 
-      <div class="section-label">Diga o que cada coluna representa</div>
+      <div class="section-label">Em qual coluna está cada informação?</div>
       <div class="table-wrap" style="max-height:220px;margin-bottom:18px">
         <table id="tblMapeamentoColunas">
-          <thead><tr><th>Coluna</th><th>Texto no arquivo</th><th>Campo do sistema</th></tr></thead>
+          <thead><tr><th>Campo do sistema</th><th>Coluna</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>

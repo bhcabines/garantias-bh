@@ -410,44 +410,22 @@ document.querySelectorAll('.mtab').forEach(btn=>{
   });
 });
 
-/* ====== IMPORTAÇÃO XLSX DO PEDIDO — COM MAPEAMENTO DE COLUNAS ======
-   Cada fornecedor manda a planilha com colunas em ordem/nome diferente, então em vez
-   de assumir posições fixas, o usuário mapeia (uma vez por arquivo) qual coluna é qual
-   campo. O sistema aprende os nomes de cabeçalho já mapeados e sugere automaticamente
-   da próxima vez que aparecer um cabeçalho igual. */
+/* ====== IMPORTAÇÃO XLSX DO PEDIDO — COM MAPEAMENTO MANUAL DE COLUNA/LINHA ======
+   Proforma invoice de fornecedores diferentes vem com blocos de título, endereço e
+   datas ANTES da tabela real, em posições que variam de arquivo pra arquivo — tentar
+   "adivinhar a linha de cabeçalho" sozinho é frágil. Em vez disso: o usuário vê a
+   planilha crua com letras de coluna (A, B, C...) e escolhe diretamente, por CAMPO,
+   qual coluna corresponde e a partir de qual linha começam os dados de verdade. */
 const CAMPOS_MAPEAVEIS = [
-  { key:'',          label:'— Ignorar —' },
-  { key:'itemNo',     label:'ITEM NO' },
-  { key:'descricao',  label:'Descrição' },
-  { key:'oeNo',       label:'OE NO' },
-  { key:'qtdPedida',  label:'Quantidade Pedida' },
+  { key:'itemNo',    label:'Código do Item *' },
+  { key:'descricao', label:'Descrição' },
+  { key:'oeNo',       label:'OEM' },
+  { key:'qtdPedida',  label:'Quantidade' },
   { key:'precoUnit',  label:'Preço Unitário' },
 ];
 
 function normalizarTexto(t){
   return String(t||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-}
-
-function carregarMapeamentoAprendido(){
-  try{ return JSON.parse(localStorage.getItem('imp_col_map_aprendido')||'{}'); }catch(e){ return {}; }
-}
-function salvarMapeamentoAprendido(mapa){
-  const atual = carregarMapeamentoAprendido();
-  Object.assign(atual, mapa);
-  localStorage.setItem('imp_col_map_aprendido', JSON.stringify(atual));
-}
-
-function sugerirCampo(headerText){
-  const t = normalizarTexto(headerText);
-  if(!t) return '';
-  const aprendido = carregarMapeamentoAprendido();
-  if(aprendido[t]) return aprendido[t];
-  if(/item.?no|item.?number|codigo/.test(t)) return 'itemNo';
-  if(/desc/.test(t)) return 'descricao';
-  if(/\boe\b/.test(t)) return 'oeNo';
-  if(/qty|qtd|quant/.test(t)) return 'qtdPedida';
-  if(/prec|price|unit|fob/.test(t)) return 'precoUnit';
-  return '';
 }
 
 function colLetra(idx){
@@ -456,20 +434,51 @@ function colLetra(idx){
   return s;
 }
 
-// Linha com mais células preenchidas entre as 10 primeiras é o melhor palpite de cabeçalho
-function sugerirLinhaCabecalho(rows){
-  let melhorIdx=0, melhorQtd=-1;
-  for(let i=0;i<Math.min(10,rows.length);i++){
-    const qtd = (rows[i]||[]).filter(c=>String(c||'').trim()!=='').length;
-    if(qtd>melhorQtd){ melhorQtd=qtd; melhorIdx=i; }
+// Aceita "$ 1.900,00", "1900.00", "1.900,00" etc. — decide o separador decimal pela
+// posição da última vírgula/ponto na string, em vez de assumir um formato fixo.
+function parseNumeroGenerico(v){
+  if(typeof v === 'number') return v;
+  if(!v) return 0;
+  let s = String(v).trim().replace(/[^\d,.\-]/g,'');
+  if(!s) return 0;
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if(lastComma>lastDot) s = s.replace(/\./g,'').replace(',', '.');
+  else if(lastDot>lastComma) s = s.replace(/,/g,'');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+// Varre as primeiras linhas procurando palavras-chave de cabeçalho em qualquer coluna,
+// só pra SUGERIR um mapeamento inicial — o usuário confere/ajusta antes de confirmar.
+const PALAVRAS_CHAVE_CAMPO = {
+  itemNo:    /apex\s*code|item\s*no|item\s*number|c[oó]digo|part\s*no/,
+  descricao: /desc/,
+  oeNo:      /\boem\b|\boe\b/,
+  qtdPedida: /qty|qtd|quant/,
+  precoUnit: /\bprice\b|pre[cç]o|unit/,
+};
+function sugerirMapeamento(rows){
+  const sugestao = {};
+  let linhaHeader = null;
+  const maxLinhas = Math.min(20, rows.length);
+  for(let r=0;r<maxLinhas;r++){
+    (rows[r]||[]).forEach((cell,c)=>{
+      const t = normalizarTexto(cell);
+      if(!t) return;
+      Object.entries(PALAVRAS_CHAVE_CAMPO).forEach(([campo,re])=>{
+        if(sugestao[campo]===undefined && re.test(t)){ sugestao[campo]=c; linhaHeader=r; }
+      });
+    });
   }
-  return melhorIdx+1; // 1-indexed
+  return { sugestao, linhaInicial: linhaHeader!==null ? linhaHeader+2 : 1 };
 }
 
 let _xlsxRawRows = [];
-let _xlsxLinhaCabecalho = 1;
+let _xlsxLinhaInicial = 1;
 let _xlsxNomeArquivo = '';
-let _mapeamentoAtual = {}; // { colIdx(string): campoKey }
+let _xlsxMaxCols = 1;
+let _mapeamentoAtual = {}; // { campoKey: colIdx }
 
 // Upload xlsx
 const dropEl = document.getElementById('pedidoXlsxDrop');
@@ -486,56 +495,57 @@ function processarXlsx(file){
     const ws = wb.Sheets[wb.SheetNames[0]];
     _xlsxRawRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
     _xlsxNomeArquivo = file.name;
-    _xlsxLinhaCabecalho = sugerirLinhaCabecalho(_xlsxRawRows);
+    _xlsxMaxCols = Math.max(1, ..._xlsxRawRows.map(l=>l.length));
+    const {sugestao, linhaInicial} = sugerirMapeamento(_xlsxRawRows);
+    _mapeamentoAtual = sugestao;
+    _xlsxLinhaInicial = linhaInicial;
     abrirModalMapeamento();
   };
   reader.readAsArrayBuffer(file);
 }
 
 function abrirModalMapeamento(){
-  document.getElementById('mapLinhaCabecalho').value = _xlsxLinhaCabecalho;
+  document.getElementById('mapLinhaInicial').value = _xlsxLinhaInicial;
   renderPreviaBruta();
   renderMapeamentoColunas();
   document.getElementById('modalMapeamentoXlsx').classList.add('open');
 }
 
-document.getElementById('mapLinhaCabecalho').addEventListener('input', ()=>{
-  _xlsxLinhaCabecalho = Math.max(1, parseInt(document.getElementById('mapLinhaCabecalho').value)||1);
+document.getElementById('mapLinhaInicial').addEventListener('input', ()=>{
+  _xlsxLinhaInicial = Math.max(1, parseInt(document.getElementById('mapLinhaInicial').value)||1);
   renderPreviaBruta();
-  renderMapeamentoColunas();
+  renderPreviaMapeada();
 });
 
 function renderPreviaBruta(){
+  const thead = document.querySelector('#tblPreviaBruta thead');
   const tbody = document.querySelector('#tblPreviaBruta tbody');
-  const linhas = _xlsxRawRows.slice(0,8);
-  const maxCols = Math.max(1, ...linhas.map(l=>l.length));
+  let headCells = '<th></th>';
+  for(let c=0;c<_xlsxMaxCols;c++) headCells += `<th>${colLetra(c)}</th>`;
+  thead.innerHTML = `<tr>${headCells}</tr>`;
+
+  const linhas = _xlsxRawRows.slice(0,25);
   tbody.innerHTML = linhas.map((l,i)=>{
-    const destacada = (i+1)===_xlsxLinhaCabecalho ? ' style="background:var(--orange-dim)"' : '';
+    const destacada = (i+1)===_xlsxLinhaInicial ? ' style="background:var(--orange-dim)"' : '';
     let cells = `<td class="tc" style="font-weight:700;color:#999">${i+1}</td>`;
-    for(let c=0;c<maxCols;c++) cells += `<td>${l[c]!==undefined && l[c]!=='' ? l[c] : '—'}</td>`;
+    for(let c=0;c<_xlsxMaxCols;c++) cells += `<td>${l[c]!==undefined && l[c]!=='' ? l[c] : ''}</td>`;
     return `<tr${destacada}>${cells}</tr>`;
   }).join('');
 }
 
 function renderMapeamentoColunas(){
-  const headerRow = _xlsxRawRows[_xlsxLinhaCabecalho-1] || [];
-  _mapeamentoAtual = {};
   const tbody = document.querySelector('#tblMapeamentoColunas tbody');
-  tbody.innerHTML = '';
-  for(let c=0;c<headerRow.length;c++){
-    const headerText = String(headerRow[c]||'').trim();
-    if(!headerText) continue;
-    const sugestao = sugerirCampo(headerText);
-    _mapeamentoAtual[c] = sugestao;
-    const row = document.createElement('tr');
-    row.innerHTML = `<td><strong>${colLetra(c)}</strong></td><td>${headerText}</td><td>
-      <select data-col="${c}">${CAMPOS_MAPEAVEIS.map(f=>`<option value="${f.key}" ${f.key===sugestao?'selected':''}>${f.label}</option>`).join('')}</select>
-    </td>`;
-    tbody.appendChild(row);
-  }
+  tbody.innerHTML = CAMPOS_MAPEAVEIS.map(f=>{
+    const colAtual = _mapeamentoAtual[f.key];
+    let opts = '<option value="">—</option>';
+    for(let c=0;c<_xlsxMaxCols;c++) opts += `<option value="${c}" ${colAtual===c?'selected':''}>${colLetra(c)}</option>`;
+    return `<tr><td>${f.label}</td><td><select data-campo="${f.key}">${opts}</select></td></tr>`;
+  }).join('');
   tbody.querySelectorAll('select').forEach(sel=>{
     sel.addEventListener('change', ()=>{
-      _mapeamentoAtual[sel.dataset.col] = sel.value;
+      const v = sel.value;
+      if(v==='') delete _mapeamentoAtual[sel.dataset.campo];
+      else _mapeamentoAtual[sel.dataset.campo] = Number(v);
       renderPreviaMapeada();
     });
   });
@@ -543,20 +553,18 @@ function renderMapeamentoColunas(){
 }
 
 function itensDoMapeamento(){
-  const dataRows = _xlsxRawRows.slice(_xlsxLinhaCabecalho);
-  const colPorCampo = {};
-  Object.entries(_mapeamentoAtual).forEach(([col,campo])=>{ if(campo) colPorCampo[campo]=Number(col); });
-  if(colPorCampo.itemNo===undefined) return [];
+  if(_mapeamentoAtual.itemNo===undefined) return [];
+  const dataRows = _xlsxRawRows.slice(_xlsxLinhaInicial-1);
   const itens=[];
   dataRows.forEach(row=>{
-    const itemNo = String(row[colPorCampo.itemNo]||'').trim();
+    const itemNo = String(row[_mapeamentoAtual.itemNo]||'').trim();
     if(!itemNo) return;
-    const qty   = colPorCampo.qtdPedida!==undefined ? (parseFloat(row[colPorCampo.qtdPedida])||0) : 0;
-    const price = colPorCampo.precoUnit!==undefined ? (parseFloat(row[colPorCampo.precoUnit])||0) : 0;
+    const qty   = _mapeamentoAtual.qtdPedida!==undefined ? parseNumeroGenerico(row[_mapeamentoAtual.qtdPedida]) : 0;
+    const price = _mapeamentoAtual.precoUnit!==undefined ? parseNumeroGenerico(row[_mapeamentoAtual.precoUnit]) : 0;
     itens.push({
       itemNo,
-      descricao: colPorCampo.descricao!==undefined ? String(row[colPorCampo.descricao]||'').trim() : '',
-      oeNo:      colPorCampo.oeNo!==undefined ? String(row[colPorCampo.oeNo]||'').trim() : '',
+      descricao: _mapeamentoAtual.descricao!==undefined ? String(row[_mapeamentoAtual.descricao]||'').trim() : '',
+      oeNo:      _mapeamentoAtual.oeNo!==undefined ? String(row[_mapeamentoAtual.oeNo]||'').trim() : '',
       qtdPedida: qty,
       precoUnit: price,
       valorTotal: qty*price
@@ -570,13 +578,13 @@ function renderPreviaMapeada(){
   const itens = todos.slice(0,5);
   const div = document.getElementById('previaMapeadaContent');
   if(!itens.length){
-    div.innerHTML = '<div class="alert-info">Mapeie ao menos a coluna <strong>ITEM NO</strong> pra ver a prévia.</div>';
+    div.innerHTML = '<div class="alert-info">Escolha ao menos a coluna do <strong>Código do Item</strong> e confira a linha inicial pra ver a prévia.</div>';
     document.getElementById('btnConfirmarMapeamento').disabled = true;
     return;
   }
   document.getElementById('btnConfirmarMapeamento').disabled = false;
   div.innerHTML = `<div class="table-wrap" style="max-height:180px"><table>
-    <thead><tr><th>ITEM NO</th><th>Descrição</th><th>OE NO</th><th>QTY</th><th>Preço</th></tr></thead>
+    <thead><tr><th>Código</th><th>Descrição</th><th>OEM</th><th>QTY</th><th>Preço</th></tr></thead>
     <tbody>${itens.map(i=>`<tr><td>${i.itemNo}</td><td>${i.descricao||'—'}</td><td>${i.oeNo||'—'}</td><td class="tr">${i.qtdPedida}</td><td class="tr">${fmtUSD(i.precoUnit)}</td></tr>`).join('')}</tbody>
   </table></div><p class="muted" style="margin-top:6px">${todos.length} item(ns) reconhecido(s) no total.</p>`;
 }
@@ -592,16 +600,6 @@ document.getElementById('btnConfirmarMapeamento').addEventListener('click', ()=>
     _pedidoRascunho.referencia = nome;
   }
 
-  // Aprende esse mapeamento pra sugerir sozinho da próxima vez que vier um cabeçalho igual
-  const headerRow = _xlsxRawRows[_xlsxLinhaCabecalho-1] || [];
-  const aprender = {};
-  Object.entries(_mapeamentoAtual).forEach(([col,campo])=>{
-    if(!campo) return;
-    const t = normalizarTexto(headerRow[col]);
-    if(t) aprender[t]=campo;
-  });
-  salvarMapeamentoAprendido(aprender);
-
   renderTabelaItensPedido();
   document.getElementById('modalMapeamentoXlsx').classList.remove('open');
   xlsxInput.value = '';
@@ -609,6 +607,7 @@ document.getElementById('btnConfirmarMapeamento').addEventListener('click', ()=>
 });
 document.getElementById('btnCancelarMapeamento').addEventListener('click',()=>{ document.getElementById('modalMapeamentoXlsx').classList.remove('open'); xlsxInput.value=''; });
 document.getElementById('closeMapeamentoXlsx').addEventListener('click',()=>{ document.getElementById('modalMapeamentoXlsx').classList.remove('open'); xlsxInput.value=''; });
+
 
 /* ====== TABELA DE ITENS DO PEDIDO ====== */
 function renderTabelaItensPedido(){
