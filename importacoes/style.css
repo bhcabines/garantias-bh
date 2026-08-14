@@ -65,6 +65,7 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 .k-card-alert.atencao{background:#fef9c3;color:#854d0e}
 .k-card-alert.atrasado{background:#fee2e2;color:#991b1b}
 .k-card-alert.sem-prazo{background:#f3f4f6;color:#9ca3af}
+.k-card-pendencia{display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:4px 10px;border-radius:20px;font-size:.68rem;font-weight:700;width:100%;background:#ffe4e6;color:#be123c}
 .k-card-actions{display:flex;gap:6px;padding:8px 14px;border-top:1px solid var(--border);background:#fafafa}
 .k-btn{border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;font-weight:700;cursor:pointer;transition:all .15s}
 .k-btn-detail{background:var(--orange-dim);color:var(--orange);flex:1}
@@ -75,6 +76,11 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 .k-btn-prev:hover{background:#e5e7eb}
 .k-btn-del{background:#fee2e2;color:#dc2626}
 .k-btn-del:hover{background:#dc2626;color:var(--white)}
+
+/* ===== Painel de Divergências ===== */
+.painel-divergencias{background:var(--white);border-top:1px solid var(--border);margin:0 20px 24px;border-radius:14px;border:1px solid var(--border);padding:18px 20px}
+.painel-divergencias-head h2{font-size:.92rem;font-weight:700;color:var(--black)}
+.painel-divergencias-head p{font-size:.78rem;color:#888;margin-top:2px;margin-bottom:14px}
 
 /* ===== Delete confirm button ===== */
 .btn-del-confirm{background:#dc2626;color:#fff}.btn-del-confirm:hover{background:#b91c1c}

@@ -32,7 +32,17 @@ async function carregarDoServidor(){
     const res = await fetch(SYNC_URL + '?action=getImportacoes&t=' + Date.now());
     const json = await res.json();
     if(json.ok && Array.isArray(json.data)){
-      STATE.pedidos = json.data;
+      const local = migrarPedidos(JSON.parse(localStorage.getItem('imp_pedidos') || '[]'));
+      // Servidor vazio mas já existem pedidos só neste navegador: quase certeza de que uma
+      // sincronização anterior falhou silenciosamente (foi o que aconteceu até agora). Em vez
+      // de apagar o que só existe aqui, reenviamos pro servidor em vez de sobrescrever local.
+      if(json.data.length === 0 && local.length > 0){
+        STATE.pedidos = local;
+        sincronizarComServidor();
+        mostrarStatus('');
+        return;
+      }
+      STATE.pedidos = migrarPedidos(json.data);
       localStorage.setItem('imp_pedidos', JSON.stringify(STATE.pedidos));
       mostrarStatus('');
       return;
@@ -40,7 +50,7 @@ async function carregarDoServidor(){
   } catch(e){
     console.warn('Servidor indisponível, usando cache local.');
   }
-  STATE.pedidos = JSON.parse(localStorage.getItem('imp_pedidos') || '[]');
+  STATE.pedidos = migrarPedidos(JSON.parse(localStorage.getItem('imp_pedidos') || '[]'));
   mostrarStatus('');
 }
 
@@ -69,7 +79,7 @@ function salvar(){
   localStorage.setItem('imp_pedidos', JSON.stringify(STATE.pedidos));
   sincronizarComServidor();
 }
-function carregar(){ STATE.pedidos = JSON.parse(localStorage.getItem('imp_pedidos') || '[]'); }
+function carregar(){ STATE.pedidos = migrarPedidos(JSON.parse(localStorage.getItem('imp_pedidos') || '[]')); }
 
 /* ====== UTILITÁRIOS ====== */
 function uid(){ return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6); }
@@ -167,6 +177,7 @@ function renderKanban(){
       const totalUSD = p.itens.reduce((s,i)=>s+num(i.valorTotal),0);
       const proximo = proximaEtapa(p.etapa);
       const anterior = etapaAnterior(p.etapa);
+      const pendencias = calcularDivergenciasPedido(p).filter(d=>d.faltante>0);
 
       const card = document.createElement('div');
       card.className = 'k-card';
@@ -181,6 +192,7 @@ function renderKanban(){
             <span class="k-meta">💵 <strong>${fmtUSD(totalUSD)}</strong></span>
           </div>
           ${badgeAlerta(alerta, p.etapa)}
+          ${pendencias.length ? `<div class="k-card-pendencia">⚠ ${pendencias.length} ${pendencias.length===1?'item pendente':'itens pendentes'} de embarque</div>` : ''}
         </div>
         <div class="k-card-actions">
           <button class="k-btn k-btn-detail" onclick="abrirPedido('${p.id}')">Ver detalhes</button>
@@ -191,6 +203,8 @@ function renderKanban(){
       cardsEl.appendChild(card);
     });
   });
+
+  renderPainelDivergencias();
 }
 
 /* ====== MODAL AVANÇAR/VOLTAR ETAPA ====== */
@@ -251,7 +265,7 @@ function pedidoVazio(){
     status:'ativo',
     prazos:{ fabricacao:'', transporte:'', desembaraco:'' },
     dataEmbarcado:'', dataPorto:'', dataDesembaraco:'', dataEntregue:'',
-    obs:'', itens:[], duimp:{ numero:'', dataRegistro:'', itens:[] },
+    obs:'', itens:[], duimps:[],
     historicoEtapas:[],
     historicoAlteracoes:[],
     motivoCancelamento:'', dataCancelamento:'',
@@ -260,7 +274,25 @@ function pedidoVazio(){
   };
 }
 
+// Um pedido pode chegar em várias DUIMPs (contêineres) diferentes ao longo do tempo.
+// Pedidos salvos antes dessa mudança ainda têm o formato antigo (`duimp` = objeto
+// único) — normaliza pra `duimps` (array) na hora de carregar, sem perder dados.
+function migrarPedido(p){
+  if(!Array.isArray(p.duimps)){
+    if(p.duimp && (p.duimp.numero || (p.duimp.itens && p.duimp.itens.length))){
+      p.duimps = [{ id:uid(), numero:p.duimp.numero||'', dataRegistro:p.duimp.dataRegistro||'', itens:p.duimp.itens||[] }];
+    } else {
+      p.duimps = [];
+    }
+  }
+  delete p.duimp;
+  return p;
+}
+function migrarPedidos(lista){ return (lista||[]).map(migrarPedido); }
+
 let _pedidoRascunho = pedidoVazio();
+let _duimpSelecionadaId = null;
+let _duimpHeaderEditandoId = null;
 
 function abrirNovoPedido(){
   _pedidoEditandoId = null;
@@ -297,10 +329,9 @@ function preencherFormPedido(p){
   document.getElementById('pDataEntregue').value   = p.dataEntregue||'';
   document.getElementById('pObs').value            = p.obs||'';
   document.getElementById('pEtapa').value          = p.etapa||'fabricacao';
-  document.getElementById('dNumero').value         = p.duimp.numero||'';
-  document.getElementById('dDataRegistro').value   = p.duimp.dataRegistro||'';
+  _duimpSelecionadaId = null;
   renderTabelaItensPedido();
-  renderTabelaDuimp();
+  renderListaDuimps();
 }
 
 function lerFormPedido(){
@@ -317,8 +348,6 @@ function lerFormPedido(){
   _pedidoRascunho.dataEntregue   = document.getElementById('pDataEntregue').value;
   _pedidoRascunho.obs            = document.getElementById('pObs').value.trim();
   _pedidoRascunho.etapa          = document.getElementById('pEtapa').value;
-  _pedidoRascunho.duimp.numero       = document.getElementById('dNumero').value.trim();
-  _pedidoRascunho.duimp.dataRegistro = document.getElementById('dDataRegistro').value;
 }
 
 document.getElementById('btnNovoPedido').addEventListener('click', abrirNovoPedido);
@@ -375,7 +404,7 @@ document.querySelectorAll('.mtab').forEach(btn=>{
     lerFormPedido();
     ativarTab(btn.dataset.tab);
     if(btn.dataset.tab==='itens')      renderTabelaItensPedido();
-    if(btn.dataset.tab==='duimp')      renderTabelaDuimp();
+    if(btn.dataset.tab==='duimp')      renderListaDuimps();
     if(btn.dataset.tab==='comparacao') renderComparacao();
     if(btn.dataset.tab==='alteracoes') renderHistoricoAlteracoes();
   });
@@ -483,16 +512,103 @@ document.getElementById('btnSalvarItemPedido').addEventListener('click',()=>{
 document.getElementById('btnCancelarItemPedido').addEventListener('click',()=>document.getElementById('modalItemPedido').classList.remove('open'));
 document.getElementById('closeItemPedido').addEventListener('click',()=>document.getElementById('modalItemPedido').classList.remove('open'));
 
-/* ====== TABELA DUIMP ====== */
+/* ====== LISTA DE DUIMPs DO PEDIDO ====== */
+// Um pedido pode ter várias DUIMPs (uma por contêiner/embarque). A lista fica no topo
+// da aba; selecionar uma mostra suas adições na tabela abaixo (reaproveitada de antes).
+function duimpSelecionada(){
+  return _pedidoRascunho.duimps.find(d=>d.id===_duimpSelecionadaId) || null;
+}
+
+function renderListaDuimps(){
+  const tbody = document.querySelector('#tblListaDuimps tbody');
+  const duimps = _pedidoRascunho.duimps;
+  if(!duimps.length){
+    tbody.innerHTML='<tr class="empty-row"><td colspan="5">Nenhuma DUIMP registrada ainda.</td></tr>';
+  } else {
+    tbody.innerHTML = duimps.map(d=>{
+      const valorTotal = (d.itens||[]).reduce((s,a)=>s+num(a.valorFOBTotal),0);
+      const selecionada = d.id===_duimpSelecionadaId ? ' style="background:var(--orange-dim)"' : '';
+      return `<tr${selecionada}>
+        <td><strong>${d.numero||'(sem número)'}</strong></td>
+        <td>${fmtData(d.dataRegistro)}</td>
+        <td class="tr">${(d.itens||[]).length}</td>
+        <td class="tr">${fmtUSD(valorTotal)}</td>
+        <td class="tc" style="white-space:nowrap">
+          <button class="btn bgray btn-sm" onclick="selecionarDuimp('${d.id}')">${d.id===_duimpSelecionadaId?'Selecionada':'Ver adições'}</button>
+          <button class="icon-btn" onclick="editarDuimpHeader('${d.id}')" title="Editar número/data">✏️</button>
+          <button class="icon-btn" onclick="removerDuimp('${d.id}')" title="Remover DUIMP">🗑</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  const box = document.getElementById('duimpSelecionadaBox');
+  const semSelecao = document.getElementById('duimpSemSelecao');
+  const atual = duimpSelecionada();
+  if(atual){
+    box.style.display = '';
+    semSelecao.style.display = 'none';
+    document.getElementById('duimpSelecionadaLabel').textContent = atual.numero || '(sem número)';
+    renderTabelaDuimp();
+  } else {
+    box.style.display = 'none';
+    semSelecao.style.display = '';
+  }
+}
+
+function selecionarDuimp(id){ _duimpSelecionadaId = id; renderListaDuimps(); }
+
+function removerDuimp(id){
+  if(!confirm('Remover esta DUIMP e todas as suas adições?')) return;
+  _pedidoRascunho.duimps = _pedidoRascunho.duimps.filter(d=>d.id!==id);
+  if(_duimpSelecionadaId===id) _duimpSelecionadaId = null;
+  renderListaDuimps();
+}
+
+document.getElementById('btnNovaDuimp').addEventListener('click',()=>{
+  _duimpHeaderEditandoId = null;
+  document.getElementById('modalDuimpHeaderTitulo').textContent = 'Nova DUIMP';
+  document.getElementById('dhNumero').value='';
+  document.getElementById('dhDataRegistro').value='';
+  document.getElementById('modalDuimpHeader').classList.add('open');
+});
+
+function editarDuimpHeader(id){
+  const d = _pedidoRascunho.duimps.find(x=>x.id===id);
+  if(!d) return;
+  _duimpHeaderEditandoId = id;
+  document.getElementById('modalDuimpHeaderTitulo').textContent = 'Editar DUIMP';
+  document.getElementById('dhNumero').value = d.numero||'';
+  document.getElementById('dhDataRegistro').value = d.dataRegistro||'';
+  document.getElementById('modalDuimpHeader').classList.add('open');
+}
+
+document.getElementById('btnSalvarDuimpHeader').addEventListener('click',()=>{
+  const numero = document.getElementById('dhNumero').value.trim();
+  const dataRegistro = document.getElementById('dhDataRegistro').value;
+  if(_duimpHeaderEditandoId){
+    const d = _pedidoRascunho.duimps.find(x=>x.id===_duimpHeaderEditandoId);
+    if(d){ d.numero=numero; d.dataRegistro=dataRegistro; }
+  } else {
+    const novaDuimp = { id:uid(), numero, dataRegistro, itens:[] };
+    _pedidoRascunho.duimps.push(novaDuimp);
+    _duimpSelecionadaId = novaDuimp.id;
+  }
+  document.getElementById('modalDuimpHeader').classList.remove('open');
+  renderListaDuimps();
+});
+document.getElementById('btnCancelarDuimpHeader').addEventListener('click',()=>document.getElementById('modalDuimpHeader').classList.remove('open'));
+document.getElementById('closeDuimpHeader').addEventListener('click',()=>document.getElementById('modalDuimpHeader').classList.remove('open'));
+
+/* ====== TABELA DE ADIÇÕES DA DUIMP SELECIONADA ====== */
 function renderTabelaDuimp(){
   const tbody = document.querySelector('#tblDuimp tbody');
-  tbody.innerHTML='';
-  const itens = _pedidoRascunho.duimp.itens;
+  const atual = duimpSelecionada();
+  const itens = atual ? (atual.itens||[]) : [];
   if(!itens.length){
     tbody.innerHTML='<tr class="empty-row"><td colspan="9">Nenhuma adição lançada ainda.</td></tr>';return;
   }
-  itens.forEach((a,idx)=>{
-    tbody.innerHTML+=`<tr>
+  tbody.innerHTML = itens.map((a,idx)=>`<tr>
       <td>${a.adicao}</td><td>${a.ncm||'—'}</td><td>${a.descricao||'—'}</td>
       <td><strong>${a.itemNoRef||'—'}</strong></td>
       <td class="tr">${a.qtdEstatistica}</td><td>${a.unidade||'—'}</td>
@@ -501,14 +617,20 @@ function renderTabelaDuimp(){
       <td class="tc"><button class="icon-btn" onclick="removerAdicao(${idx})" title="Remover">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
       </button></td>
-    </tr>`;
-  });
+    </tr>`).join('');
 }
 
-function removerAdicao(idx){ _pedidoRascunho.duimp.itens.splice(idx,1); renderTabelaDuimp(); }
+function removerAdicao(idx){
+  const atual = duimpSelecionada();
+  if(!atual) return;
+  atual.itens.splice(idx,1);
+  renderListaDuimps();
+}
 
 document.getElementById('btnAddAdicao').addEventListener('click',()=>{
-  const prox = (_pedidoRascunho.duimp.itens.length+1).toString().padStart(3,'0');
+  const atual = duimpSelecionada();
+  if(!atual){ alert('Selecione ou crie uma DUIMP primeiro.'); return; }
+  const prox = (atual.itens.length+1).toString().padStart(3,'0');
   document.getElementById('adAdicao').value=prox;
   document.getElementById('adNcm').value='';
   document.getElementById('adDescricao').value='';
@@ -530,7 +652,9 @@ function calcFobTotal(){
 }
 
 document.getElementById('btnSalvarAdicao').addEventListener('click',()=>{
-  _pedidoRascunho.duimp.itens.push({
+  const atual = duimpSelecionada();
+  if(!atual){ alert('Selecione ou crie uma DUIMP primeiro.'); return; }
+  atual.itens.push({
     adicao:document.getElementById('adAdicao').value.trim(),
     ncm:document.getElementById('adNcm').value.trim(),
     descricao:document.getElementById('adDescricao').value.trim(),
@@ -540,32 +664,59 @@ document.getElementById('btnSalvarAdicao').addEventListener('click',()=>{
     valorFOBUnit:num(document.getElementById('adFobUnit').value),
     valorFOBTotal:num(document.getElementById('adFobTotal').value),
   });
-  renderTabelaDuimp();
+  renderListaDuimps();
   document.getElementById('modalAdicao').classList.remove('open');
 });
 document.getElementById('btnCancelarAdicao').addEventListener('click',()=>document.getElementById('modalAdicao').classList.remove('open'));
 document.getElementById('closeAdicao').addEventListener('click',()=>document.getElementById('modalAdicao').classList.remove('open'));
 
-/* ====== COMPARAÇÃO PEDIDO × DUIMP ====== */
+/* ====== COMPARAÇÃO PEDIDO × DUIMP(s) ====== */
+// Achata as adições de TODAS as DUIMPs do pedido num único array (com o número da
+// DUIMP de origem anexado), pra poder somar quantidade recebida por item independente
+// de quantos contêineres/embarques diferentes trouxeram aquele item.
+function todasAdicoesDuimp(pedido){
+  const out=[];
+  (pedido.duimps||[]).forEach(d=>{
+    (d.itens||[]).forEach(a=>out.push(Object.assign({duimpId:d.id, duimpNumero:d.numero}, a)));
+  });
+  return out;
+}
+
 function compararPedidoDuimp(pedido){
+  const adicoes = todasAdicoesDuimp(pedido);
   const resultados=[];
-  // Verifica cada item do pedido
+
   for(const item of pedido.itens){
-    const d = pedido.duimp.itens.find(x=>x.itemNoRef.trim().toUpperCase()===item.itemNo.trim().toUpperCase());
-    if(!d){
-      resultados.push({itemNo:item.itemNo,descricao:item.descricao,qtdPedida:item.qtdPedida,qtdDuimp:null,precoPedido:item.precoUnit,precoDuimp:null,status:'nao_encontrado'});
+    const relacionadas = adicoes.filter(a=>(a.itemNoRef||'').trim().toUpperCase()===item.itemNo.trim().toUpperCase());
+    if(!relacionadas.length){
+      resultados.push({itemNo:item.itemNo,descricao:item.descricao,qtdPedida:item.qtdPedida,qtdDuimp:null,precoPedido:item.precoUnit,precoDuimp:null,status:'nao_encontrado',faltante:num(item.qtdPedida),excedente:0});
       continue;
     }
-    const qtdOk = Math.abs(num(d.qtdEstatistica)-num(item.qtdPedida))<0.001;
-    const precoOk= Math.abs(num(d.valorFOBUnit)-num(item.precoUnit))<0.01;
-    resultados.push({itemNo:item.itemNo,descricao:item.descricao,qtdPedida:item.qtdPedida,qtdDuimp:d.qtdEstatistica,precoPedido:item.precoUnit,precoDuimp:d.valorFOBUnit,qtdOk,precoOk,status:(qtdOk&&precoOk)?'ok':'divergente'});
+    const qtdRecebida = relacionadas.reduce((s,a)=>s+num(a.qtdEstatistica),0);
+    // preço comparado é a média ponderada das adições relacionadas (pode vir de DUIMPs/preços diferentes)
+    const precoMedio = qtdRecebida>0 ? relacionadas.reduce((s,a)=>s+num(a.valorFOBUnit)*num(a.qtdEstatistica),0)/qtdRecebida : null;
+    const qtdOk = Math.abs(qtdRecebida-num(item.qtdPedida))<0.001;
+    const precoOk = precoMedio!==null && Math.abs(precoMedio-num(item.precoUnit))<0.01;
+    const faltante = Math.max(num(item.qtdPedida)-qtdRecebida,0);
+    const excedente = Math.max(qtdRecebida-num(item.qtdPedida),0);
+    resultados.push({itemNo:item.itemNo,descricao:item.descricao,qtdPedida:item.qtdPedida,qtdDuimp:qtdRecebida,precoPedido:item.precoUnit,precoDuimp:precoMedio,qtdOk,precoOk,status:(qtdOk&&precoOk)?'ok':'divergente',faltante,excedente});
   }
-  // Verifica adições sem referência no pedido
-  for(const d of pedido.duimp.itens){
-    if(!d.itemNoRef) continue;
-    const found=pedido.itens.find(i=>i.itemNo.trim().toUpperCase()===d.itemNoRef.trim().toUpperCase());
-    if(!found) resultados.push({itemNo:d.itemNoRef,descricao:d.descricao,qtdPedida:null,qtdDuimp:d.qtdEstatistica,precoPedido:null,precoDuimp:d.valorFOBUnit,status:'nao_pedido'});
-  }
+
+  // Adições cujo ITEM NO de referência não existe no pedido original
+  const itemNosPedido = new Set(pedido.itens.map(i=>i.itemNo.trim().toUpperCase()));
+  const semRef = {};
+  adicoes.forEach(a=>{
+    if(!a.itemNoRef) return;
+    const key=a.itemNoRef.trim().toUpperCase();
+    if(!itemNosPedido.has(key)){
+      if(!semRef[key]) semRef[key]={itemNo:a.itemNoRef,descricao:a.descricao,qtd:0};
+      semRef[key].qtd += num(a.qtdEstatistica);
+    }
+  });
+  Object.values(semRef).forEach(s=>{
+    resultados.push({itemNo:s.itemNo,descricao:s.descricao,qtdPedida:null,qtdDuimp:s.qtd,precoPedido:null,precoDuimp:null,status:'nao_pedido',faltante:0,excedente:s.qtd});
+  });
+
   const ok=resultados.filter(r=>r.status==='ok').length;
   const div=resultados.filter(r=>r.status==='divergente').length;
   const miss=resultados.filter(r=>r.status==='nao_encontrado'||r.status==='nao_pedido').length;
@@ -576,7 +727,7 @@ function renderComparacao(){
   lerFormPedido();
   const p=_pedidoRascunho;
   const div=document.getElementById('comparacaoContent');
-  if(!p.itens.length||!p.duimp.itens.length){
+  if(!p.itens.length||!todasAdicoesDuimp(p).length){
     div.innerHTML='<div class="alert-info">Preencha os <strong>Itens do Pedido</strong> e as <strong>Adições da DUIMP</strong> antes de comparar.</div>';
     return;
   }
@@ -589,13 +740,15 @@ function renderComparacao(){
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>ITEM NO</th><th>Descrição</th><th>QTY Pedida</th><th>Qtd DUIMP</th><th>Qtd ✓</th><th>Preço Pedido</th><th>Preço DUIMP</th><th>Preço ✓</th><th>Status</th></tr></thead>
+        <thead><tr><th>ITEM NO</th><th>Descrição</th><th>QTY Pedida</th><th>Qtd Recebida (todas DUIMPs)</th><th>Qtd ✓</th><th>Faltante</th><th>Excedente</th><th>Preço Pedido</th><th>Preço Médio DUIMP</th><th>Preço ✓</th><th>Status</th></tr></thead>
         <tbody>${resultados.map(r=>`<tr>
           <td><strong>${r.itemNo}</strong></td>
           <td>${r.descricao||'—'}</td>
           <td class="tr">${r.qtdPedida??'—'}</td>
           <td class="tr">${r.qtdDuimp??'—'}</td>
           <td class="tc">${r.qtdDuimp!==null?(r.qtdOk?'✅':'❌'):'—'}</td>
+          <td class="tr">${r.faltante>0?`<span class="badge-div">${r.faltante}</span>`:'—'}</td>
+          <td class="tr">${r.excedente>0?`<span class="badge-miss">${r.excedente}</span>`:'—'}</td>
           <td class="tr">${r.precoPedido!=null?fmtUSD(r.precoPedido):'—'}</td>
           <td class="tr">${r.precoDuimp!=null?fmtUSD(r.precoDuimp):'—'}</td>
           <td class="tc">${r.precoDuimp!==null?(r.precoOk?'✅':'❌'):'—'}</td>
@@ -606,6 +759,150 @@ function renderComparacao(){
 }
 
 document.getElementById('btnComparar').addEventListener('click', renderComparacao);
+
+/* ====== DIVERGÊNCIAS (faltantes/excedentes) — painel abaixo do Kanban ======
+   Só considera divergência um pedido que já tem pelo menos uma DUIMP registrada
+   (embarque parcial confirmado). Pedido 100% em fabricação, sem nenhuma DUIMP ainda,
+   é fluxo normal — não aparece aqui. */
+function calcularDivergenciasPedido(pedido){
+  if(!pedido.duimps || !pedido.duimps.length) return [];
+  const {resultados} = compararPedidoDuimp(pedido);
+  return resultados.filter(r=>{
+    if(r.status==='nao_pedido') return false; // adição sem item de pedido correspondente — nada a "cobrar" aqui
+    if(!(r.faltante>0 || r.excedente>0)) return false;
+    const item = pedido.itens.find(i=>i.itemNo.trim().toUpperCase()===r.itemNo.trim().toUpperCase());
+    if(item && item.pendenciaResolvida) return false;
+    return true;
+  });
+}
+
+function calcularDivergencias(){
+  const out=[];
+  STATE.pedidos.filter(p=>p.status!=='cancelado').forEach(pedido=>{
+    calcularDivergenciasPedido(pedido).forEach(r=>{
+      out.push({ pedidoId:pedido.id, referencia:pedido.referencia, fornecedor:pedido.fornecedor, pais:pedido.pais, ...r });
+    });
+  });
+  return out;
+}
+
+// Cria um novo card no Kanban (Em Fabricação) com a quantidade faltante de um item —
+// o fornecedor ainda deve essa quantidade, então volta pro início do fluxo.
+function gerarCardDePendencia(pedidoOrigemId, itemNo){
+  const origem = STATE.pedidos.find(p=>p.id===pedidoOrigemId);
+  if(!origem) return;
+  const item = origem.itens.find(i=>i.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
+  if(!item) return;
+  const {resultados} = compararPedidoDuimp(origem);
+  const r = resultados.find(x=>x.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
+  const qtdFaltante = r ? r.faltante : num(item.qtdPedida);
+  if(qtdFaltante<=0) return;
+
+  const novo = pedidoVazio();
+  novo.referencia = gerarReferencia();
+  novo.fornecedor = origem.fornecedor;
+  novo.pais = origem.pais;
+  novo.dataPedido = hojeISO();
+  novo.etapa = 'fabricacao';
+  novo.obs = `Gerado automaticamente a partir da pendência do pedido ${origem.referencia} (item ${itemNo}).`;
+  novo.itens = [{
+    itemNo:item.itemNo, descricao:item.descricao, oeNo:item.oeNo,
+    qtdPedida:qtdFaltante, precoUnit:item.precoUnit, valorTotal:qtdFaltante*num(item.precoUnit),
+    origemPedidoId:origem.id, origemReferencia:origem.referencia
+  }];
+  STATE.pedidos.push(novo);
+
+  item.pendenciaResolvida = { via:'novo_card', em:hojeISO(), pedidoDestinoId:novo.id };
+
+  salvar();
+  renderKanban();
+}
+
+// Junta a quantidade faltante como um novo item de linha em outro pedido já existente
+// do mesmo fornecedor, em vez de criar um card novo.
+function adicionarPendenciaAPedidoExistente(pedidoOrigemId, itemNo, pedidoDestinoId){
+  const origem = STATE.pedidos.find(p=>p.id===pedidoOrigemId);
+  const destino = STATE.pedidos.find(p=>p.id===pedidoDestinoId);
+  if(!origem || !destino) return;
+  const item = origem.itens.find(i=>i.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
+  if(!item) return;
+  const {resultados} = compararPedidoDuimp(origem);
+  const r = resultados.find(x=>x.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
+  const qtdFaltante = r ? r.faltante : num(item.qtdPedida);
+  if(qtdFaltante<=0) return;
+
+  destino.itens.push({
+    itemNo:item.itemNo, descricao:item.descricao, oeNo:item.oeNo,
+    qtdPedida:qtdFaltante, precoUnit:item.precoUnit, valorTotal:qtdFaltante*num(item.precoUnit),
+    origemPedidoId:origem.id, origemReferencia:origem.referencia
+  });
+
+  item.pendenciaResolvida = { via:'pedido_existente', em:hojeISO(), pedidoDestinoId:destino.id };
+
+  salvar();
+  renderKanban();
+}
+
+function ignorarDivergencia(pedidoId, itemNo){
+  const pedido = STATE.pedidos.find(p=>p.id===pedidoId);
+  if(!pedido) return;
+  const item = pedido.itens.find(i=>i.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
+  if(!item) return;
+  item.pendenciaResolvida = { via:'ignorado', em:hojeISO() };
+  salvar();
+  renderKanban();
+}
+
+function acaoGerarCard(pedidoId, itemNo){
+  if(!confirm('Gerar um novo card no Kanban (Em Fabricação) com a quantidade faltante deste item?')) return;
+  gerarCardDePendencia(pedidoId, itemNo);
+}
+
+let _pendenciaEscolhaOrigemId=null, _pendenciaEscolhaItemNo=null;
+function acaoEscolherPedidoDestino(pedidoId, itemNo, fornecedor){
+  _pendenciaEscolhaOrigemId = pedidoId;
+  _pendenciaEscolhaItemNo = itemNo;
+  const sel = document.getElementById('escolherPedidoDestino');
+  const opcoes = STATE.pedidos.filter(p=>p.id!==pedidoId && p.status!=='cancelado' && p.fornecedor===fornecedor);
+  if(!opcoes.length){ alert('Não há outro pedido em aberto deste fornecedor pra juntar essa pendência.'); return; }
+  sel.innerHTML = opcoes.map(p=>`<option value="${p.id}">${p.referencia} — ${etapaById(p.etapa).label}</option>`).join('');
+  document.getElementById('modalEscolherPedido').classList.add('open');
+}
+document.getElementById('btnConfirmarEscolhaPedido').addEventListener('click', ()=>{
+  const destinoId = document.getElementById('escolherPedidoDestino').value;
+  adicionarPendenciaAPedidoExistente(_pendenciaEscolhaOrigemId, _pendenciaEscolhaItemNo, destinoId);
+  document.getElementById('modalEscolherPedido').classList.remove('open');
+});
+document.getElementById('btnCancelarEscolhaPedido').addEventListener('click', ()=>document.getElementById('modalEscolherPedido').classList.remove('open'));
+document.getElementById('closeEscolhaPedido').addEventListener('click', ()=>document.getElementById('modalEscolherPedido').classList.remove('open'));
+
+function renderPainelDivergencias(){
+  const tbody = document.querySelector('#tblDivergencias tbody');
+  if(!tbody) return;
+  const divergencias = calcularDivergencias();
+  if(!divergencias.length){
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Nenhuma divergência pendente.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = divergencias.map(d=>{
+    const tipo = d.faltante>0 ? `<span class="badge-div">Faltante: ${d.faltante}</span>` : `<span class="badge-miss">Excedente: ${d.excedente}</span>`;
+    const fornecedorEsc = (d.fornecedor||'').replace(/'/g,"\\'");
+    const acoes = d.faltante>0
+      ? `<button class="btn bo btn-sm" onclick="acaoGerarCard('${d.pedidoId}','${d.itemNo}')">+ Gerar novo card</button>
+         <button class="btn bgray btn-sm" onclick="acaoEscolherPedidoDestino('${d.pedidoId}','${d.itemNo}','${fornecedorEsc}')">+ Pedido existente</button>
+         <button class="icon-btn" onclick="ignorarDivergencia('${d.pedidoId}','${d.itemNo}')" title="Ignorar">✕</button>`
+      : `<button class="icon-btn" onclick="ignorarDivergencia('${d.pedidoId}','${d.itemNo}')" title="Marcar como resolvido">✕</button>`;
+    return `<tr>
+      <td>${d.fornecedor}</td>
+      <td><strong>${d.referencia}</strong></td>
+      <td>${d.itemNo}</td>
+      <td>${d.descricao||'—'}</td>
+      <td>${tipo}</td>
+      <td class="tr">${d.faltante>0?d.faltante:d.excedente}</td>
+      <td style="white-space:nowrap">${acoes}</td>
+    </tr>`;
+  }).join('');
+}
 
 /* ====== HISTÓRICO DE ALTERAÇÕES DO PEDIDO ====== */
 function renderHistoricoAlteracoes(){

@@ -43,6 +43,20 @@
 <!-- KANBAN BOARD -->
 <div class="kanban-board" id="kanbanBoard"></div>
 
+<!-- PAINEL DE DIVERGÊNCIAS (faltantes/excedentes entre pedido e DUIMPs) -->
+<div class="painel-divergencias">
+  <div class="painel-divergencias-head">
+    <h2>⚠ Divergências de Embarque</h2>
+    <p>Itens com quantidade a mais ou a menos do que foi pedido, comparando com as DUIMPs já lançadas.</p>
+  </div>
+  <div class="table-wrap" style="max-height:40vh">
+    <table id="tblDivergencias">
+      <thead><tr><th>Fornecedor</th><th>Pedido</th><th>Item</th><th>Descrição</th><th>Tipo</th><th>Qtd.</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ===== MODAL: PEDIDO (criar / detalhe) ===== -->
 <div class="modal-overlay" id="modalPedido">
   <div class="modal-box modal-xl">
@@ -128,23 +142,34 @@
 
       <!-- TAB: DUIMP -->
       <div class="mtab-panel" id="tab-duimp">
-        <div class="form-grid" style="margin-bottom:16px">
-          <div class="field"><label>Nº da DUIMP</label><input type="text" id="dNumero" placeholder="Ex: 26/0000000-0"></div>
-          <div class="field"><label>Data de Registro</label><input type="date" id="dDataRegistro"></div>
-        </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span class="section-label" style="margin:0">Adições da DUIMP</span>
-          <button class="btn bgray btn-sm" id="btnAddAdicao">+ Adicionar adição</button>
+          <span class="section-label" style="margin:0">DUIMPs registradas neste pedido</span>
+          <button class="btn bgray btn-sm" id="btnNovaDuimp">+ Nova DUIMP</button>
         </div>
-        <div class="table-wrap">
-          <table id="tblDuimp">
-            <thead><tr>
-              <th>Adição</th><th>NCM</th><th>Descrição</th><th>Ref. ITEM NO</th>
-              <th>Qtd. Estatística</th><th>Unidade</th><th>Vlr. FOB Unit. (USD)</th><th>Vlr. FOB Total (USD)</th><th></th>
-            </tr></thead>
+        <p class="alert-info" style="margin-bottom:14px">Um pedido pode chegar em vários contêineres/DUIMPs diferentes ao longo do tempo. Cadastre uma DUIMP pra cada embarque e lance as adições de cada uma separadamente.</p>
+        <div class="table-wrap" style="max-height:22vh;margin-bottom:18px">
+          <table id="tblListaDuimps">
+            <thead><tr><th>Nº da DUIMP</th><th>Data de Registro</th><th>Adições</th><th>Vlr. FOB Total (USD)</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
+
+        <div id="duimpSelecionadaBox" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <span class="section-label" style="margin:0">Adições da DUIMP <strong id="duimpSelecionadaLabel"></strong></span>
+            <button class="btn bgray btn-sm" id="btnAddAdicao">+ Adicionar adição</button>
+          </div>
+          <div class="table-wrap">
+            <table id="tblDuimp">
+              <thead><tr>
+                <th>Adição</th><th>NCM</th><th>Descrição</th><th>Ref. ITEM NO</th>
+                <th>Qtd. Estatística</th><th>Unidade</th><th>Vlr. FOB Unit. (USD)</th><th>Vlr. FOB Total (USD)</th><th></th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="alert-info" id="duimpSemSelecao">Cadastre uma DUIMP acima (ou selecione uma já existente) pra lançar as adições dela.</div>
       </div>
 
       <!-- TAB: COMPARAÇÃO -->
@@ -214,6 +239,45 @@
     <div class="modal-foot">
       <button class="btn bgray" id="btnCancelarItemPedido">Cancelar</button>
       <button class="btn bk" id="btnSalvarItemPedido">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: NOVA/EDITAR DUIMP (cabeçalho) ===== -->
+<div class="modal-overlay" id="modalDuimpHeader">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-head">
+      <h3 id="modalDuimpHeaderTitulo">Nova DUIMP</h3>
+      <button class="modal-close" id="closeDuimpHeader">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>Nº da DUIMP</label><input type="text" id="dhNumero" placeholder="Ex: 26/0000000-0"></div>
+      <div class="field" style="margin-top:12px"><label>Data de Registro</label><input type="date" id="dhDataRegistro"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarDuimpHeader">Cancelar</button>
+      <button class="btn bk" id="btnSalvarDuimpHeader">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ESCOLHER PEDIDO DESTINO (juntar pendência) ===== -->
+<div class="modal-overlay" id="modalEscolherPedido">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-head">
+      <h3>Adicionar a pedido existente</h3>
+      <button class="modal-close" id="closeEscolhaPedido">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.82rem;color:#666;margin-bottom:12px">A quantidade faltante será adicionada como um novo item de linha no pedido escolhido (do mesmo fornecedor), mantendo referência de onde ela veio.</p>
+      <div class="field">
+        <label>Pedido de destino</label>
+        <select id="escolherPedidoDestino"></select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarEscolhaPedido">Cancelar</button>
+      <button class="btn bk" id="btnConfirmarEscolhaPedido">Adicionar</button>
     </div>
   </div>
 </div>
