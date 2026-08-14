@@ -29,6 +29,10 @@
 <!-- TOOLBAR -->
 <div class="toolbar">
   <button class="btn bo" id="btnNovoPedido">+ Novo Pedido</button>
+  <label class="btn bo xlsx-label" style="cursor:pointer">
+    + Nova Invoice
+    <input type="file" id="invoiceXlsxInput" accept=".xlsx,.xls" style="display:none">
+  </label>
   <button class="btn bgray" id="btnHistorico">📋 Histórico de Pedidos</button>
   <div class="toolbar-filters">
     <input type="text" id="filtroKanban" placeholder="Buscar pedido, fornecedor...">
@@ -85,10 +89,6 @@
 
         <div class="section-label">⏱ Prazos (em dias) — preenchidos conforme acordado com o fornecedor</div>
         <div class="form-grid">
-          <div class="field">
-            <label>Prazo de Fabricação / Despacho (dias)</label>
-            <input type="number" id="pPrazoFabricacao" min="0" placeholder="Ex: 120">
-          </div>
           <div class="field">
             <label>Prazo de Transporte Marítimo (dias)</label>
             <input type="number" id="pPrazoTransporte" min="0" placeholder="Ex: 30">
@@ -299,27 +299,6 @@
   </div>
 </div>
 
-<!-- ===== MODAL: ESCOLHER PEDIDO DESTINO (juntar pendência) ===== -->
-<div class="modal-overlay" id="modalEscolherPedido">
-  <div class="modal-box" style="max-width:460px">
-    <div class="modal-head">
-      <h3>Adicionar a pedido existente</h3>
-      <button class="modal-close" id="closeEscolhaPedido">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:.82rem;color:#666;margin-bottom:12px">A quantidade faltante será adicionada como um novo item de linha no pedido escolhido (do mesmo fornecedor), mantendo referência de onde ela veio.</p>
-      <div class="field">
-        <label>Pedido de destino</label>
-        <select id="escolherPedidoDestino"></select>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn bgray" id="btnCancelarEscolhaPedido">Cancelar</button>
-      <button class="btn bk" id="btnConfirmarEscolhaPedido">Adicionar</button>
-    </div>
-  </div>
-</div>
-
 <!-- ===== MODAL: ADIÇÃO DUIMP ===== -->
 <div class="modal-overlay" id="modalAdicao">
   <div class="modal-box" style="max-width:560px">
@@ -429,8 +408,112 @@
         </table>
       </div>
     </div>
-    <div class="modal-foot">
+    <div class="modal-foot" style="justify-content:space-between">
+      <button class="btn bgray" id="btnResetarDadosModulo" style="opacity:.5;font-size:.72rem" title="Apaga todos os pedidos, embarques e pastas de fornecedor deste módulo">Resetar dados do módulo</button>
       <button class="btn bgray" id="closeHistoricoBtn">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: DETALHE DA PASTA DE FORNECEDOR ===== -->
+<div class="modal-overlay" id="modalDetalhePasta">
+  <div class="modal-box modal-xl">
+    <div class="modal-head">
+      <h3 id="detalhePastaTitulo">Pasta do Fornecedor</h3>
+      <button class="modal-close" id="closeDetalhePasta">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span class="section-label" style="margin:0">Pendente por item (soma de todos os pedidos)</span>
+        <button class="btn bo btn-sm" id="btnNovoPedidoDaPasta">+ Novo Pedido</button>
+      </div>
+      <div class="table-wrap" style="max-height:26vh;margin-bottom:20px">
+        <table id="tblDetalhePastaPendentes">
+          <thead><tr><th>ITEM NO</th><th>Descrição</th><th>Qtd. Pendente</th><th>Valor Pendente (USD)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section-label">Pedidos lançados (ordem PEPS — mais antigo primeiro)</div>
+      <div id="detalhePastaPedidosContainer"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnFecharDetalhePasta">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: NOVO PEDIDO DE FABRICAÇÃO (pasta do fornecedor) ===== -->
+<div class="modal-overlay" id="modalNovoPedidoFornecedor">
+  <div class="modal-box modal-xl">
+    <div class="modal-head">
+      <h3>Novo Pedido de Fabricação</h3>
+      <button class="modal-close" id="closeNovoPedidoFornecedor">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field">
+          <label>Fornecedor *</label>
+          <select id="npfFornecedorSelect"></select>
+        </div>
+        <div class="field"><label>Data do Pedido *</label><input type="date" id="npfData"></div>
+        <div class="field"><label>Tempo de Fabricação (dias)</label><input type="number" id="npfTempoFabricacao" min="0" placeholder="Ex: 90"></div>
+      </div>
+
+      <div class="field" id="npfFornecedorNovoWrap" style="display:none;margin-top:4px">
+        <div class="form-grid">
+          <div class="field"><label>Nome do novo fornecedor *</label><input type="text" id="npfFornecedorNovoNome" placeholder="Nome do fornecedor"></div>
+          <div class="field"><label>País</label><input type="text" id="npfFornecedorNovoPais" value="China"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 12px">
+        <span class="section-label" style="margin:0">Itens do pedido</span>
+        <div id="npfXlsxDrop" class="xlsx-drop-btn">
+          <label class="btn bgray btn-sm xlsx-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Importar .xlsx
+            <input type="file" id="npfXlsxInput" accept=".xlsx,.xls" style="display:none">
+          </label>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="tblItensPedidoFabricacao">
+          <thead><tr><th>ITEM NO</th><th>Descrição</th><th>OE NO</th><th>QTY Pedida</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarNovoPedidoFornecedor">Cancelar</button>
+      <button class="btn bk" id="btnSalvarNovoPedidoFornecedor">Salvar Pedido</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: NOVA INVOICE (cabeçalho) ===== -->
+<div class="modal-overlay" id="modalNovaInvoice">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <h3>Nova Invoice</h3>
+      <button class="modal-close" id="closeNovaInvoice">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="alert-info" style="margin-bottom:14px">Confirme os dados abaixo (extraídos automaticamente do arquivo, quando possível) antes de mapear os itens.</p>
+      <div class="field">
+        <label>Fornecedor (pasta) *</label>
+        <select id="niFornecedor"></select>
+        <small class="negoc-hint" id="niFornecedorDetectado"></small>
+      </div>
+      <div class="form-grid" style="margin-top:12px">
+        <div class="field"><label>Data da Invoice</label><input type="date" id="niData"></div>
+        <div class="field"><label>Nº da Invoice</label><input type="text" id="niNumero" placeholder="Ex: WSD260608"></div>
+        <div class="field field-wide"><label>Contêiner / Lacre</label><input type="text" id="niContainer" placeholder="Ex: MRSU2236120/CN4843122"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn bgray" id="btnCancelarNovaInvoice">Cancelar</button>
+      <button class="btn bk" id="btnContinuarInvoice">Continuar para mapeamento de itens</button>
     </div>
   </div>
 </div>

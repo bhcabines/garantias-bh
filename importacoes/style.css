@@ -77,6 +77,17 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 .k-btn-del{background:#fee2e2;color:#dc2626}
 .k-btn-del:hover{background:#dc2626;color:var(--white)}
 
+/* ===== Pasta de Fornecedor (coluna Em Fabricação) ===== */
+.k-card-pasta{border-color:var(--orange);border-width:2px;background:var(--orange-dim)}
+.k-card-pasta .k-card-ref{font-size:.86rem}
+.k-card-pasta .k-card-actions{background:transparent;border-top-color:var(--orange)}
+.k-card-pasta .k-btn-next{background:var(--orange);color:var(--white)}
+.k-card-pasta .k-btn-next:hover{background:#c84a08}
+
+/* ===== Modal: Detalhe da Pasta ===== */
+.pasta-pedido-block{border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden}
+.pasta-pedido-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;background:#f7f6f5;font-size:.78rem;border-bottom:1px solid var(--border)}
+
 /* ===== Painel de Divergências ===== */
 .painel-divergencias{background:var(--white);border-top:1px solid var(--border);margin:0 20px 24px;border-radius:14px;border:1px solid var(--border);padding:18px 20px}
 .painel-divergencias-head h2{font-size:.92rem;font-weight:700;color:var(--black)}

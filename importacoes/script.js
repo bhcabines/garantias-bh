@@ -14,8 +14,12 @@ const ETAPAS = [
   { id:'conferido',   label:'Conferido',         icon:'🔍', cor:'#6b7280', prazoKey:null,          labelData:null,          labelDataModal:null },
 ];
 
-/* ====== ESTADO ====== */
-const STATE = { pedidos:[] };
+/* ====== ESTADO ======
+   STATE.pedidos guarda os "embarques" (o que antes chamávamos de pedido — card do
+   Kanban com DUIMP/comparação/etapas, agora criado a partir de uma invoice, não mais
+   digitado manualmente do zero). STATE.fornecedores guarda as pastas por fornecedor,
+   onde os pedidos de fabricação se acumulam até uma invoice deduzir o que foi embarcado. */
+const STATE = { pedidos:[], fornecedores:[] };
 let _pedidoEditandoId = null;
 let _itemEditandoIdx = null;
 let _adicaoEditandoIdx = null;
@@ -26,31 +30,50 @@ let _etapaCallbackDir = null;
 const SYNC_URL = 'https://script.google.com/macros/s/AKfycbwDQZ4dAfEJ9eZs0CV4ceRvj6Pe_QNTaVuuZwT6285JWhcmlL-mpYR_YK7A6ikVkS27/exec';
 let _syncTimer = null;
 
+// Aceita tanto o formato novo ({pedidos,fornecedores}) quanto o array solto antigo
+// (de antes dessa mudança) — trata o formato antigo como "ainda sem fornecedores".
+function normalizarPayloadServidor(data){
+  if(Array.isArray(data)) return { pedidos:data, fornecedores:[] };
+  return {
+    pedidos: Array.isArray(data.pedidos) ? data.pedidos : [],
+    fornecedores: Array.isArray(data.fornecedores) ? data.fornecedores : []
+  };
+}
+
 async function carregarDoServidor(){
-  mostrarStatus('Carregando pedidos...');
+  mostrarStatus('Carregando dados...');
   try {
     const res = await fetch(SYNC_URL + '?action=getImportacoes&t=' + Date.now());
     const json = await res.json();
-    if(json.ok && Array.isArray(json.data)){
-      const local = migrarPedidos(JSON.parse(localStorage.getItem('imp_pedidos') || '[]'));
-      // Servidor vazio mas já existem pedidos só neste navegador: quase certeza de que uma
-      // sincronização anterior falhou silenciosamente (foi o que aconteceu até agora). Em vez
-      // de apagar o que só existe aqui, reenviamos pro servidor em vez de sobrescrever local.
-      if(json.data.length === 0 && local.length > 0){
-        STATE.pedidos = local;
+    if(json.ok && json.data){
+      const remoto = normalizarPayloadServidor(json.data);
+      const local = {
+        pedidos: migrarPedidos(JSON.parse(localStorage.getItem('imp_pedidos') || '[]')),
+        fornecedores: JSON.parse(localStorage.getItem('imp_fornecedores') || '[]')
+      };
+      // Servidor vazio mas já existem dados só neste navegador: quase certeza de que uma
+      // sincronização anterior falhou silenciosamente. Em vez de apagar o que só existe
+      // aqui, reenviamos pro servidor em vez de sobrescrever local.
+      const remotoVazio = remoto.pedidos.length===0 && remoto.fornecedores.length===0;
+      const localTemDados = local.pedidos.length>0 || local.fornecedores.length>0;
+      if(remotoVazio && localTemDados){
+        STATE.pedidos = local.pedidos;
+        STATE.fornecedores = local.fornecedores;
         sincronizarComServidor();
         mostrarStatus('');
         return;
       }
-      STATE.pedidos = migrarPedidos(json.data);
+      STATE.pedidos = migrarPedidos(remoto.pedidos);
+      STATE.fornecedores = remoto.fornecedores;
       localStorage.setItem('imp_pedidos', JSON.stringify(STATE.pedidos));
+      localStorage.setItem('imp_fornecedores', JSON.stringify(STATE.fornecedores));
       mostrarStatus('');
       return;
     }
   } catch(e){
     console.warn('Servidor indisponível, usando cache local.');
   }
-  STATE.pedidos = migrarPedidos(JSON.parse(localStorage.getItem('imp_pedidos') || '[]'));
+  carregar();
   mostrarStatus('');
 }
 
@@ -63,7 +86,7 @@ function sincronizarComServidor(){
       // e o envio falha silenciosamente. Sem header, o POST vira "simples" e funciona.
       await fetch(SYNC_URL, {
         method:'POST',
-        body: JSON.stringify({ action:'saveImportacoes', data: STATE.pedidos })
+        body: JSON.stringify({ action:'saveImportacoes', data: { pedidos: STATE.pedidos, fornecedores: STATE.fornecedores } })
       });
     } catch(e){ console.warn('Erro ao sincronizar:', e); }
   }, 800);
@@ -79,9 +102,13 @@ function mostrarStatus(msg){
 /* ====== STORAGE LOCAL (cache / fallback) ====== */
 function salvar(){
   localStorage.setItem('imp_pedidos', JSON.stringify(STATE.pedidos));
+  localStorage.setItem('imp_fornecedores', JSON.stringify(STATE.fornecedores));
   sincronizarComServidor();
 }
-function carregar(){ STATE.pedidos = migrarPedidos(JSON.parse(localStorage.getItem('imp_pedidos') || '[]')); }
+function carregar(){
+  STATE.pedidos = migrarPedidos(JSON.parse(localStorage.getItem('imp_pedidos') || '[]'));
+  STATE.fornecedores = JSON.parse(localStorage.getItem('imp_fornecedores') || '[]');
+}
 
 /* ====== UTILITÁRIOS ====== */
 function uid(){ return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6); }
@@ -135,10 +162,9 @@ function calcularAlerta(pedido){
   return {status:'ok', diasRestantes:restantes, diasDecorridos, prazo};
 }
 
-function badgeAlerta(alerta, etapaId){
-  if(!['fabricacao','transito','desembaraco'].includes(etapaId)) return '';
+function badgeAlertaGenerico(alerta){
   if(alerta.status==='sem-prazo')
-    return `<div class="k-card-alert sem-prazo">⏱ Sem prazo configurado${alerta.diasDecorridos!==null?' · '+alerta.diasDecorridos+' dias na etapa':''}</div>`;
+    return `<div class="k-card-alert sem-prazo">⏱ Sem prazo configurado${alerta.diasDecorridos!==null?' · '+alerta.diasDecorridos+' dias':''}</div>`;
   if(alerta.status==='ok')
     return `<div class="k-card-alert ok">✔ ${alerta.diasRestantes} dias restantes (${alerta.diasDecorridos} de ${alerta.prazo})</div>`;
   if(alerta.status==='atencao')
@@ -148,6 +174,66 @@ function badgeAlerta(alerta, etapaId){
   return '';
 }
 
+function badgeAlerta(alerta, etapaId){
+  if(!['transito','desembaraco'].includes(etapaId)) return '';
+  return badgeAlertaGenerico(alerta);
+}
+
+/* ====== PASTAS DE FORNECEDOR (fabricação) ======
+   Cada fornecedor tem uma pasta única (STATE.fornecedores) onde os pedidos lançados se
+   acumulam até uma invoice deduzir (PEPS) o que foi embarcado. A pasta nunca é apagada —
+   só deixa de aparecer no Kanban quando não sobra nenhum item pendente em nenhum pedido. */
+function fornecedorVazio(){
+  return { id:uid(), fornecedor:'', pais:'China', pedidos:[] };
+}
+
+function pedidoFabricacaoVazio(){
+  return { id:uid(), data:hojeISO(), tempoFabricacaoDias:'', itens:[] };
+}
+
+function qtdPendenteItem(item){
+  return Math.max(num(item.qtdPedida)-num(item.qtdInvoiced), 0);
+}
+
+// Agrega, por ITEM NO, a quantidade pendente somada de todos os pedidos da pasta.
+function pendenciasFornecedor(fornecedor){
+  const map = {};
+  (fornecedor.pedidos||[]).forEach(pedido=>{
+    (pedido.itens||[]).forEach(item=>{
+      const pend = qtdPendenteItem(item);
+      if(pend<=0) return;
+      const key = item.itemNo.trim().toUpperCase();
+      if(!map[key]) map[key] = { itemNo:item.itemNo, descricao:item.descricao, oeNo:item.oeNo, qtdPendente:0, valorPendente:0 };
+      map[key].qtdPendente += pend;
+      map[key].valorPendente += pend*num(item.precoUnit);
+    });
+  });
+  return Object.values(map);
+}
+
+function fornecedorTemPendencia(fornecedor){
+  return pendenciasFornecedor(fornecedor).length > 0;
+}
+
+// Alerta de atraso da pasta = calculado a partir do pedido pendente mais antigo (PEPS) —
+// é ele que está determinando a demora real de fabricação.
+function calcularAlertaFabricacaoPasta(fornecedor){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const pendentes = (fornecedor.pedidos||[]).filter(p => (p.itens||[]).some(i=>qtdPendenteItem(i)>0));
+  if(!pendentes.length) return {status:'sem-prazo', diasDecorridos:null};
+  const ordenados = [...pendentes].sort((a,b)=>(parseDate(a.data)||0)-(parseDate(b.data)||0));
+  const maisAntigo = ordenados[0];
+  const ini = parseDate(maisAntigo.data);
+  if(!ini) return {status:'sem-prazo', diasDecorridos:null};
+  const diasDecorridos = diffDias(hoje, ini);
+  const prazo = num(maisAntigo.tempoFabricacaoDias) || null;
+  if(prazo===null) return {status:'sem-prazo', diasDecorridos};
+  const restantes = prazo - diasDecorridos;
+  if(restantes<0)  return {status:'atrasado', diasAtraso:-restantes, diasDecorridos, prazo};
+  if(restantes<=7) return {status:'atencao',  diasRestantes:restantes, diasDecorridos, prazo};
+  return {status:'ok', diasRestantes:restantes, diasDecorridos, prazo};
+}
+
 /* ====== KANBAN RENDER ====== */
 function renderKanban(){
   const filtro = document.getElementById('filtroKanban').value.trim().toLowerCase();
@@ -155,6 +241,11 @@ function renderKanban(){
   board.innerHTML = '';
 
   ETAPAS.forEach(etapa => {
+    if(etapa.id==='fabricacao'){
+      renderColunaFabricacaoEtapa(board, etapa, filtro);
+      return;
+    }
+
     const pedidos = STATE.pedidos.filter(p =>
       p.etapa === etapa.id &&
       p.status !== 'cancelado' &&
@@ -178,7 +269,10 @@ function renderKanban(){
       const alerta = calcularAlerta(p);
       const totalUSD = p.itens.reduce((s,i)=>s+num(i.valorTotal),0);
       const proximo = proximaEtapa(p.etapa);
-      const anterior = etapaAnterior(p.etapa);
+      // Uma pasta de fornecedor (fabricação) não é mais um destino válido de "voltar" —
+      // um embarque nasceu de uma invoice, não volta a ser pendência de fabricação.
+      const anteriorRaw = etapaAnterior(p.etapa);
+      const anterior = (anteriorRaw && anteriorRaw.id==='fabricacao') ? null : anteriorRaw;
       const pendencias = calcularDivergenciasPedido(p).filter(d=>d.faltante>0);
 
       const card = document.createElement('div');
@@ -207,6 +301,54 @@ function renderKanban(){
   });
 
   renderPainelDivergencias();
+}
+
+// Coluna "Em Fabricação" não lista embarques — lista as pastas de fornecedor que ainda
+// têm algum item pendente. Pasta some daqui quando fica sem pendência, mas continua
+// existindo em STATE.fornecedores (selecionável ao lançar um novo pedido).
+function renderColunaFabricacaoEtapa(board, etapa, filtro){
+  const pastas = STATE.fornecedores.filter(f =>
+    fornecedorTemPendencia(f) &&
+    (!filtro || f.fornecedor.toLowerCase().includes(filtro))
+  );
+
+  const col = document.createElement('div');
+  col.className = 'kanban-col';
+  col.innerHTML = `
+    <div class="kanban-col-header" style="background:${etapa.cor}">
+      <div class="col-title">${etapa.icon} ${etapa.label}</div>
+      <span class="col-count">${pastas.length}</span>
+    </div>
+    <div class="kanban-cards" id="cards-${etapa.id}">
+      ${pastas.length===0 ? '<div class="kanban-empty">Nenhuma pasta com pendência</div>' : ''}
+    </div>`;
+  board.appendChild(col);
+
+  const cardsEl = col.querySelector(`#cards-${etapa.id}`);
+  pastas.forEach(f => {
+    const pendencias = pendenciasFornecedor(f);
+    const valorTotal = pendencias.reduce((s,x)=>s+x.valorPendente,0);
+    const alerta = calcularAlertaFabricacaoPasta(f);
+
+    const card = document.createElement('div');
+    card.className = 'k-card k-card-pasta';
+    card.innerHTML = `
+      <div class="k-card-top" style="background:${etapa.cor}"></div>
+      <div class="k-card-body">
+        <div class="k-card-ref">📁 ${f.fornecedor}</div>
+        <div class="k-card-forn">${f.pais||'China'}</div>
+        <div class="k-card-meta">
+          <span class="k-meta">📦 <strong>${pendencias.length}</strong> itens distintos</span>
+          <span class="k-meta">💵 <strong>${fmtUSD(valorTotal)}</strong> pendente</span>
+        </div>
+        ${badgeAlertaGenerico(alerta)}
+      </div>
+      <div class="k-card-actions">
+        <button class="k-btn k-btn-detail" onclick="abrirDetalhePasta('${f.id}')">Ver detalhes</button>
+        <button class="k-btn k-btn-next" onclick="abrirNovoPedidoFornecedor('${f.id}')" title="Novo pedido pra este fornecedor">+ Pedido</button>
+      </div>`;
+    cardsEl.appendChild(card);
+  });
 }
 
 /* ====== MODAL AVANÇAR/VOLTAR ETAPA ====== */
@@ -259,19 +401,23 @@ document.getElementById('btnConfirmarEtapa').addEventListener('click', () => {
 document.getElementById('btnCancelarEtapa').addEventListener('click', ()=>document.getElementById('modalEtapa').classList.remove('open'));
 document.getElementById('closeEtapa').addEventListener('click', ()=>document.getElementById('modalEtapa').classList.remove('open'));
 
-/* ====== MODAL PEDIDO ====== */
+/* ====== MODAL EMBARQUE (antigo "pedido") ======
+   Um "embarque" é criado automaticamente a partir de uma invoice (ver seção NOVA
+   INVOICE mais abaixo) — não existe mais criação manual em branco. A partir daqui ele
+   percorre as etapas normalmente e mantém DUIMP/comparação/histórico como sempre. */
 function pedidoVazio(){
   return {
     id:uid(), referencia:'', fornecedor:'', pais:'China',
-    dataPedido:hojeISO(), etapa:'fabricacao',
+    dataPedido:hojeISO(), etapa:'embarcado',
     status:'ativo',
-    prazos:{ fabricacao:'', transporte:'', desembaraco:'' },
+    prazos:{ transporte:'', desembaraco:'' },
+    invoiceNumero:'', invoiceData:'', containerSeal:'', origemFornecedorId:'',
     dataEmbarcado:'', dataPorto:'', dataDesembaraco:'', dataEntregue:'',
     obs:'', itens:[], duimps:[],
     historicoEtapas:[],
     historicoAlteracoes:[],
     motivoCancelamento:'', dataCancelamento:'',
-    negociacaoPrazo:{ fabricacao:{usado:false,dataRenegociada:''}, transporte:{usado:false,dataRenegociada:''}, desembaraco:{usado:false,dataRenegociada:''} },
+    negociacaoPrazo:{ transporte:{usado:false,dataRenegociada:''}, desembaraco:{usado:false,dataRenegociada:''} },
     alertas:{ ultimoAlerta30:null, alerta10Registrado:false, historico:[] },
   };
 }
@@ -296,16 +442,8 @@ let _pedidoRascunho = pedidoVazio();
 let _duimpSelecionadaId = null;
 let _duimpHeaderEditandoId = null;
 
-function abrirNovoPedido(){
-  _pedidoEditandoId = null;
-  _pedidoRascunho = pedidoVazio();
-  _pedidoRascunho.referencia = gerarReferencia();
-  preencherFormPedido(_pedidoRascunho);
-  document.getElementById('modalPedidoTitulo').textContent = 'Novo Pedido de Importação';
-  document.getElementById('modalPedido').classList.add('open');
-  ativarTab('dados');
-}
-
+// Embarques não são mais criados em branco manualmente — só nascem de uma invoice
+// confirmada (ver "NOVA INVOICE"). Esta função só abre um embarque já existente.
 function abrirPedido(id){
   const p = STATE.pedidos.find(x=>x.id===id);
   if(!p) return;
@@ -322,7 +460,6 @@ function preencherFormPedido(p){
   document.getElementById('pFornecedor').value    = p.fornecedor;
   document.getElementById('pPais').value          = p.pais||'China';
   document.getElementById('pDataPedido').value    = p.dataPedido||hojeISO();
-  document.getElementById('pPrazoFabricacao').value  = p.prazos.fabricacao||'';
   document.getElementById('pPrazoTransporte').value  = p.prazos.transporte||'';
   document.getElementById('pPrazoDesembaraco').value = p.prazos.desembaraco||'';
   document.getElementById('pDataEmbarcado').value  = p.dataEmbarcado||'';
@@ -341,7 +478,6 @@ function lerFormPedido(){
   _pedidoRascunho.fornecedor    = document.getElementById('pFornecedor').value.trim();
   _pedidoRascunho.pais          = document.getElementById('pPais').value.trim()||'China';
   _pedidoRascunho.dataPedido    = document.getElementById('pDataPedido').value||hojeISO();
-  _pedidoRascunho.prazos.fabricacao  = document.getElementById('pPrazoFabricacao').value;
   _pedidoRascunho.prazos.transporte  = document.getElementById('pPrazoTransporte').value;
   _pedidoRascunho.prazos.desembaraco = document.getElementById('pPrazoDesembaraco').value;
   _pedidoRascunho.dataEmbarcado  = document.getElementById('pDataEmbarcado').value;
@@ -352,7 +488,7 @@ function lerFormPedido(){
   _pedidoRascunho.etapa          = document.getElementById('pEtapa').value;
 }
 
-document.getElementById('btnNovoPedido').addEventListener('click', abrirNovoPedido);
+document.getElementById('btnNovoPedido').addEventListener('click', ()=>abrirNovoPedidoFornecedor(null));
 
 const CAMPOS_DATA_RASTREADOS = {
   dataPedido:'Data do Pedido', dataEmbarcado:'Data de Embarque',
@@ -412,18 +548,31 @@ document.querySelectorAll('.mtab').forEach(btn=>{
   });
 });
 
-/* ====== IMPORTAÇÃO XLSX DO PEDIDO — COM MAPEAMENTO MANUAL DE COLUNA/LINHA ======
-   Proforma invoice de fornecedores diferentes vem com blocos de título, endereço e
-   datas ANTES da tabela real, em posições que variam de arquivo pra arquivo — tentar
-   "adivinhar a linha de cabeçalho" sozinho é frágil. Em vez disso: o usuário vê a
+/* ====== IMPORTACAO XLSX - COM MAPEAMENTO MANUAL DE COLUNA/LINHA (generico) ======
+   Planilhas de fornecedores diferentes vem com blocos de titulo, endereco e datas
+   ANTES da tabela real, em posicoes que variam de arquivo pra arquivo -- tentar
+   "adivinhar a linha de cabecalho" sozinho e fragil. Em vez disso: o usuario ve a
    planilha crua com letras de coluna (A, B, C...) e escolhe diretamente, por CAMPO,
-   qual coluna corresponde e a partir de qual linha começam os dados de verdade. */
-const CAMPOS_MAPEAVEIS = [
-  { key:'itemNo',    label:'Código do Item *' },
-  { key:'descricao', label:'Descrição' },
-  { key:'oeNo',       label:'OEM' },
-  { key:'qtdPedida',  label:'Quantidade' },
-  { key:'precoUnit',  label:'Preço Unitário' },
+   qual coluna corresponde e a partir de qual linha comecam os dados de verdade.
+   Esse componente e reaproveitado em 3 lugares (itens de um embarque existente, itens
+   de um pedido lancado na pasta do fornecedor, itens de uma invoice) -- por isso os
+   campos-alvo (`_mapeamentoCamposAtivos`) e o que fazer com o resultado
+   (`_mapeamentoOnConfirm`) sao parametrizaveis a cada chamada. */
+const CAMPOS_MAPEAVEIS_PEDIDO = [
+  { key:'itemNo',    label:'Codigo do Item *', tipo:'texto' },
+  { key:'descricao', label:'Descricao',        tipo:'texto' },
+  { key:'oeNo',      label:'OEM',              tipo:'texto' },
+  { key:'qtdPedida', label:'Quantidade',       tipo:'numero' },
+  { key:'precoUnit', label:'Preco Unitario',   tipo:'numero' },
+];
+const CAMPOS_MAPEAVEIS_INVOICE = [
+  { key:'itemNo',     label:'Codigo do Item (fornecedor) *', tipo:'texto' },
+  { key:'descricao',  label:'Descricao',                     tipo:'texto' },
+  { key:'oeNo',       label:'OEM',                            tipo:'texto' },
+  { key:'codInterno', label:'Codigo Interno',                 tipo:'texto' },
+  { key:'ncm',        label:'NCM',                            tipo:'texto' },
+  { key:'qtdPedida',  label:'Quantidade (invoice)',           tipo:'numero' },
+  { key:'precoUnit',  label:'Preco Unitario',                 tipo:'numero' },
 ];
 
 function normalizarTexto(t){
@@ -436,8 +585,8 @@ function colLetra(idx){
   return s;
 }
 
-// Aceita "$ 1.900,00", "1900.00", "1.900,00" etc. — decide o separador decimal pela
-// posição da última vírgula/ponto na string, em vez de assumir um formato fixo.
+// Aceita "$ 1.900,00", "1900.00", "1.900,00" etc. -- decide o separador decimal pela
+// posicao da ultima virgula/ponto na string, em vez de assumir um formato fixo.
 function parseNumeroGenerico(v){
   if(typeof v === 'number') return v;
   if(!v) return 0;
@@ -451,16 +600,20 @@ function parseNumeroGenerico(v){
   return isNaN(n) ? 0 : n;
 }
 
-// Varre as primeiras linhas procurando palavras-chave de cabeçalho em qualquer coluna,
-// só pra SUGERIR um mapeamento inicial — o usuário confere/ajusta antes de confirmar.
+// Varre as primeiras linhas procurando palavras-chave de cabecalho em qualquer coluna,
+// so pra SUGERIR um mapeamento inicial -- o usuario confere/ajusta antes de confirmar.
+// "cod" sozinho (OEM) usa correspondencia exata pra nao colidir com "cod int".
 const PALAVRAS_CHAVE_CAMPO = {
-  itemNo:    /apex\s*code|item\s*no|item\s*number|c[oó]digo|part\s*no/,
-  descricao: /desc/,
-  oeNo:      /\boem\b|\boe\b/,
-  qtdPedida: /qty|qtd|quant/,
-  precoUnit: /\bprice\b|pre[cç]o|unit/,
+  itemNo:     /apex\s*code|wsd\s*no|item\s*no|item\s*number|c[oó]digo|part\s*no/,
+  descricao:  /desc/,
+  oeNo:       /\boem\b|\boe\b|^cod$/,
+  codInterno: /cod\s*int/,
+  ncm:        /^ncm$/,
+  qtdPedida:  /qty|qtd|quant/,
+  precoUnit:  /\bprice\b|pre[cç]o|unit/,
 };
-function sugerirMapeamento(rows){
+function sugerirMapeamento(rows, campos){
+  const chaves = new Set(campos.map(f=>f.key));
   const sugestao = {};
   let linhaHeader = null;
   const maxLinhas = Math.min(20, rows.length);
@@ -469,6 +622,7 @@ function sugerirMapeamento(rows){
       const t = normalizarTexto(cell);
       if(!t) return;
       Object.entries(PALAVRAS_CHAVE_CAMPO).forEach(([campo,re])=>{
+        if(!chaves.has(campo)) return;
         if(sugestao[campo]===undefined && re.test(t)){ sugestao[campo]=c; linhaHeader=r; }
       });
     });
@@ -480,17 +634,15 @@ let _xlsxRawRows = [];
 let _xlsxLinhaInicial = 1;
 let _xlsxNomeArquivo = '';
 let _xlsxMaxCols = 1;
-let _mapeamentoAtual = {}; // { campoKey: colIdx }
+let _mapeamentoAtual = {};              // { campoKey: colIdx }
+let _mapeamentoCamposAtivos = CAMPOS_MAPEAVEIS_PEDIDO;
+let _mapeamentoOnConfirm = null;        // function(itens, nomeArquivo)
+let _modalPausadoId = null;             // modal que ficou "por baixo" enquanto mapeia
 
-// Upload xlsx
-const dropEl = document.getElementById('pedidoXlsxDrop');
-const xlsxInput = document.getElementById('pedidoXlsxInput');
-dropEl.addEventListener('dragover',e=>{e.preventDefault();dropEl.classList.add('on');});
-dropEl.addEventListener('dragleave',()=>dropEl.classList.remove('on'));
-dropEl.addEventListener('drop',e=>{e.preventDefault();dropEl.classList.remove('on');if(e.dataTransfer.files[0]) processarXlsx(e.dataTransfer.files[0]);});
-xlsxInput.addEventListener('change',e=>{if(e.target.files[0]) processarXlsx(e.target.files[0]);});
-
-function processarXlsx(file){
+// Le o arquivo e abre a tela de mapeamento. `campos` define os campos-alvo dessa
+// importacao; `onConfirm(itens, nomeArquivo)` recebe o resultado ao confirmar;
+// `modalOrigemId` (opcional) e escondido enquanto mapeia e reaberto depois.
+function iniciarImportacaoXlsx(file, campos, onConfirm, modalOrigemId){
   const reader = new FileReader();
   reader.onload = ev => {
     const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
@@ -498,19 +650,51 @@ function processarXlsx(file){
     _xlsxRawRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
     _xlsxNomeArquivo = file.name;
     _xlsxMaxCols = Math.max(1, ..._xlsxRawRows.map(l=>l.length));
-    const {sugestao, linhaInicial} = sugerirMapeamento(_xlsxRawRows);
+    _mapeamentoCamposAtivos = campos;
+    _mapeamentoOnConfirm = onConfirm;
+    const {sugestao, linhaInicial} = sugerirMapeamento(_xlsxRawRows, campos);
     _mapeamentoAtual = sugestao;
     _xlsxLinhaInicial = linhaInicial;
-    abrirModalMapeamento();
+    abrirModalMapeamento(modalOrigemId);
   };
   reader.readAsArrayBuffer(file);
 }
 
-function abrirModalMapeamento(){
+// Upload xlsx -- aba "Itens do Pedido" de um embarque ja existente
+const dropEl = document.getElementById('pedidoXlsxDrop');
+const xlsxInput = document.getElementById('pedidoXlsxInput');
+dropEl.addEventListener('dragover',e=>{e.preventDefault();dropEl.classList.add('on');});
+dropEl.addEventListener('dragleave',()=>dropEl.classList.remove('on'));
+dropEl.addEventListener('drop',e=>{e.preventDefault();dropEl.classList.remove('on');if(e.dataTransfer.files[0]) iniciarImportacaoXlsx(e.dataTransfer.files[0], CAMPOS_MAPEAVEIS_PEDIDO, itensRecebidosParaEmbarque, 'modalPedido');});
+xlsxInput.addEventListener('change',e=>{if(e.target.files[0]) iniciarImportacaoXlsx(e.target.files[0], CAMPOS_MAPEAVEIS_PEDIDO, itensRecebidosParaEmbarque, 'modalPedido');});
+
+function itensRecebidosParaEmbarque(itens, nomeArquivo){
+  _pedidoRascunho.itens = itens;
+  if(!_pedidoRascunho.referencia && nomeArquivo){
+    const nome = nomeArquivo.replace(/\.(xlsx?|xls)$/i,'');
+    document.getElementById('pReferencia').value = nome;
+    _pedidoRascunho.referencia = nome;
+  }
+  renderTabelaItensPedido();
+  alert(`${itens.length} itens importados com sucesso.`);
+}
+
+function abrirModalMapeamento(modalOrigemId){
+  _modalPausadoId = modalOrigemId || null;
+  if(_modalPausadoId) document.getElementById(_modalPausadoId).classList.remove('open');
   document.getElementById('mapLinhaInicial').value = _xlsxLinhaInicial;
   renderPreviaBruta();
   renderMapeamentoColunas();
   document.getElementById('modalMapeamentoXlsx').classList.add('open');
+}
+
+function fecharModalMapeamento(){
+  document.getElementById('modalMapeamentoXlsx').classList.remove('open');
+  if(xlsxInput) xlsxInput.value = '';
+  if(_modalPausadoId){
+    document.getElementById(_modalPausadoId).classList.add('open');
+    _modalPausadoId = null;
+  }
 }
 
 document.getElementById('mapLinhaInicial').addEventListener('input', ()=>{
@@ -537,9 +721,9 @@ function renderPreviaBruta(){
 
 function renderMapeamentoColunas(){
   const tbody = document.querySelector('#tblMapeamentoColunas tbody');
-  tbody.innerHTML = CAMPOS_MAPEAVEIS.map(f=>{
+  tbody.innerHTML = _mapeamentoCamposAtivos.map(f=>{
     const colAtual = _mapeamentoAtual[f.key];
-    let opts = '<option value="">—</option>';
+    let opts = '<option value="">-</option>';
     for(let c=0;c<_xlsxMaxCols;c++) opts += `<option value="${c}" ${colAtual===c?'selected':''}>${colLetra(c)}</option>`;
     return `<tr><td>${f.label}</td><td><select data-campo="${f.key}">${opts}</select></td></tr>`;
   }).join('');
@@ -561,54 +745,57 @@ function itensDoMapeamento(){
   dataRows.forEach(row=>{
     const itemNo = String(row[_mapeamentoAtual.itemNo]||'').trim();
     if(!itemNo) return;
-    const qty   = _mapeamentoAtual.qtdPedida!==undefined ? parseNumeroGenerico(row[_mapeamentoAtual.qtdPedida]) : 0;
-    const price = _mapeamentoAtual.precoUnit!==undefined ? parseNumeroGenerico(row[_mapeamentoAtual.precoUnit]) : 0;
-    itens.push({
-      itemNo,
-      descricao: _mapeamentoAtual.descricao!==undefined ? String(row[_mapeamentoAtual.descricao]||'').trim() : '',
-      oeNo:      _mapeamentoAtual.oeNo!==undefined ? String(row[_mapeamentoAtual.oeNo]||'').trim() : '',
-      qtdPedida: qty,
-      precoUnit: price,
-      valorTotal: qty*price
+    const obj = { itemNo };
+    _mapeamentoCamposAtivos.forEach(f=>{
+      if(f.key==='itemNo') return;
+      const col = _mapeamentoAtual[f.key];
+      if(col===undefined){ obj[f.key] = f.tipo==='numero' ? 0 : ''; return; }
+      obj[f.key] = f.tipo==='numero' ? parseNumeroGenerico(row[col]) : String(row[col]||'').trim();
     });
+    obj.valorTotal = num(obj.qtdPedida)*num(obj.precoUnit);
+    itens.push(obj);
   });
   return itens;
 }
 
+// Mostra explicitamente, antes de confirmar, qual coluna virou qual campo -- os
+// cabecalhos da tabela de previa sao os proprios rotulos dos campos escolhidos.
 function renderPreviaMapeada(){
   const todos = itensDoMapeamento();
   const itens = todos.slice(0,5);
   const div = document.getElementById('previaMapeadaContent');
   if(!itens.length){
-    div.innerHTML = '<div class="alert-info">Escolha ao menos a coluna do <strong>Código do Item</strong> e confira a linha inicial pra ver a prévia.</div>';
+    div.innerHTML = '<div class="alert-info">Escolha ao menos a coluna do <strong>Codigo do Item</strong> e confira a linha inicial pra ver a previa.</div>';
     document.getElementById('btnConfirmarMapeamento').disabled = true;
     return;
   }
   document.getElementById('btnConfirmarMapeamento').disabled = false;
+  const headers = _mapeamentoCamposAtivos.map(f=>`<th>${f.label.replace(' *','')}</th>`).join('');
+  const linhas = itens.map(item=>{
+    const cols = _mapeamentoCamposAtivos.map(f=>{
+      const v = item[f.key];
+      if(f.key==='precoUnit') return `<td class="tr">${fmtUSD(v)}</td>`;
+      if(f.tipo==='numero') return `<td class="tr">${v}</td>`;
+      return `<td>${v||'-'}</td>`;
+    }).join('');
+    return `<tr>${cols}</tr>`;
+  }).join('');
   div.innerHTML = `<div class="table-wrap" style="max-height:180px"><table>
-    <thead><tr><th>Código</th><th>Descrição</th><th>OEM</th><th>QTY</th><th>Preço</th></tr></thead>
-    <tbody>${itens.map(i=>`<tr><td>${i.itemNo}</td><td>${i.descricao||'—'}</td><td>${i.oeNo||'—'}</td><td class="tr">${i.qtdPedida}</td><td class="tr">${fmtUSD(i.precoUnit)}</td></tr>`).join('')}</tbody>
+    <thead><tr>${headers}</tr></thead>
+    <tbody>${linhas}</tbody>
   </table></div><p class="muted" style="margin-top:6px">${todos.length} item(ns) reconhecido(s) no total.</p>`;
 }
 
 document.getElementById('btnConfirmarMapeamento').addEventListener('click', ()=>{
   const itens = itensDoMapeamento();
   if(!itens.length){ alert('Nenhum item reconhecido com esse mapeamento.'); return; }
-
-  _pedidoRascunho.itens = itens;
-  if(!_pedidoRascunho.referencia && _xlsxNomeArquivo){
-    const nome = _xlsxNomeArquivo.replace(/\.(xlsx?|xls)$/i,'');
-    document.getElementById('pReferencia').value = nome;
-    _pedidoRascunho.referencia = nome;
-  }
-
-  renderTabelaItensPedido();
-  document.getElementById('modalMapeamentoXlsx').classList.remove('open');
-  xlsxInput.value = '';
-  alert(`${itens.length} itens importados com sucesso.`);
+  const nomeArquivo = _xlsxNomeArquivo;
+  const onConfirm = _mapeamentoOnConfirm;
+  fecharModalMapeamento();
+  if(onConfirm) onConfirm(itens, nomeArquivo);
 });
-document.getElementById('btnCancelarMapeamento').addEventListener('click',()=>{ document.getElementById('modalMapeamentoXlsx').classList.remove('open'); xlsxInput.value=''; });
-document.getElementById('closeMapeamentoXlsx').addEventListener('click',()=>{ document.getElementById('modalMapeamentoXlsx').classList.remove('open'); xlsxInput.value=''; });
+document.getElementById('btnCancelarMapeamento').addEventListener('click', fecharModalMapeamento);
+document.getElementById('closeMapeamentoXlsx').addEventListener('click', fecharModalMapeamento);
 
 
 /* ====== TABELA DE ITENS DO PEDIDO ====== */
@@ -937,63 +1124,6 @@ function calcularDivergencias(){
   return out;
 }
 
-// Cria um novo card no Kanban (Em Fabricação) com a quantidade faltante de um item —
-// o fornecedor ainda deve essa quantidade, então volta pro início do fluxo.
-function gerarCardDePendencia(pedidoOrigemId, itemNo){
-  const origem = STATE.pedidos.find(p=>p.id===pedidoOrigemId);
-  if(!origem) return;
-  const item = origem.itens.find(i=>i.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
-  if(!item) return;
-  const {resultados} = compararPedidoDuimp(origem);
-  const r = resultados.find(x=>x.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
-  const qtdFaltante = r ? r.faltante : num(item.qtdPedida);
-  if(qtdFaltante<=0) return;
-
-  const novo = pedidoVazio();
-  novo.referencia = gerarReferencia();
-  novo.fornecedor = origem.fornecedor;
-  novo.pais = origem.pais;
-  novo.dataPedido = hojeISO();
-  novo.etapa = 'fabricacao';
-  novo.obs = `Gerado automaticamente a partir da pendência do pedido ${origem.referencia} (item ${itemNo}).`;
-  novo.itens = [{
-    itemNo:item.itemNo, descricao:item.descricao, oeNo:item.oeNo,
-    qtdPedida:qtdFaltante, precoUnit:item.precoUnit, valorTotal:qtdFaltante*num(item.precoUnit),
-    origemPedidoId:origem.id, origemReferencia:origem.referencia
-  }];
-  STATE.pedidos.push(novo);
-
-  item.pendenciaResolvida = { via:'novo_card', em:hojeISO(), pedidoDestinoId:novo.id };
-
-  salvar();
-  renderKanban();
-}
-
-// Junta a quantidade faltante como um novo item de linha em outro pedido já existente
-// do mesmo fornecedor, em vez de criar um card novo.
-function adicionarPendenciaAPedidoExistente(pedidoOrigemId, itemNo, pedidoDestinoId){
-  const origem = STATE.pedidos.find(p=>p.id===pedidoOrigemId);
-  const destino = STATE.pedidos.find(p=>p.id===pedidoDestinoId);
-  if(!origem || !destino) return;
-  const item = origem.itens.find(i=>i.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
-  if(!item) return;
-  const {resultados} = compararPedidoDuimp(origem);
-  const r = resultados.find(x=>x.itemNo.trim().toUpperCase()===itemNo.trim().toUpperCase());
-  const qtdFaltante = r ? r.faltante : num(item.qtdPedida);
-  if(qtdFaltante<=0) return;
-
-  destino.itens.push({
-    itemNo:item.itemNo, descricao:item.descricao, oeNo:item.oeNo,
-    qtdPedida:qtdFaltante, precoUnit:item.precoUnit, valorTotal:qtdFaltante*num(item.precoUnit),
-    origemPedidoId:origem.id, origemReferencia:origem.referencia
-  });
-
-  item.pendenciaResolvida = { via:'pedido_existente', em:hojeISO(), pedidoDestinoId:destino.id };
-
-  salvar();
-  renderKanban();
-}
-
 function ignorarDivergencia(pedidoId, itemNo){
   const pedido = STATE.pedidos.find(p=>p.id===pedidoId);
   if(!pedido) return;
@@ -1003,29 +1133,6 @@ function ignorarDivergencia(pedidoId, itemNo){
   salvar();
   renderKanban();
 }
-
-function acaoGerarCard(pedidoId, itemNo){
-  if(!confirm('Gerar um novo card no Kanban (Em Fabricação) com a quantidade faltante deste item?')) return;
-  gerarCardDePendencia(pedidoId, itemNo);
-}
-
-let _pendenciaEscolhaOrigemId=null, _pendenciaEscolhaItemNo=null;
-function acaoEscolherPedidoDestino(pedidoId, itemNo, fornecedor){
-  _pendenciaEscolhaOrigemId = pedidoId;
-  _pendenciaEscolhaItemNo = itemNo;
-  const sel = document.getElementById('escolherPedidoDestino');
-  const opcoes = STATE.pedidos.filter(p=>p.id!==pedidoId && p.status!=='cancelado' && p.fornecedor===fornecedor);
-  if(!opcoes.length){ alert('Não há outro pedido em aberto deste fornecedor pra juntar essa pendência.'); return; }
-  sel.innerHTML = opcoes.map(p=>`<option value="${p.id}">${p.referencia} — ${etapaById(p.etapa).label}</option>`).join('');
-  document.getElementById('modalEscolherPedido').classList.add('open');
-}
-document.getElementById('btnConfirmarEscolhaPedido').addEventListener('click', ()=>{
-  const destinoId = document.getElementById('escolherPedidoDestino').value;
-  adicionarPendenciaAPedidoExistente(_pendenciaEscolhaOrigemId, _pendenciaEscolhaItemNo, destinoId);
-  document.getElementById('modalEscolherPedido').classList.remove('open');
-});
-document.getElementById('btnCancelarEscolhaPedido').addEventListener('click', ()=>document.getElementById('modalEscolherPedido').classList.remove('open'));
-document.getElementById('closeEscolhaPedido').addEventListener('click', ()=>document.getElementById('modalEscolherPedido').classList.remove('open'));
 
 function renderPainelDivergencias(){
   const tbody = document.querySelector('#tblDivergencias tbody');
@@ -1037,12 +1144,6 @@ function renderPainelDivergencias(){
   }
   tbody.innerHTML = divergencias.map(d=>{
     const tipo = d.faltante>0 ? `<span class="badge-div">Faltante: ${d.faltante}</span>` : `<span class="badge-miss">Excedente: ${d.excedente}</span>`;
-    const fornecedorEsc = (d.fornecedor||'').replace(/'/g,"\\'");
-    const acoes = d.faltante>0
-      ? `<button class="btn bo btn-sm" onclick="acaoGerarCard('${d.pedidoId}','${d.itemNo}')">+ Gerar novo card</button>
-         <button class="btn bgray btn-sm" onclick="acaoEscolherPedidoDestino('${d.pedidoId}','${d.itemNo}','${fornecedorEsc}')">+ Pedido existente</button>
-         <button class="icon-btn" onclick="ignorarDivergencia('${d.pedidoId}','${d.itemNo}')" title="Ignorar">✕</button>`
-      : `<button class="icon-btn" onclick="ignorarDivergencia('${d.pedidoId}','${d.itemNo}')" title="Marcar como resolvido">✕</button>`;
     return `<tr>
       <td>${d.fornecedor}</td>
       <td><strong>${d.referencia}</strong></td>
@@ -1050,7 +1151,7 @@ function renderPainelDivergencias(){
       <td>${d.descricao||'—'}</td>
       <td>${tipo}</td>
       <td class="tr">${d.faltante>0?d.faltante:d.excedente}</td>
-      <td style="white-space:nowrap">${acoes}</td>
+      <td style="white-space:nowrap"><button class="icon-btn" onclick="ignorarDivergencia('${d.pedidoId}','${d.itemNo}')" title="Marcar como resolvido">✕</button></td>
     </tr>`;
   }).join('');
 }
@@ -1208,10 +1309,380 @@ document.getElementById('historicoFiltros').addEventListener('click', e=>{
 
 document.getElementById('historicoBusca').addEventListener('input', renderTabelaHistorico);
 
+/* ====== DETALHE DA PASTA DE FORNECEDOR ====== */
+let _pastaDetalheId = null;
+
+function abrirDetalhePasta(fornecedorId){
+  const f = STATE.fornecedores.find(x=>x.id===fornecedorId);
+  if(!f) return;
+  _pastaDetalheId = fornecedorId;
+  document.getElementById('detalhePastaTitulo').textContent = `Pasta: ${f.fornecedor}`;
+  renderDetalhePasta();
+  document.getElementById('modalDetalhePasta').classList.add('open');
+}
+
+function renderDetalhePasta(){
+  const f = STATE.fornecedores.find(x=>x.id===_pastaDetalheId);
+  if(!f) return;
+
+  const pendencias = pendenciasFornecedor(f);
+  const tbodyPend = document.querySelector('#tblDetalhePastaPendentes tbody');
+  if(!pendencias.length){
+    tbodyPend.innerHTML = '<tr class="empty-row"><td colspan="4">Nenhum item pendente nesta pasta.</td></tr>';
+  } else {
+    tbodyPend.innerHTML = pendencias.map(p=>`<tr>
+      <td><strong>${p.itemNo}</strong></td>
+      <td>${p.descricao||'—'}</td>
+      <td class="tr">${p.qtdPendente}</td>
+      <td class="tr">${fmtUSD(p.valorPendente)}</td>
+    </tr>`).join('');
+  }
+
+  const pedidosOrdenados = [...(f.pedidos||[])].sort((a,b)=>(parseDate(a.data)||0)-(parseDate(b.data)||0));
+  const cont = document.getElementById('detalhePastaPedidosContainer');
+  if(!pedidosOrdenados.length){
+    cont.innerHTML = '<div class="alert-info">Nenhum pedido lançado ainda nesta pasta.</div>';
+    return;
+  }
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  cont.innerHTML = pedidosOrdenados.map((pedido,idx)=>{
+    const ini = parseDate(pedido.data);
+    const diasDecorridos = ini ? diffDias(hoje, ini) : null;
+    const prazo = num(pedido.tempoFabricacaoDias) || null;
+    const statusTxt = (diasDecorridos!==null && prazo)
+      ? (diasDecorridos>prazo ? `<span style="color:#dc2626;font-weight:700">⛔ ${diasDecorridos-prazo} dias de atraso</span>` : `<span style="color:#15803d">${prazo-diasDecorridos} dias restantes</span>`)
+      : '<span style="color:#9ca3af">Sem prazo</span>';
+    const itensHtml = (pedido.itens||[]).map(item=>{
+      const pend = qtdPendenteItem(item);
+      return `<tr>
+        <td>${item.itemNo}</td><td>${item.descricao||'—'}</td>
+        <td class="tr">${item.qtdPedida}</td>
+        <td class="tr">${num(item.qtdInvoiced)}</td>
+        <td class="tr">${pend>0?`<strong>${pend}</strong>`:'<span style="color:#9ca3af">0</span>'}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="pasta-pedido-block">
+      <div class="pasta-pedido-head">
+        <span><strong>#${idx+1}</strong> · Lançado em ${fmtData(pedido.data)} · Prazo: ${prazo?prazo+' dias':'—'} · ${statusTxt}</span>
+        <button class="icon-btn" onclick="removerPedidoPasta('${f.id}','${pedido.id}')" title="Remover este lançamento">🗑</button>
+      </div>
+      <div class="table-wrap" style="max-height:160px">
+        <table><thead><tr><th>ITEM NO</th><th>Descrição</th><th>Pedido</th><th>Embarcado</th><th>Pendente</th></tr></thead>
+        <tbody>${itensHtml}</tbody></table>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function removerPedidoPasta(fornecedorId, pedidoId){
+  const f = STATE.fornecedores.find(x=>x.id===fornecedorId);
+  if(!f) return;
+  const pedido = f.pedidos.find(p=>p.id===pedidoId);
+  if(!pedido) return;
+  const jaEmbarcadoAlgo = (pedido.itens||[]).some(i=>num(i.qtdInvoiced)>0);
+  const aviso = jaEmbarcadoAlgo
+    ? 'Este lançamento já teve parte da quantidade embarcada (deduzida por invoice). Removê-lo agora vai apagar esse histórico de dedução. '
+    : '';
+  if(!confirm(`${aviso}Remover este lançamento da pasta "${f.fornecedor}"? Essa ação não pode ser desfeita.`)) return;
+  f.pedidos = f.pedidos.filter(p=>p.id!==pedidoId);
+  salvar();
+  renderDetalhePasta();
+  renderKanban();
+}
+
+document.getElementById('closeDetalhePasta').addEventListener('click', ()=>document.getElementById('modalDetalhePasta').classList.remove('open'));
+document.getElementById('btnFecharDetalhePasta').addEventListener('click', ()=>document.getElementById('modalDetalhePasta').classList.remove('open'));
+document.getElementById('btnNovoPedidoDaPasta').addEventListener('click', ()=>{
+  document.getElementById('modalDetalhePasta').classList.remove('open');
+  abrirNovoPedidoFornecedor(_pastaDetalheId);
+});
+
+/* ====== NOVO PEDIDO DE FABRICAÇÃO (lançamento dentro da pasta do fornecedor) ====== */
+let _pedidoFabricacaoRascunho = null;
+
+function popularSelectFornecedores(selectEl, incluirOpcaoNova){
+  let opts = '<option value="">— Selecione —</option>';
+  opts += STATE.fornecedores.slice().sort((a,b)=>a.fornecedor.localeCompare(b.fornecedor)).map(f=>`<option value="${f.id}">${f.fornecedor}</option>`).join('');
+  if(incluirOpcaoNova) opts += '<option value="__novo__">+ Novo fornecedor...</option>';
+  selectEl.innerHTML = opts;
+}
+
+function abrirNovoPedidoFornecedor(fornecedorId){
+  _pedidoFabricacaoRascunho = pedidoFabricacaoVazio();
+  const sel = document.getElementById('npfFornecedorSelect');
+  popularSelectFornecedores(sel, true);
+  document.getElementById('npfFornecedorNovoWrap').style.display = 'none';
+  document.getElementById('npfFornecedorNovoNome').value = '';
+  document.getElementById('npfFornecedorNovoPais').value = 'China';
+  sel.value = fornecedorId || '';
+
+  document.getElementById('npfData').value = hojeISO();
+  document.getElementById('npfTempoFabricacao').value = '';
+  renderTabelaItensPedidoFabricacao();
+  document.getElementById('modalNovoPedidoFornecedor').classList.add('open');
+}
+
+document.getElementById('npfFornecedorSelect').addEventListener('change', ()=>{
+  const v = document.getElementById('npfFornecedorSelect').value;
+  document.getElementById('npfFornecedorNovoWrap').style.display = (v==='__novo__') ? '' : 'none';
+});
+
+function renderTabelaItensPedidoFabricacao(){
+  const tbody = document.querySelector('#tblItensPedidoFabricacao tbody');
+  const itens = _pedidoFabricacaoRascunho.itens;
+  if(!itens.length){
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Nenhum item importado ainda. Importe o .xlsx do pedido.</td></tr>';
+  } else {
+    tbody.innerHTML = itens.map((item,idx)=>`<tr>
+      <td><strong>${item.itemNo}</strong></td>
+      <td>${item.descricao||'—'}</td>
+      <td>${item.oeNo||'—'}</td>
+      <td class="tr">${item.qtdPedida}</td>
+      <td class="tc"><button class="icon-btn" onclick="removerItemPedidoFabricacao(${idx})" title="Remover">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      </button></td>
+    </tr>`).join('');
+  }
+}
+function removerItemPedidoFabricacao(idx){
+  _pedidoFabricacaoRascunho.itens.splice(idx,1);
+  renderTabelaItensPedidoFabricacao();
+}
+
+const npfDropEl = document.getElementById('npfXlsxDrop');
+const npfXlsxInput = document.getElementById('npfXlsxInput');
+npfDropEl.addEventListener('dragover',e=>{e.preventDefault();npfDropEl.classList.add('on');});
+npfDropEl.addEventListener('dragleave',()=>npfDropEl.classList.remove('on'));
+npfDropEl.addEventListener('drop',e=>{e.preventDefault();npfDropEl.classList.remove('on');if(e.dataTransfer.files[0]) iniciarImportacaoXlsx(e.dataTransfer.files[0], CAMPOS_MAPEAVEIS_PEDIDO, itensRecebidosParaPedidoFabricacao, 'modalNovoPedidoFornecedor');});
+npfXlsxInput.addEventListener('change',e=>{if(e.target.files[0]) iniciarImportacaoXlsx(e.target.files[0], CAMPOS_MAPEAVEIS_PEDIDO, itensRecebidosParaPedidoFabricacao, 'modalNovoPedidoFornecedor');npfXlsxInput.value='';});
+
+function itensRecebidosParaPedidoFabricacao(itens, nomeArquivo){
+  _pedidoFabricacaoRascunho.itens = itens.map(i=>Object.assign({qtdInvoiced:0}, i));
+  renderTabelaItensPedidoFabricacao();
+  alert(`${itens.length} itens importados com sucesso.`);
+}
+
+document.getElementById('btnSalvarNovoPedidoFornecedor').addEventListener('click', ()=>{
+  const selVal = document.getElementById('npfFornecedorSelect').value;
+  if(!selVal){ alert('Selecione um fornecedor ou crie um novo.'); return; }
+
+  let fornecedor;
+  if(selVal==='__novo__'){
+    const nome = document.getElementById('npfFornecedorNovoNome').value.trim();
+    if(!nome){ alert('Informe o nome do novo fornecedor.'); return; }
+    const jaExiste = STATE.fornecedores.some(f=>normalizarTexto(f.fornecedor)===normalizarTexto(nome));
+    if(jaExiste){ alert('Já existe uma pasta para esse fornecedor — selecione-a na lista em vez de criar uma nova.'); return; }
+    fornecedor = fornecedorVazio();
+    fornecedor.fornecedor = nome;
+    fornecedor.pais = document.getElementById('npfFornecedorNovoPais').value.trim() || 'China';
+    STATE.fornecedores.push(fornecedor);
+  } else {
+    fornecedor = STATE.fornecedores.find(f=>f.id===selVal);
+    if(!fornecedor){ alert('Fornecedor não encontrado.'); return; }
+  }
+
+  const data = document.getElementById('npfData').value;
+  const tempo = document.getElementById('npfTempoFabricacao').value;
+  if(!data){ alert('Informe a data do pedido.'); return; }
+  if(!_pedidoFabricacaoRascunho.itens.length){ alert('Importe ao menos um item (.xlsx) antes de salvar.'); return; }
+
+  _pedidoFabricacaoRascunho.data = data;
+  _pedidoFabricacaoRascunho.tempoFabricacaoDias = tempo;
+  fornecedor.pedidos.push(_pedidoFabricacaoRascunho);
+
+  salvar();
+  document.getElementById('modalNovoPedidoFornecedor').classList.remove('open');
+  renderKanban();
+});
+document.getElementById('btnCancelarNovoPedidoFornecedor').addEventListener('click', ()=>document.getElementById('modalNovoPedidoFornecedor').classList.remove('open'));
+document.getElementById('closeNovoPedidoFornecedor').addEventListener('click', ()=>document.getElementById('modalNovoPedidoFornecedor').classList.remove('open'));
+
+/* ====== NOVA INVOICE (deduz PEPS da pasta e gera um embarque) ====== */
+let _invoiceArquivoAtual = null;
+
+document.getElementById('invoiceXlsxInput').addEventListener('change', e=>{
+  if(e.target.files[0]) processarInvoiceXlsx(e.target.files[0]);
+  e.target.value = '';
+});
+
+function processarInvoiceXlsx(file){
+  _invoiceArquivoAtual = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    const cab = extrairCabecalhoInvoice(rows);
+    abrirModalNovaInvoice(cab);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Converte "08-06-2026" ou "08/06/2026" pro formato ISO (yyyy-mm-dd) usado pelo <input type=date>.
+function converterDataTexto(s){
+  const m = String(s||'').match(/(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{2,4})/);
+  if(!m) return '';
+  let [,d,mo,y] = m;
+  if(y.length===2) y = '20'+y;
+  return `${y.padStart(4,'0')}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+}
+
+// Varre as primeiras linhas do arquivo procurando o bloco de cabeçalho da invoice
+// (DATE:, INVOICE NO:, Cntr/Seal:) e tenta achar o nome do fornecedor como o primeiro
+// texto "razoável" no topo do arquivo — tudo é só sugestão, o usuário confirma/edita.
+function extrairCabecalhoInvoice(rows){
+  let dataInvoice='', invoiceNumero='', containerSeal='', fornecedor='';
+  const maxLinhas = Math.min(20, rows.length);
+  for(let r=0;r<maxLinhas;r++){
+    (rows[r]||[]).forEach(cell=>{
+      const raw = String(cell||'').trim();
+      if(!raw) return;
+      let m;
+      if(!dataInvoice && (m = raw.match(/date\s*[:.]?\s*([\d\/\-]+)/i))){ dataInvoice = converterDataTexto(m[1]); return; }
+      if(!invoiceNumero && (m = raw.match(/invoice\s*no\.?\s*[:.]?\s*(\S+)/i))){ invoiceNumero = m[1]; return; }
+      if(!containerSeal && (m = raw.match(/cntr\s*\/?\s*seal\s*[:.]?\s*(.+)/i))){ containerSeal = m[1].trim(); return; }
+    });
+  }
+  for(let r=0;r<3 && !fornecedor;r++){
+    for(const cell of (rows[r]||[])){
+      const raw = String(cell||'').trim();
+      if(raw.length>4 && /[a-zA-Z]/.test(raw) && !/date|invoice|cntr|seal/i.test(raw)){ fornecedor = raw; break; }
+    }
+  }
+  return { fornecedor, dataInvoice, invoiceNumero, containerSeal };
+}
+
+function acharFornecedorPorNome(nome){
+  const norm = normalizarTexto(nome);
+  if(!norm) return null;
+  return STATE.fornecedores.find(f=>normalizarTexto(f.fornecedor)===norm)
+      || STATE.fornecedores.find(f=>norm.includes(normalizarTexto(f.fornecedor)) || normalizarTexto(f.fornecedor).includes(norm))
+      || null;
+}
+
+function abrirModalNovaInvoice(cab){
+  const sel = document.getElementById('niFornecedor');
+  popularSelectFornecedores(sel, false);
+  const match = acharFornecedorPorNome(cab.fornecedor);
+  if(match) sel.value = match.id;
+  document.getElementById('niFornecedorDetectado').textContent = cab.fornecedor ? `Nome detectado no arquivo: "${cab.fornecedor}"` : '';
+  document.getElementById('niData').value = cab.dataInvoice||'';
+  document.getElementById('niNumero').value = cab.invoiceNumero||'';
+  document.getElementById('niContainer').value = cab.containerSeal||'';
+  document.getElementById('modalNovaInvoice').classList.add('open');
+}
+
+document.getElementById('btnContinuarInvoice').addEventListener('click', ()=>{
+  const fornecedorId = document.getElementById('niFornecedor').value;
+  if(!fornecedorId){ alert('Selecione a qual fornecedor essa invoice pertence.'); return; }
+  if(!_invoiceArquivoAtual){ alert('Arquivo da invoice não encontrado — selecione novamente.'); return; }
+  iniciarImportacaoXlsx(_invoiceArquivoAtual, CAMPOS_MAPEAVEIS_INVOICE, itensRecebidosDaInvoice, 'modalNovaInvoice');
+});
+document.getElementById('btnCancelarNovaInvoice').addEventListener('click', ()=>{ document.getElementById('modalNovaInvoice').classList.remove('open'); _invoiceArquivoAtual=null; });
+document.getElementById('closeNovaInvoice').addEventListener('click', ()=>{ document.getElementById('modalNovaInvoice').classList.remove('open'); _invoiceArquivoAtual=null; });
+
+// Dedução PEPS: pra cada linha da invoice, consome os pedidos daquele fornecedor com
+// aquele ITEM NO em ordem de data crescente (mais antigo primeiro) até zerar a
+// quantidade da invoice. O que sobra depois de esgotar todo o pendente vira excedente.
+function itensRecebidosDaInvoice(itens, nomeArquivo){
+  const fornecedorId = document.getElementById('niFornecedor').value;
+  const fornecedor = STATE.fornecedores.find(f=>f.id===fornecedorId);
+  if(!fornecedor){ alert('Selecione o fornecedor da invoice.'); return; }
+
+  const dataInvoice = document.getElementById('niData').value;
+  const invoiceNumero = document.getElementById('niNumero').value.trim();
+  const containerSeal = document.getElementById('niContainer').value.trim();
+
+  const pedidosOrdenados = [...(fornecedor.pedidos||[])].sort((a,b)=>(parseDate(a.data)||0)-(parseDate(b.data)||0));
+  const itensEmbarque = [];
+  const excedentes = [];
+
+  itens.forEach(linha=>{
+    let restante = num(linha.qtdPedida);
+    const key = linha.itemNo.trim().toUpperCase();
+    let descricaoRef = linha.descricao, oeNoRef = linha.oeNo;
+
+    for(const pedido of pedidosOrdenados){
+      if(restante<=0) break;
+      for(const item of (pedido.itens||[])){
+        if(restante<=0) break;
+        if(item.itemNo.trim().toUpperCase()!==key) continue;
+        const pend = qtdPendenteItem(item);
+        if(pend<=0) continue;
+        const consumo = Math.min(pend, restante);
+        item.qtdInvoiced = num(item.qtdInvoiced) + consumo;
+        restante -= consumo;
+        if(!descricaoRef) descricaoRef = item.descricao;
+        if(!oeNoRef) oeNoRef = item.oeNo;
+      }
+    }
+
+    const qtdConsumida = num(linha.qtdPedida) - restante;
+    if(qtdConsumida>0){
+      itensEmbarque.push({
+        itemNo:linha.itemNo, descricao:descricaoRef, oeNo:oeNoRef,
+        codInterno:linha.codInterno, ncm:linha.ncm,
+        qtdPedida:qtdConsumida, precoUnit:linha.precoUnit, valorTotal:qtdConsumida*num(linha.precoUnit)
+      });
+    }
+    if(restante>0){
+      excedentes.push({ itemNo:linha.itemNo, qtd:restante });
+      itensEmbarque.push({
+        itemNo:linha.itemNo, descricao:linha.descricao, oeNo:linha.oeNo,
+        codInterno:linha.codInterno, ncm:linha.ncm,
+        qtdPedida:restante, precoUnit:linha.precoUnit, valorTotal:restante*num(linha.precoUnit),
+        excedente:true
+      });
+    }
+  });
+
+  const novoEmbarque = pedidoVazio();
+  novoEmbarque.referencia = gerarReferencia();
+  novoEmbarque.fornecedor = fornecedor.fornecedor;
+  novoEmbarque.pais = fornecedor.pais;
+  novoEmbarque.dataPedido = dataInvoice || hojeISO();
+  novoEmbarque.dataEmbarcado = dataInvoice || hojeISO();
+  novoEmbarque.etapa = 'embarcado';
+  novoEmbarque.invoiceNumero = invoiceNumero;
+  novoEmbarque.invoiceData = dataInvoice;
+  novoEmbarque.containerSeal = containerSeal;
+  novoEmbarque.origemFornecedorId = fornecedor.id;
+  novoEmbarque.itens = itensEmbarque;
+  novoEmbarque.historicoEtapas = [{ etapa:'embarcado', data:dataInvoice||hojeISO(), obs:`Gerado a partir da invoice ${invoiceNumero||'(sem número)'}` }];
+
+  STATE.pedidos.push(novoEmbarque);
+  salvar();
+  document.getElementById('modalNovaInvoice').classList.remove('open');
+  _invoiceArquivoAtual = null;
+  renderKanban();
+
+  let msg = `Embarque "${novoEmbarque.referencia}" criado com ${itensEmbarque.length} item(ns) a partir da invoice.`;
+  if(excedentes.length){
+    msg += `\n\n⚠ Quantidade da invoice maior que o pendente registrado nesta pasta:\n` +
+      excedentes.map(e=>`• ${e.itemNo}: +${e.qtd}`).join('\n');
+  }
+  alert(msg);
+}
+
+document.getElementById('btnResetarDadosModulo').addEventListener('click', ()=>{
+  if(!confirm('Isso vai apagar TODOS os pedidos, embarques e pastas de fornecedor deste módulo, em todos os computadores. Essa ação não pode ser desfeita. Continuar?')) return;
+  if(!confirm('Tem certeza mesmo? Essa é a última confirmação — os dados serão apagados permanentemente.')) return;
+  STATE.pedidos = [];
+  STATE.fornecedores = [];
+  salvar();
+  renderKanban();
+  renderTabelaHistorico();
+  document.getElementById('modalHistorico').classList.remove('open');
+  alert('Dados do módulo resetados.');
+});
+
+
 /* ====== POPULAR SELECT DE ETAPAS ====== */
+// "Em Fabricação" fica de fora — essa etapa agora é exclusiva das pastas de fornecedor
+// (STATE.fornecedores); um embarque nunca deve voltar pra ela manualmente.
 function initSelectEtapa(){
   const sel=document.getElementById('pEtapa');
-  ETAPAS.forEach(e=>{ const o=document.createElement('option'); o.value=e.id; o.textContent=e.icon+' '+e.label; sel.appendChild(o); });
+  ETAPAS.filter(e=>e.id!=='fabricacao').forEach(e=>{ const o=document.createElement('option'); o.value=e.id; o.textContent=e.icon+' '+e.label; sel.appendChild(o); });
 }
 
 /* ====== FILTRO ====== */
