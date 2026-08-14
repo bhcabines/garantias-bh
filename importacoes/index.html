@@ -410,17 +410,20 @@
       <button class="modal-close" id="closeHistorico">&times;</button>
     </div>
     <div class="modal-body">
-      <div class="filtro-chips" id="historicoFiltros">
-        <button class="filtro-chip active" data-filtro="aberto">Em Aberto</button>
-        <button class="filtro-chip" data-filtro="cancelado">Cancelados</button>
-        <button class="filtro-chip" data-filtro="todos">Todos</button>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <div class="filtro-chips" id="historicoFiltros" style="margin-bottom:0">
+          <button class="filtro-chip active" data-filtro="aberto">Em Aberto</button>
+          <button class="filtro-chip" data-filtro="cancelado">Cancelados</button>
+          <button class="filtro-chip" data-filtro="todos">Todos</button>
+        </div>
+        <input type="text" id="historicoBusca" placeholder="Buscar por fornecedor, referência ou data (dd/mm/aaaa)..." style="flex:1;min-width:220px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.82rem;font-family:inherit">
       </div>
       <div class="table-wrap" style="max-height:65vh">
         <table id="tblHistorico">
           <thead><tr>
             <th>Referência</th><th>Fornecedor</th><th>País</th>
             <th>Data Pedido</th><th>Etapa</th><th>Status</th>
-            <th>Motivo Cancelamento</th><th>Data Cancelamento</th>
+            <th>Motivo Cancelamento</th><th>Data Cancelamento</th><th></th>
           </tr></thead>
           <tbody></tbody>
         </table>

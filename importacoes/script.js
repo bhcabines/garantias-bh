@@ -58,9 +58,11 @@ function sincronizarComServidor(){
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(async ()=>{
     try {
+      // Sem header de Content-Type de propósito: setar 'application/json' força o navegador
+      // a fazer uma verificação CORS prévia (preflight) que o Apps Script não responde direito,
+      // e o envio falha silenciosamente. Sem header, o POST vira "simples" e funciona.
       await fetch(SYNC_URL, {
         method:'POST',
-        headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ action:'saveImportacoes', data: STATE.pedidos })
       });
     } catch(e){ console.warn('Erro ao sincronizar:', e); }
@@ -1131,6 +1133,7 @@ let _historicoFiltro = 'aberto';
 
 function abrirHistorico(){
   _historicoFiltro = 'aberto';
+  document.getElementById('historicoBusca').value = '';
   document.querySelectorAll('.filtro-chip').forEach(c=>c.classList.toggle('active', c.dataset.filtro==='aberto'));
   renderTabelaHistorico();
   document.getElementById('modalHistorico').classList.add('open');
@@ -1142,8 +1145,19 @@ function renderTabelaHistorico(){
   if(_historicoFiltro==='aberto')    lista = lista.filter(p=>p.status!=='cancelado');
   if(_historicoFiltro==='cancelado') lista = lista.filter(p=>p.status==='cancelado');
 
+  const busca = normalizarTexto(document.getElementById('historicoBusca').value);
+  if(busca){
+    lista = lista.filter(p=>{
+      const fornecedor = normalizarTexto(p.fornecedor);
+      const referencia = normalizarTexto(p.referencia);
+      const dataBR = fmtData(p.dataPedido); // dd/mm/aaaa
+      return fornecedor.includes(busca) || referencia.includes(busca) ||
+        dataBR.includes(busca) || (p.dataPedido||'').includes(busca);
+    });
+  }
+
   if(!lista.length){
-    tbody.innerHTML='<tr class="empty-row"><td colspan="8">Nenhum pedido encontrado.</td></tr>';
+    tbody.innerHTML='<tr class="empty-row"><td colspan="9">Nenhum pedido encontrado.</td></tr>';
     return;
   }
 
@@ -1161,8 +1175,23 @@ function renderTabelaHistorico(){
       <td>${statusBadge}</td>
       <td style="max-width:200px;white-space:normal">${p.motivoCancelamento||'—'}</td>
       <td>${p.dataCancelamento?fmtData(p.dataCancelamento):'—'}</td>
+      <td class="tc"><button class="icon-btn" onclick="excluirPedidoPermanente('${p.id}')" title="Excluir permanentemente">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      </button></td>
     </tr>`;
   }).join('');
+}
+
+// Diferente de "Cancelar" (que só marca status e mantém no histórico), isso apaga o
+// pedido de vez — sem volta, então pede confirmação com o texto da referência.
+function excluirPedidoPermanente(id){
+  const p = STATE.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm(`Excluir PERMANENTEMENTE o pedido "${p.referencia}" (${p.fornecedor})? Essa ação não pode ser desfeita — os dados não ficam nem no histórico.`)) return;
+  STATE.pedidos = STATE.pedidos.filter(x=>x.id!==id);
+  salvar();
+  renderTabelaHistorico();
+  renderKanban();
 }
 
 document.getElementById('btnHistorico').addEventListener('click', abrirHistorico);
@@ -1176,6 +1205,8 @@ document.getElementById('historicoFiltros').addEventListener('click', e=>{
   document.querySelectorAll('.filtro-chip').forEach(c=>c.classList.toggle('active', c===chip));
   renderTabelaHistorico();
 });
+
+document.getElementById('historicoBusca').addEventListener('input', renderTabelaHistorico);
 
 /* ====== POPULAR SELECT DE ETAPAS ====== */
 function initSelectEtapa(){
