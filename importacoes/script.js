@@ -410,30 +410,66 @@ document.querySelectorAll('.mtab').forEach(btn=>{
   });
 });
 
-/* ====== PARSE XLSX DO PEDIDO ====== */
-function parsePedidoXlsx(data){
-  const wb = XLSX.read(data, {type:'array'});
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-  const itens = [];
-  for(const row of rows){
-    const colA = String(row[0]||'').trim();
-    const colC = String(row[2]||'').trim();
-    if(colA==='QTY') continue;
-    if(!colC || !/[A-Z]+\d+-\d+/i.test(colC)) continue;
-    const qty   = parseFloat(colA)||0;
-    const price = parseFloat(row[6])||0;
-    itens.push({
-      itemNo:   colC,
-      descricao:String(row[3]||'').trim(),
-      oeNo:     String(row[5]||'').trim(),
-      qtdPedida:qty,
-      precoUnit:price,
-      valorTotal:qty*price
-    });
-  }
-  return itens;
+/* ====== IMPORTAÇÃO XLSX DO PEDIDO — COM MAPEAMENTO DE COLUNAS ======
+   Cada fornecedor manda a planilha com colunas em ordem/nome diferente, então em vez
+   de assumir posições fixas, o usuário mapeia (uma vez por arquivo) qual coluna é qual
+   campo. O sistema aprende os nomes de cabeçalho já mapeados e sugere automaticamente
+   da próxima vez que aparecer um cabeçalho igual. */
+const CAMPOS_MAPEAVEIS = [
+  { key:'',          label:'— Ignorar —' },
+  { key:'itemNo',     label:'ITEM NO' },
+  { key:'descricao',  label:'Descrição' },
+  { key:'oeNo',       label:'OE NO' },
+  { key:'qtdPedida',  label:'Quantidade Pedida' },
+  { key:'precoUnit',  label:'Preço Unitário' },
+];
+
+function normalizarTexto(t){
+  return String(t||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
+
+function carregarMapeamentoAprendido(){
+  try{ return JSON.parse(localStorage.getItem('imp_col_map_aprendido')||'{}'); }catch(e){ return {}; }
+}
+function salvarMapeamentoAprendido(mapa){
+  const atual = carregarMapeamentoAprendido();
+  Object.assign(atual, mapa);
+  localStorage.setItem('imp_col_map_aprendido', JSON.stringify(atual));
+}
+
+function sugerirCampo(headerText){
+  const t = normalizarTexto(headerText);
+  if(!t) return '';
+  const aprendido = carregarMapeamentoAprendido();
+  if(aprendido[t]) return aprendido[t];
+  if(/item.?no|item.?number|codigo/.test(t)) return 'itemNo';
+  if(/desc/.test(t)) return 'descricao';
+  if(/\boe\b/.test(t)) return 'oeNo';
+  if(/qty|qtd|quant/.test(t)) return 'qtdPedida';
+  if(/prec|price|unit|fob/.test(t)) return 'precoUnit';
+  return '';
+}
+
+function colLetra(idx){
+  let s='', n=idx;
+  do{ s=String.fromCharCode(65+(n%26))+s; n=Math.floor(n/26)-1; }while(n>=0);
+  return s;
+}
+
+// Linha com mais células preenchidas entre as 10 primeiras é o melhor palpite de cabeçalho
+function sugerirLinhaCabecalho(rows){
+  let melhorIdx=0, melhorQtd=-1;
+  for(let i=0;i<Math.min(10,rows.length);i++){
+    const qtd = (rows[i]||[]).filter(c=>String(c||'').trim()!=='').length;
+    if(qtd>melhorQtd){ melhorQtd=qtd; melhorIdx=i; }
+  }
+  return melhorIdx+1; // 1-indexed
+}
+
+let _xlsxRawRows = [];
+let _xlsxLinhaCabecalho = 1;
+let _xlsxNomeArquivo = '';
+let _mapeamentoAtual = {}; // { colIdx(string): campoKey }
 
 // Upload xlsx
 const dropEl = document.getElementById('pedidoXlsxDrop');
@@ -446,19 +482,133 @@ xlsxInput.addEventListener('change',e=>{if(e.target.files[0]) processarXlsx(e.ta
 function processarXlsx(file){
   const reader = new FileReader();
   reader.onload = ev => {
-    const itens = parsePedidoXlsx(new Uint8Array(ev.target.result));
-    _pedidoRascunho.itens = itens;
-    // preenche referência a partir do nome do arquivo se vazio
-    if(!_pedidoRascunho.referencia){
-      const nome = file.name.replace(/\.(xlsx?|xls)$/i,'');
-      document.getElementById('pReferencia').value = nome;
-      _pedidoRascunho.referencia = nome;
-    }
-    renderTabelaItensPedido();
-    alert(`${itens.length} itens importados com sucesso.`);
+    const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    _xlsxRawRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    _xlsxNomeArquivo = file.name;
+    _xlsxLinhaCabecalho = sugerirLinhaCabecalho(_xlsxRawRows);
+    abrirModalMapeamento();
   };
   reader.readAsArrayBuffer(file);
 }
+
+function abrirModalMapeamento(){
+  document.getElementById('mapLinhaCabecalho').value = _xlsxLinhaCabecalho;
+  renderPreviaBruta();
+  renderMapeamentoColunas();
+  document.getElementById('modalMapeamentoXlsx').classList.add('open');
+}
+
+document.getElementById('mapLinhaCabecalho').addEventListener('input', ()=>{
+  _xlsxLinhaCabecalho = Math.max(1, parseInt(document.getElementById('mapLinhaCabecalho').value)||1);
+  renderPreviaBruta();
+  renderMapeamentoColunas();
+});
+
+function renderPreviaBruta(){
+  const tbody = document.querySelector('#tblPreviaBruta tbody');
+  const linhas = _xlsxRawRows.slice(0,8);
+  const maxCols = Math.max(1, ...linhas.map(l=>l.length));
+  tbody.innerHTML = linhas.map((l,i)=>{
+    const destacada = (i+1)===_xlsxLinhaCabecalho ? ' style="background:var(--orange-dim)"' : '';
+    let cells = `<td class="tc" style="font-weight:700;color:#999">${i+1}</td>`;
+    for(let c=0;c<maxCols;c++) cells += `<td>${l[c]!==undefined && l[c]!=='' ? l[c] : '—'}</td>`;
+    return `<tr${destacada}>${cells}</tr>`;
+  }).join('');
+}
+
+function renderMapeamentoColunas(){
+  const headerRow = _xlsxRawRows[_xlsxLinhaCabecalho-1] || [];
+  _mapeamentoAtual = {};
+  const tbody = document.querySelector('#tblMapeamentoColunas tbody');
+  tbody.innerHTML = '';
+  for(let c=0;c<headerRow.length;c++){
+    const headerText = String(headerRow[c]||'').trim();
+    if(!headerText) continue;
+    const sugestao = sugerirCampo(headerText);
+    _mapeamentoAtual[c] = sugestao;
+    const row = document.createElement('tr');
+    row.innerHTML = `<td><strong>${colLetra(c)}</strong></td><td>${headerText}</td><td>
+      <select data-col="${c}">${CAMPOS_MAPEAVEIS.map(f=>`<option value="${f.key}" ${f.key===sugestao?'selected':''}>${f.label}</option>`).join('')}</select>
+    </td>`;
+    tbody.appendChild(row);
+  }
+  tbody.querySelectorAll('select').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      _mapeamentoAtual[sel.dataset.col] = sel.value;
+      renderPreviaMapeada();
+    });
+  });
+  renderPreviaMapeada();
+}
+
+function itensDoMapeamento(){
+  const dataRows = _xlsxRawRows.slice(_xlsxLinhaCabecalho);
+  const colPorCampo = {};
+  Object.entries(_mapeamentoAtual).forEach(([col,campo])=>{ if(campo) colPorCampo[campo]=Number(col); });
+  if(colPorCampo.itemNo===undefined) return [];
+  const itens=[];
+  dataRows.forEach(row=>{
+    const itemNo = String(row[colPorCampo.itemNo]||'').trim();
+    if(!itemNo) return;
+    const qty   = colPorCampo.qtdPedida!==undefined ? (parseFloat(row[colPorCampo.qtdPedida])||0) : 0;
+    const price = colPorCampo.precoUnit!==undefined ? (parseFloat(row[colPorCampo.precoUnit])||0) : 0;
+    itens.push({
+      itemNo,
+      descricao: colPorCampo.descricao!==undefined ? String(row[colPorCampo.descricao]||'').trim() : '',
+      oeNo:      colPorCampo.oeNo!==undefined ? String(row[colPorCampo.oeNo]||'').trim() : '',
+      qtdPedida: qty,
+      precoUnit: price,
+      valorTotal: qty*price
+    });
+  });
+  return itens;
+}
+
+function renderPreviaMapeada(){
+  const todos = itensDoMapeamento();
+  const itens = todos.slice(0,5);
+  const div = document.getElementById('previaMapeadaContent');
+  if(!itens.length){
+    div.innerHTML = '<div class="alert-info">Mapeie ao menos a coluna <strong>ITEM NO</strong> pra ver a prévia.</div>';
+    document.getElementById('btnConfirmarMapeamento').disabled = true;
+    return;
+  }
+  document.getElementById('btnConfirmarMapeamento').disabled = false;
+  div.innerHTML = `<div class="table-wrap" style="max-height:180px"><table>
+    <thead><tr><th>ITEM NO</th><th>Descrição</th><th>OE NO</th><th>QTY</th><th>Preço</th></tr></thead>
+    <tbody>${itens.map(i=>`<tr><td>${i.itemNo}</td><td>${i.descricao||'—'}</td><td>${i.oeNo||'—'}</td><td class="tr">${i.qtdPedida}</td><td class="tr">${fmtUSD(i.precoUnit)}</td></tr>`).join('')}</tbody>
+  </table></div><p class="muted" style="margin-top:6px">${todos.length} item(ns) reconhecido(s) no total.</p>`;
+}
+
+document.getElementById('btnConfirmarMapeamento').addEventListener('click', ()=>{
+  const itens = itensDoMapeamento();
+  if(!itens.length){ alert('Nenhum item reconhecido com esse mapeamento.'); return; }
+
+  _pedidoRascunho.itens = itens;
+  if(!_pedidoRascunho.referencia && _xlsxNomeArquivo){
+    const nome = _xlsxNomeArquivo.replace(/\.(xlsx?|xls)$/i,'');
+    document.getElementById('pReferencia').value = nome;
+    _pedidoRascunho.referencia = nome;
+  }
+
+  // Aprende esse mapeamento pra sugerir sozinho da próxima vez que vier um cabeçalho igual
+  const headerRow = _xlsxRawRows[_xlsxLinhaCabecalho-1] || [];
+  const aprender = {};
+  Object.entries(_mapeamentoAtual).forEach(([col,campo])=>{
+    if(!campo) return;
+    const t = normalizarTexto(headerRow[col]);
+    if(t) aprender[t]=campo;
+  });
+  salvarMapeamentoAprendido(aprender);
+
+  renderTabelaItensPedido();
+  document.getElementById('modalMapeamentoXlsx').classList.remove('open');
+  xlsxInput.value = '';
+  alert(`${itens.length} itens importados com sucesso.`);
+});
+document.getElementById('btnCancelarMapeamento').addEventListener('click',()=>{ document.getElementById('modalMapeamentoXlsx').classList.remove('open'); xlsxInput.value=''; });
+document.getElementById('closeMapeamentoXlsx').addEventListener('click',()=>{ document.getElementById('modalMapeamentoXlsx').classList.remove('open'); xlsxInput.value=''; });
 
 /* ====== TABELA DE ITENS DO PEDIDO ====== */
 function renderTabelaItensPedido(){
