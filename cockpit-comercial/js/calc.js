@@ -100,38 +100,103 @@ Cockpit.Calc = (function () {
     return Object.keys(porDia).sort().map(function (data) { return porDia[data]; });
   }
 
-  // Ranking por vendedor a partir do roster + linhas do período filtrado.
-  // Meta individual NÃO é cadastrada manualmente — ela é a meta do setor (configurada
-  // em Metas do Mês) dividida entre os vendedores "presentes" naquele mês específico
-  // (lista marcada na própria aba Metas do Mês — não é o status geral do cadastro,
-  // pois alguém pode estar de férias só num mês, sem mudar o cadastro permanente).
-  // Se presentesCodigos não for informado, cai no padrão: todo mundo com status "ativo".
-  // percAtingidoIndividual é null (não 0/NaN) quando não há meta de setor definida ou
-  // quando o vendedor não está marcado como presente naquele mês — todo renderer
-  // (ex.: Corrida Comercial) precisa checar esse null explicitamente.
-  function rankingVendedores(linhasDoMes, roster, metasPorSetor, presentesCodigos) {
+  // Taxa diária individual de cada setor = meta do setor (mensal) ÷ vendedores ativos
+  // presentes ÷ dias trabalhados no período. Vendedores de férias NUNCA entram nesse
+  // divisor (mesmo que apareçam em presentesCodigos por engano) — a meta deles é
+  // calculada à parte, em metasSetorAjustadas/rankingVendedores, a partir dos dias que
+  // eles próprios vão trabalhar. Se presentesCodigos não for informado, o padrão é
+  // todo mundo com status "ativo".
+  function metaIndividualDiariaPorSetor(metasPorSetor, roster, presentesCodigos, diasTrabalhados) {
     metasPorSetor = metasPorSetor || {};
+    diasTrabalhados = Number(diasTrabalhados) || 0;
     const presentesSet = presentesCodigos
       ? new Set(presentesCodigos)
       : new Set((roster || []).filter(function (v) { return v.status === 'ativo'; }).map(function (v) { return v.codigo; }));
+
+    const ativosPorSetor = {};
+    (roster || []).forEach(function (v) {
+      if (v.status === 'ativo' && presentesSet.has(v.codigo)) {
+        ativosPorSetor[v.setor] = (ativosPorSetor[v.setor] || 0) + 1;
+      }
+    });
+
+    const out = {};
+    Cockpit.State.SETORES.forEach(function (s) {
+      const qtdAtivos = ativosPorSetor[s] || 0;
+      const metaSetor = metasPorSetor[s] || 0;
+      out[s] = {
+        qtdAtivos: qtdAtivos,
+        metaIndividualDiaria: (qtdAtivos > 0 && diasTrabalhados > 0) ? (metaSetor / qtdAtivos / diasTrabalhados) : null
+      };
+    });
+    return out;
+  }
+
+  // Meta (mensal) de cada setor, somada ao que os vendedores de férias vão gerar de
+  // meta própria nos dias em que efetivamente trabalharem — usa a MESMA taxa diária
+  // individual dos vendedores ativos daquele setor. diasFeriasPorVendedor é um mapa
+  // { codigo: diasQueVaiTrabalharNoMes }, só relevante pra quem está com status "ferias".
+  function metasSetorAjustadas(metasPorSetor, roster, presentesCodigos, diasTrabalhados, diasFeriasPorVendedor) {
+    metasPorSetor = metasPorSetor || {};
+    diasFeriasPorVendedor = diasFeriasPorVendedor || {};
+    const taxas = metaIndividualDiariaPorSetor(metasPorSetor, roster, presentesCodigos, diasTrabalhados);
+
+    const extraPorSetor = {};
+    (roster || []).forEach(function (v) {
+      if (v.status !== 'ferias') return;
+      const seusDias = Number(diasFeriasPorVendedor[v.codigo]) || 0;
+      const taxa = taxas[v.setor] ? taxas[v.setor].metaIndividualDiaria : null;
+      if (seusDias <= 0 || !taxa) return;
+      extraPorSetor[v.setor] = (extraPorSetor[v.setor] || 0) + taxa * seusDias;
+    });
+
+    const out = {};
+    Cockpit.State.SETORES.forEach(function (s) {
+      out[s] = (metasPorSetor[s] || 0) + (extraPorSetor[s] || 0);
+    });
+    return out;
+  }
+
+  // Ranking por vendedor a partir do roster + linhas do período filtrado.
+  // Meta individual NÃO é cadastrada manualmente — ela é a meta do setor (configurada
+  // em Metas do Mês) dividida entre os vendedores ATIVOS "presentes" naquele mês
+  // específico (lista marcada na própria aba Metas do Mês — não é o status geral do
+  // cadastro). Vendedores com status "ferias" ficam FORA desse rateio — a meta deles é
+  // a taxa diária individual do setor × os dias que eles próprios vão trabalhar no mês
+  // (diasFeriasPorVendedor), então quem trabalha menos dias tem uma meta proporcional
+  // menor, mas com a MESMA régua diária de quem está ativo o mês inteiro.
+  // Se presentesCodigos não for informado, cai no padrão: todo mundo com status "ativo".
+  // percAtingidoIndividual é null (não 0/NaN) quando não há meta definida pro vendedor
+  // (setor sem meta, sem colegas ativos presentes, ou férias sem dias de trabalho
+  // definidos) — todo renderer (ex.: Corrida Comercial) precisa checar esse null.
+  function rankingVendedores(linhasDoMes, roster, metasPorSetor, presentesCodigos, diasTrabalhados, diasFeriasPorVendedor) {
+    metasPorSetor = metasPorSetor || {};
+    diasFeriasPorVendedor = diasFeriasPorVendedor || {};
+    const presentesSet = presentesCodigos
+      ? new Set(presentesCodigos)
+      : new Set((roster || []).filter(function (v) { return v.status === 'ativo'; }).map(function (v) { return v.codigo; }));
+    const taxas = metaIndividualDiariaPorSetor(metasPorSetor, roster, presentesCodigos, diasTrabalhados);
 
     const totaisPorCodigo = {};
     (linhasDoMes || []).forEach(function (r) {
       totaisPorCodigo[r.vendedorCodigo] = (totaisPorCodigo[r.vendedorCodigo] || 0) + (Number(r.vendas) || 0);
     });
 
-    const presentesPorSetor = {};
-    (roster || []).forEach(function (v) {
-      if (presentesSet.has(v.codigo)) presentesPorSetor[v.setor] = (presentesPorSetor[v.setor] || 0) + 1;
-    });
-
     const lista = (roster || []).map(function (v) {
       const acumulado = totaisPorCodigo[v.codigo] || 0;
-      const metaSetor = metasPorSetor[v.setor] || 0;
-      const qtdPresentesSetor = presentesPorSetor[v.setor] || 0;
-      const presente = presentesSet.has(v.codigo);
-      const temMeta = presente && metaSetor > 0 && qtdPresentesSetor > 0;
-      const metaIndividual = temMeta ? (metaSetor / qtdPresentesSetor) : null;
+      const taxaSetor = taxas[v.setor] ? taxas[v.setor].metaIndividualDiaria : null;
+
+      let presente, metaIndividual;
+      if (v.status === 'ferias') {
+        const seusDias = Number(diasFeriasPorVendedor[v.codigo]) || 0;
+        presente = seusDias > 0;
+        metaIndividual = (presente && taxaSetor) ? (taxaSetor * seusDias) : null;
+      } else {
+        presente = presentesSet.has(v.codigo);
+        const qtdAtivosSetor = taxas[v.setor] ? taxas[v.setor].qtdAtivos : 0;
+        metaIndividual = (presente && taxaSetor && qtdAtivosSetor > 0) ? (taxaSetor * (diasTrabalhados || 0)) : null;
+      }
+
       return {
         codigo: v.codigo,
         nome: v.nome,
@@ -162,6 +227,8 @@ Cockpit.Calc = (function () {
     diasImportadosNoMes: diasImportadosNoMes,
     agregarPorSetor: agregarPorSetor,
     agregarPorDia: agregarPorDia,
+    metaIndividualDiariaPorSetor: metaIndividualDiariaPorSetor,
+    metasSetorAjustadas: metasSetorAjustadas,
     rankingVendedores: rankingVendedores
   };
 })();

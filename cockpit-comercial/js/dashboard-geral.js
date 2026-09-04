@@ -96,11 +96,19 @@ Cockpit.DashboardGeral = (function () {
     const cfg = Cockpit.State.getConfig();
     const metaCfg = cfg[chaveMesAno(f.mes, f.ano)] || { metaGeral: 0, metasPorSetor: {}, diasTrabalhados: 0 };
     const metasPorSetor = metaCfg.metasPorSetor || {};
+    const roster = Cockpit.State.getVendedores();
+    // Meta de cada setor já somada com o que os vendedores de férias vão gerar de meta
+    // própria nos dias em que efetivamente trabalharem (ver calc.js/metasSetorAjustadas).
+    const metasAjustadas = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor);
+    const extraFeriasTotal = Cockpit.State.SETORES.reduce(function (s, setor) {
+      return s + ((metasAjustadas[setor] || 0) - (metasPorSetor[setor] || 0));
+    }, 0);
+    const metaGeralAjustada = (Number(metaCfg.metaGeral) || 0) + extraFeriasTotal;
 
     const linhas = getVendasFiltradas(false);
     const linhasAmbosSetores = getVendasFiltradas(true);
 
-    const metaUsada = f.setor ? (metasPorSetor[f.setor] || 0) : metaCfg.metaGeral;
+    const metaUsada = f.setor ? (metasAjustadas[f.setor] || 0) : metaGeralAjustada;
 
     const vendasAcumuladas = linhas.reduce(function (s, r) { return s + (Number(r.vendas) || 0); }, 0);
     const diasComDados = Cockpit.Calc.diasImportadosNoMes(linhas);
@@ -119,7 +127,7 @@ Cockpit.DashboardGeral = (function () {
     const porSetor = Cockpit.Calc.agregarPorSetor(linhasAmbosSetores);
     document.getElementById('cardsSetorGrid').innerHTML = Cockpit.State.SETORES.map(function (s) {
       const total = porSetor[s] ? porSetor[s].total : 0;
-      const meta = metasPorSetor[s] || 0;
+      const meta = metasAjustadas[s] || 0;
       return '<div class="sum-card sum-card-setor">' +
         '<span class="sum-label">' + Cockpit.State.setorLabel(s) + '</span>' +
         '<div class="setor-mini-stats">' +
@@ -129,8 +137,7 @@ Cockpit.DashboardGeral = (function () {
         '</div></div>';
     }).join('');
 
-    const roster = Cockpit.State.getVendedores();
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metasPorSetor, metaCfg.vendedoresPresentes);
+    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metasPorSetor, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor);
     Cockpit.Charts.renderParticipacao('chartParticipacao', ranking);
 
     const dias = Cockpit.Calc.agregarPorDia(linhas);
@@ -151,7 +158,7 @@ Cockpit.DashboardGeral = (function () {
     });
 
     const linhas = getVendasFiltradas(false);
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes);
+    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor);
 
     const container = document.getElementById('corridaContainer');
     if (!ranking.length) {
