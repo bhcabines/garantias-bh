@@ -101,11 +101,11 @@ Cockpit.Calc = (function () {
   }
 
   // Taxa diária individual de cada setor = meta do setor (mensal) ÷ vendedores ativos
-  // presentes ÷ dias trabalhados no período. Vendedores de férias NUNCA entram nesse
-  // divisor (mesmo que apareçam em presentesCodigos por engano) — a meta deles é
-  // calculada à parte, em metasSetorAjustadas/rankingVendedores, a partir dos dias que
-  // eles próprios vão trabalhar. Se presentesCodigos não for informado, o padrão é
-  // todo mundo com status "ativo".
+  // presentes ÷ dias trabalhados no período. Quem foi desmarcado como presente (ex.:
+  // de férias) NUNCA entra nesse divisor, mesmo com dias parciais lançados — a meta
+  // dele é calculada à parte, em metasSetorAjustadas/rankingVendedores, a partir dos
+  // dias que ele próprio vai trabalhar, e somada de volta separadamente. Se
+  // presentesCodigos não for informado, o padrão é todo mundo com status "ativo".
   function metaIndividualDiariaPorSetor(metasPorSetor, roster, presentesCodigos, diasTrabalhados) {
     metasPorSetor = metasPorSetor || {};
     diasTrabalhados = Number(diasTrabalhados) || 0;
@@ -132,10 +132,13 @@ Cockpit.Calc = (function () {
     return out;
   }
 
-  // Meta (mensal) de cada setor, somada ao que os vendedores de férias vão gerar de
-  // meta própria nos dias em que efetivamente trabalharem — usa a MESMA taxa diária
-  // individual dos vendedores ativos daquele setor. diasFeriasPorVendedor é um mapa
-  // { codigo: diasQueVaiTrabalharNoMes }, só relevante pra quem está com status "ferias".
+  // Meta (mensal) de cada setor, somada ao que os vendedores com dias parciais lançados
+  // (diasFeriasPorVendedor) vão gerar de meta própria nos dias em que efetivamente
+  // trabalharem — usa a MESMA taxa diária individual dos vendedores ativos daquele
+  // setor. Esse lançamento é 100% mensal (feito na aba Metas do Mês, ao desmarcar a
+  // presença de alguém) e não depende do status permanente do cadastro do vendedor —
+  // por isso funciona pra qualquer motivo de ausência parcial, não só férias.
+  // diasFeriasPorVendedor é um mapa { codigo: diasQueVaiTrabalharNoMes }.
   function metasSetorAjustadas(metasPorSetor, roster, presentesCodigos, diasTrabalhados, diasFeriasPorVendedor) {
     metasPorSetor = metasPorSetor || {};
     diasFeriasPorVendedor = diasFeriasPorVendedor || {};
@@ -143,7 +146,6 @@ Cockpit.Calc = (function () {
 
     const extraPorSetor = {};
     (roster || []).forEach(function (v) {
-      if (v.status !== 'ferias') return;
       const seusDias = Number(diasFeriasPorVendedor[v.codigo]) || 0;
       const taxa = taxas[v.setor] ? taxas[v.setor].metaIndividualDiaria : null;
       if (seusDias <= 0 || !taxa) return;
@@ -161,13 +163,14 @@ Cockpit.Calc = (function () {
   // Meta individual NÃO é cadastrada manualmente — ela é a meta do setor (configurada
   // em Metas do Mês) dividida entre os vendedores ATIVOS "presentes" naquele mês
   // específico (lista marcada na própria aba Metas do Mês — não é o status geral do
-  // cadastro). Vendedores com status "ferias" ficam FORA desse rateio — a meta deles é
-  // a taxa diária individual do setor × os dias que eles próprios vão trabalhar no mês
-  // (diasFeriasPorVendedor), então quem trabalha menos dias tem uma meta proporcional
-  // menor, mas com a MESMA régua diária de quem está ativo o mês inteiro.
+  // cadastro). Um vendedor com dias parciais lançados (diasFeriasPorVendedor > 0, ex.:
+  // férias) fica FORA desse rateio — a meta dele é a taxa diária individual do setor ×
+  // os dias que ele próprio vai trabalhar no mês, então quem trabalha menos dias tem
+  // uma meta proporcional menor, mas com a MESMA régua diária de quem está ativo o mês
+  // inteiro (e sem alterar a meta dos demais ativos, que nunca contam esse vendedor).
   // Se presentesCodigos não for informado, cai no padrão: todo mundo com status "ativo".
   // percAtingidoIndividual é null (não 0/NaN) quando não há meta definida pro vendedor
-  // (setor sem meta, sem colegas ativos presentes, ou férias sem dias de trabalho
+  // (setor sem meta, sem colegas ativos presentes, ou ausência sem dias parciais
   // definidos) — todo renderer (ex.: Corrida Comercial) precisa checar esse null.
   function rankingVendedores(linhasDoMes, roster, metasPorSetor, presentesCodigos, diasTrabalhados, diasFeriasPorVendedor) {
     metasPorSetor = metasPorSetor || {};
@@ -185,12 +188,12 @@ Cockpit.Calc = (function () {
     const lista = (roster || []).map(function (v) {
       const acumulado = totaisPorCodigo[v.codigo] || 0;
       const taxaSetor = taxas[v.setor] ? taxas[v.setor].metaIndividualDiaria : null;
+      const seusDiasParciais = Number(diasFeriasPorVendedor[v.codigo]) || 0;
 
       let presente, metaIndividual;
-      if (v.status === 'ferias') {
-        const seusDias = Number(diasFeriasPorVendedor[v.codigo]) || 0;
-        presente = seusDias > 0;
-        metaIndividual = (presente && taxaSetor) ? (taxaSetor * seusDias) : null;
+      if (seusDiasParciais > 0) {
+        presente = true;
+        metaIndividual = taxaSetor ? (taxaSetor * seusDiasParciais) : null;
       } else {
         presente = presentesSet.has(v.codigo);
         const qtdAtivosSetor = taxas[v.setor] ? taxas[v.setor].qtdAtivos : 0;
