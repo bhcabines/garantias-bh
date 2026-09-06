@@ -99,7 +99,7 @@ Cockpit.DashboardGeral = (function () {
     const roster = Cockpit.State.getVendedores();
     // Meta de cada setor já somada com o que os vendedores de férias vão gerar de meta
     // própria nos dias em que efetivamente trabalharem (ver calc.js/metasSetorAjustadas).
-    const metasAjustadas = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor);
+    const metasAjustadas = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor);
     const extraFeriasTotal = Cockpit.State.SETORES.reduce(function (s, setor) {
       return s + ((metasAjustadas[setor] || 0) - (metasPorSetor[setor] || 0));
     }, 0);
@@ -137,7 +137,7 @@ Cockpit.DashboardGeral = (function () {
         '</div></div>';
     }).join('');
 
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metasPorSetor, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor);
+    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metasPorSetor, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor);
     Cockpit.Charts.renderParticipacao('chartParticipacao', ranking);
 
     const dias = Cockpit.Calc.agregarPorDia(linhas);
@@ -158,7 +158,7 @@ Cockpit.DashboardGeral = (function () {
     });
 
     const linhas = getVendasFiltradas(false);
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor);
+    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor);
 
     const container = document.getElementById('corridaContainer');
     if (!ranking.length) {

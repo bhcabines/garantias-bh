@@ -91,10 +91,13 @@ Cockpit.DashboardAdmin = (function () {
   // Se vendedoresPresentes ainda não foi salvo pra esse mês, o padrão marca todo mundo
   // com status "ativo" no cadastro atual. Ao DESMARCAR alguém, revela uma caixinha
   // "Motivo: Férias / afastamento parcial" com dois campos: quantos dias ele vai
-  // trabalhar no mês, e a meta total dele (calculada automaticamente, mesma taxa
-  // diária dos vendedores ativos do setor). Esse lançamento é 100% mensal — não
-  // depende de mudar o status permanente do vendedor lá no cadastro.
-  function renderVendedoresPresentes(vendedoresPresentes, diasFeriasPorVendedor) {
+  // trabalhar no mês, e a Meta Total dele. A Meta Total vem PRÉ-PREENCHIDA (dias ×
+  // taxa diária dos vendedores ativos do setor) mas é editável — o admin pode ajustar
+  // à mão se precisar (bônus, acordo diferente etc.); a partir do momento em que ele
+  // mexe nela, o campo marca data-auto="0" e para de ser sobrescrito automaticamente.
+  // Esse lançamento é 100% mensal — não depende de mudar o status permanente do
+  // vendedor lá no cadastro.
+  function renderVendedoresPresentes(vendedoresPresentes, diasFeriasPorVendedor, metaTotalFeriasPorVendedor) {
     const roster = Cockpit.State.getVendedores();
     const container = document.getElementById('vendedoresPresentesGrid');
     if (!roster.length) {
@@ -105,11 +108,17 @@ Cockpit.DashboardAdmin = (function () {
       ? new Set(vendedoresPresentes)
       : new Set(roster.filter(function (v) { return v.status === 'ativo'; }).map(function (v) { return v.codigo; }));
     const diasFerias = diasFeriasPorVendedor || {};
+    const metaFerias = metaTotalFeriasPorVendedor || {};
 
     container.innerHTML = roster.map(function (v) {
       const checked = selecionados.has(v.codigo);
       const statusNota = v.status !== 'ativo' ? ' <span class="muted">(' + Cockpit.State.statusLabel(v.status) + ' no cadastro)</span>' : '';
       const dias = diasFerias[v.codigo] !== undefined && diasFerias[v.codigo] !== null ? diasFerias[v.codigo] : '';
+      // Se já existe um valor salvo de Meta Total, respeita ele (não sobrescreve
+      // automaticamente) — só entra em modo "auto" quando ainda não há nada salvo.
+      const metaSalva = metaFerias[v.codigo];
+      const metaValue = metaSalva !== undefined && metaSalva !== null && metaSalva !== '' ? fmt(metaSalva) : '';
+      const autoFlag = metaValue ? '0' : '1';
       return '<div class="presente-row">' +
         '<label class="presente-item"><input type="checkbox" data-presente="' + v.codigo + '" ' + (checked ? 'checked' : '') + '>' +
           '<span class="presente-nome">' + v.nome + '</span>' + Cockpit.State.setorBadgeHtml(v.setor) + statusNota + '</label>' +
@@ -117,8 +126,8 @@ Cockpit.DashboardAdmin = (function () {
           '<span class="ferias-motivo-label">Motivo: Férias / afastamento parcial</span>' +
           '<label class="ferias-parcial-campo">Dias trabalhados no mês' +
             '<input type="number" min="0" max="31" placeholder="0" data-ferias-dias="' + v.codigo + '" value="' + dias + '"></label>' +
-          '<label class="ferias-parcial-campo">Meta total' +
-            '<input type="text" readonly placeholder="R$ 0,00" data-ferias-meta="' + v.codigo + '"></label>' +
+          '<label class="ferias-parcial-campo">Meta total <span class="muted" style="text-transform:none;font-weight:400">(editável)</span>' +
+            '<input type="text" inputmode="decimal" class="campo-valor-br" placeholder="R$ 0,00" data-ferias-meta="' + v.codigo + '" data-auto="' + autoFlag + '" value="' + metaValue + '"></label>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -129,15 +138,23 @@ Cockpit.DashboardAdmin = (function () {
         const box = container.querySelector('[data-ferias-box="' + chk.dataset.presente + '"]');
         if (box) box.style.display = chk.checked ? 'none' : 'flex';
         if (chk.checked) {
-          // Voltou a contar como presente o mês inteiro — limpa dias parciais lançados.
+          // Voltou a contar como presente o mês inteiro — limpa dias/meta parciais lançados.
           const diasInp = container.querySelector('[data-ferias-dias="' + chk.dataset.presente + '"]');
+          const metaInp = container.querySelector('[data-ferias-meta="' + chk.dataset.presente + '"]');
           if (diasInp) diasInp.value = '';
+          if (metaInp) { metaInp.value = ''; metaInp.dataset.auto = '1'; }
         }
         atualizarCalculoMetaDiaria();
       });
     });
     container.querySelectorAll('[data-ferias-dias]').forEach(function (inp) {
       inp.addEventListener('input', atualizarCalculoMetaDiaria);
+    });
+    container.querySelectorAll('[data-ferias-meta]').forEach(function (inp) {
+      wireMascaraMoeda(inp);
+      // Assim que o admin mexe na Meta Total na mão, ela para de ser recalculada
+      // automaticamente a partir de dias × taxa — o valor digitado passa a valer.
+      inp.addEventListener('input', function () { inp.dataset.auto = '0'; atualizarCalculoMetaDiaria(); });
     });
   }
 
@@ -157,13 +174,22 @@ Cockpit.DashboardAdmin = (function () {
     return out;
   }
 
+  function lerMetaTotalFeriasPorVendedor() {
+    const out = {};
+    document.querySelectorAll('#vendedoresPresentesGrid [data-ferias-meta]').forEach(function (inp) {
+      const v = Cockpit.Calc.parseNumeroBR(inp.value);
+      if (v > 0) out[inp.dataset.feriasMeta] = v;
+    });
+    return out;
+  }
+
   // Chamado sempre que o cadastro de vendedores muda (novo/editado/excluído), pra
   // manter a lista de presença da aba Metas do Mês em dia sem perder marcações
   // que o admin já tenha feito manualmente nessa visita à tela.
   function refreshVendedoresPresentesSeVisivel() {
     const grid = document.getElementById('vendedoresPresentesGrid');
     if (grid && grid.children.length) {
-      renderVendedoresPresentes(lerVendedoresPresentes(), lerDiasFeriasPorVendedor());
+      renderVendedoresPresentes(lerVendedoresPresentes(), lerDiasFeriasPorVendedor(), lerMetaTotalFeriasPorVendedor());
     }
   }
 
@@ -175,17 +201,17 @@ Cockpit.DashboardAdmin = (function () {
     document.getElementById('metaGeral').value = item && item.metaGeral ? fmt(item.metaGeral) : '';
     document.getElementById('metaDias').value = item ? item.diasTrabalhados : '';
     renderCamposSetorMetas(item ? item.metasPorSetor : null);
-    renderVendedoresPresentes(item ? item.vendedoresPresentes : null, item ? item.diasFeriasPorVendedor : null);
+    renderVendedoresPresentes(item ? item.vendedoresPresentes : null, item ? item.diasFeriasPorVendedor : null, item ? item.metaTotalFeriasPorVendedor : null);
     document.getElementById('alertaSomaMetas').innerHTML = '';
     atualizarCalculoMetaDiaria();
   }
 
   // Recalculado a cada tecla digitada nos campos de meta, a cada marcar/desmarcar
-  // presença e a cada dia de férias preenchido — por isso não pode depender de nada
-  // async. Pra cada setor, mostra a Meta Diária (já somando o que os vendedores de
-  // férias vão gerar de meta própria) e, logo abaixo, a Meta Individual DIÁRIA (meta
-  // do setor ÷ vendedores ativos presentes ÷ dias trabalhados), com a diferença em
-  // relação ao cenário "todos ativos presentes" quando alguém está desmarcado.
+  // presença e a cada dia/meta parcial preenchido — por isso não pode depender de nada
+  // async. Pra cada setor, mostra a Meta Diária (já somando a Meta Total de quem tem
+  // dias parciais lançados) e, logo abaixo, a Meta Individual DIÁRIA (meta do setor ÷
+  // vendedores ativos presentes ÷ dias trabalhados), com a diferença em relação ao
+  // cenário "todos ativos presentes" quando alguém está desmarcado.
   function atualizarCalculoMetaDiaria() {
     const dias = Number(document.getElementById('metaDias').value) || 0;
     const geral = Cockpit.Calc.parseNumeroBR(document.getElementById('metaGeral').value);
@@ -195,7 +221,22 @@ Cockpit.DashboardAdmin = (function () {
     const diasFeriasPorVendedor = lerDiasFeriasPorVendedor();
 
     const taxas = Cockpit.Calc.metaIndividualDiariaPorSetor(metasPorSetor, roster, presentesCodigos, dias);
-    const ajustadas = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, presentesCodigos, dias, diasFeriasPorVendedor);
+
+    // Sugere a Meta Total (dias × taxa diária do setor) só pra quem ainda não editou
+    // esse campo na mão (data-auto="1") — quem já digitou um valor próprio (data-auto="0")
+    // não é mais sobrescrito automaticamente.
+    document.querySelectorAll('#vendedoresPresentesGrid [data-ferias-meta]').forEach(function (metaInp) {
+      if (metaInp.dataset.auto !== '1') return;
+      const codigo = metaInp.dataset.feriasMeta;
+      const v = roster.find(function (r) { return r.codigo === codigo; });
+      const diasInp = document.querySelector('#vendedoresPresentesGrid [data-ferias-dias="' + codigo + '"]');
+      const seusDias = diasInp ? (Number(diasInp.value) || 0) : 0;
+      const taxa = (v && taxas[v.setor]) ? taxas[v.setor].metaIndividualDiaria : null;
+      metaInp.value = (taxa && seusDias > 0) ? fmt(taxa * seusDias) : '';
+    });
+
+    const metaTotalFeriasPorVendedor = lerMetaTotalFeriasPorVendedor();
+    const ajustadas = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
 
     const ativosTotalPorSetor = {};
     roster.forEach(function (v) {
@@ -230,17 +271,6 @@ Cockpit.DashboardAdmin = (function () {
         fmt(Cockpit.Calc.metaDiaria(ajustadas[s], dias)) + '</span>' + sub + '</div>';
     });
     document.getElementById('calcMetasDiariasGrid').innerHTML = html;
-
-    // Atualiza a "Meta total" (readonly) de cada vendedor com dias parciais lançados —
-    // dias × taxa diária do setor dele, recalculado a cada tecla.
-    document.querySelectorAll('#vendedoresPresentesGrid [data-ferias-meta]').forEach(function (metaInp) {
-      const codigo = metaInp.dataset.feriasMeta;
-      const v = roster.find(function (r) { return r.codigo === codigo; });
-      const diasInp = document.querySelector('#vendedoresPresentesGrid [data-ferias-dias="' + codigo + '"]');
-      const seusDias = diasInp ? (Number(diasInp.value) || 0) : 0;
-      const taxa = (v && taxas[v.setor]) ? taxas[v.setor].metaIndividualDiaria : null;
-      metaInp.value = (taxa && seusDias > 0) ? fmt(taxa * seusDias) : '';
-    });
   }
 
   function salvarMetas() {
@@ -251,6 +281,7 @@ Cockpit.DashboardAdmin = (function () {
     const metasPorSetor = lerMetasPorSetor();
     const vendedoresPresentes = lerVendedoresPresentes();
     const diasFeriasPorVendedor = lerDiasFeriasPorVendedor();
+    const metaTotalFeriasPorVendedor = lerMetaTotalFeriasPorVendedor();
 
     const alertaEl = document.getElementById('alertaSomaMetas');
     if (!geral || !dias) {
@@ -270,7 +301,7 @@ Cockpit.DashboardAdmin = (function () {
     const chave = chaveMesAno(mes, ano);
     cfg[chave] = {
       metaGeral: geral, metasPorSetor: metasPorSetor, diasTrabalhados: dias, vendedoresPresentes: vendedoresPresentes,
-      diasFeriasPorVendedor: diasFeriasPorVendedor,
+      diasFeriasPorVendedor: diasFeriasPorVendedor, metaTotalFeriasPorVendedor: metaTotalFeriasPorVendedor,
       atualizadoEm: new Date().toISOString(), atualizadoPor: Cockpit.Auth.currentUserName()
     };
     Cockpit.State.saveConfigLocal(cfg);
