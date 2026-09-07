@@ -16,7 +16,7 @@ Cockpit.Auth = (function () {
   }
 
   function tryUnlock(senha) {
-    if (senha === COCKPIT_ADMIN_SENHA) {
+    if (senha.trim() === COCKPIT_ADMIN_SENHA) {
       sessionStorage.setItem(SESSION_KEY, '1');
       return true;
     }
