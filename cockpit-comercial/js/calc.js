@@ -160,6 +160,39 @@ Cockpit.Calc = (function () {
     return out;
   }
 
+  // Taxa DIÁRIA de cada vendedor com meta diferenciada, somada por setor — ex.: um
+  // vendedor de férias com Meta Total 119.000 em 14 dias tem taxa diária de 8.500.
+  // Isso é o que precisa ser somado à Meta Diária do setor — NUNCA o total mensal dele
+  // (metasSetorAjustadas) antes de dividir pelos dias do MÊS INTEIRO, senão a
+  // contribuição dele fica diluída pelos dias em que ele nem vai trabalhar.
+  function extraDiariaPorSetor(roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor) {
+    diasFeriasPorVendedor = diasFeriasPorVendedor || {};
+    metaTotalFeriasPorVendedor = metaTotalFeriasPorVendedor || {};
+    const out = {};
+    (roster || []).forEach(function (v) {
+      const seusDias = Number(diasFeriasPorVendedor[v.codigo]) || 0;
+      const suaMeta = Number(metaTotalFeriasPorVendedor[v.codigo]) || 0;
+      if (seusDias <= 0 || suaMeta <= 0) return;
+      out[v.setor] = (out[v.setor] || 0) + (suaMeta / seusDias);
+    });
+    return out;
+  }
+
+  // Meta Diária "de verdade" de cada setor = meta mensal do setor ÷ dias trabalhados
+  // (taxa dos ativos) + a taxa diária de cada vendedor com meta diferenciada daquele
+  // setor, somada à parte (ver extraDiariaPorSetor) — nunca diluída junto do total
+  // mensal. É essa soma (e não metasSetorAjustadas ÷ dias) que deve alimentar os
+  // cards "Meta Diária <Setor>" e "Meta Diária Geral".
+  function metaDiariaSetorComExtras(metasPorSetor, roster, diasTrabalhados, diasFeriasPorVendedor, metaTotalFeriasPorVendedor) {
+    metasPorSetor = metasPorSetor || {};
+    const extras = extraDiariaPorSetor(roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
+    const out = {};
+    Cockpit.State.SETORES.forEach(function (s) {
+      out[s] = metaDiaria(metasPorSetor[s] || 0, diasTrabalhados) + (extras[s] || 0);
+    });
+    return out;
+  }
+
   // Ranking por vendedor a partir do roster + linhas do período filtrado.
   // Meta individual NÃO é cadastrada manualmente pro time ativo — ela é a meta do
   // setor (configurada em Metas do Mês) dividida entre os vendedores ATIVOS
@@ -235,6 +268,8 @@ Cockpit.Calc = (function () {
     agregarPorDia: agregarPorDia,
     metaIndividualDiariaPorSetor: metaIndividualDiariaPorSetor,
     metasSetorAjustadas: metasSetorAjustadas,
+    extraDiariaPorSetor: extraDiariaPorSetor,
+    metaDiariaSetorComExtras: metaDiariaSetorComExtras,
     rankingVendedores: rankingVendedores
   };
 })();

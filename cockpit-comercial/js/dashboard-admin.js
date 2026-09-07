@@ -273,15 +273,13 @@ Cockpit.DashboardAdmin = (function () {
     });
 
     const metaTotalFeriasPorVendedor = lerMetaTotalFeriasPorVendedor();
-    const ajustadas = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
 
-    // A Meta Geral também precisa somar o extra de todos os setores (mesma lógica das
-    // metas por setor) — senão o card "Meta Diária Geral" fica menor que a soma dos
-    // cards de setor sempre que alguém tem meta diferenciada lançada.
-    const extraFeriasTotal = Cockpit.State.SETORES.reduce(function (s, setor) {
-      return s + ((ajustadas[setor] || 0) - (metasPorSetor[setor] || 0));
-    }, 0);
-    const geralAjustada = geral + extraFeriasTotal;
+    // Taxa DIÁRIA de cada vendedor com meta diferenciada (meta total dele ÷ os dias
+    // que ele mesmo vai trabalhar) — soma-se essa taxa direto na meta diária do setor,
+    // nunca o total mensal dele dividido pelos dias do mês inteiro (isso diluiria a
+    // contribuição dele nos dias em que ele nem vai trabalhar).
+    const extrasDiarios = Cockpit.Calc.extraDiariaPorSetor(roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
+    const extraDiariaGeral = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (extrasDiarios[setor] || 0); }, 0);
 
     const ativosTotalPorSetor = {};
     roster.forEach(function (v) {
@@ -289,14 +287,14 @@ Cockpit.DashboardAdmin = (function () {
     });
 
     let html = '<div class="sum-card"><span class="sum-label">Meta Diária Geral</span><span class="sum-value">' +
-      fmt(Cockpit.Calc.metaDiaria(geralAjustada, dias)) + '</span></div>';
+      fmt(Cockpit.Calc.metaDiaria(geral, dias) + extraDiariaGeral) + '</span></div>';
 
     Cockpit.State.SETORES.forEach(function (s) {
       const metaSetor = metasPorSetor[s] || 0;
       const taxa = taxas[s].metaIndividualDiaria;
       const qtdAtivosTotal = ativosTotalPorSetor[s] || 0;
       const metaIndividualBase = (qtdAtivosTotal > 0 && dias > 0) ? (metaSetor / qtdAtivosTotal / dias) : null;
-      const extraFerias = ajustadas[s] - metaSetor;
+      const extraDiaria = extrasDiarios[s] || 0;
 
       let sub;
       if (taxa === null) {
@@ -308,12 +306,12 @@ Cockpit.DashboardAdmin = (function () {
           sub += '<div class="sum-card-sub up">' + (diferenca > 0 ? '+' : '') + fmt(diferenca) + ' vs. todos ativos presentes</div>';
         }
       }
-      if (extraFerias > 0.01) {
-        sub += '<div class="sum-card-sub up">+' + fmt(extraFerias) + ' de vendedor(es) de férias (dias parciais)</div>';
+      if (extraDiaria > 0.01) {
+        sub += '<div class="sum-card-sub up">+' + fmt(extraDiaria) + '/dia de vendedor(es) com meta diferenciada</div>';
       }
 
       html += '<div class="sum-card"><span class="sum-label">Meta Diária ' + Cockpit.State.setorLabel(s) + '</span><span class="sum-value">' +
-        fmt(Cockpit.Calc.metaDiaria(ajustadas[s], dias)) + '</span>' + sub + '</div>';
+        fmt(Cockpit.Calc.metaDiaria(metaSetor, dias) + extraDiaria) + '</span>' + sub + '</div>';
     });
     document.getElementById('calcMetasDiariasGrid').innerHTML = html;
   }
@@ -370,14 +368,11 @@ Cockpit.DashboardAdmin = (function () {
       const c = cfg[chave];
       const partes = chave.split('-');
       const label = MESES[Number(partes[1]) - 1] + '/' + partes[0];
-      const metasPorSetorSalvas = c.metasPorSetor || {};
-      const ajustadas = Cockpit.Calc.metasSetorAjustadas(metasPorSetorSalvas, roster, c.diasFeriasPorVendedor, c.metaTotalFeriasPorVendedor);
-      const extra = Cockpit.State.SETORES.reduce(function (s, setor) {
-        return s + ((ajustadas[setor] || 0) - (metasPorSetorSalvas[setor] || 0));
-      }, 0);
-      const geralAjustada = (Number(c.metaGeral) || 0) + extra;
+      const extrasDiariosSalvos = Cockpit.Calc.extraDiariaPorSetor(roster, c.diasFeriasPorVendedor, c.metaTotalFeriasPorVendedor);
+      const extraDiariaGeralSalva = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (extrasDiariosSalvos[setor] || 0); }, 0);
+      const metaDiariaGeralSalva = Cockpit.Calc.metaDiaria(c.metaGeral, c.diasTrabalhados) + extraDiariaGeralSalva;
       return '<tr><td>' + label + '</td><td>' + fmt(c.metaGeral) + '</td><td>' + c.diasTrabalhados + '</td><td>' +
-        fmt(Cockpit.Calc.metaDiaria(geralAjustada, c.diasTrabalhados)) + '</td>' +
+        fmt(metaDiariaGeralSalva) + '</td>' +
         '<td><button class="icon-btn" data-action="editar" data-chave="' + chave + '" title="Editar">✏️</button>' +
         '<button class="icon-btn" data-action="excluir" data-chave="' + chave + '" title="Excluir">🗑️</button></td></tr>';
     }).join('');
