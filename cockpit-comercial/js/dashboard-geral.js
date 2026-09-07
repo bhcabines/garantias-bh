@@ -100,10 +100,10 @@ Cockpit.DashboardGeral = (function () {
     // Meta de cada setor já somada com o que os vendedores de férias vão gerar de meta
     // própria nos dias em que efetivamente trabalharem (ver calc.js/metasSetorAjustadas).
     const metasAjustadas = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor);
-    const extraFeriasTotal = Cockpit.State.SETORES.reduce(function (s, setor) {
-      return s + ((metasAjustadas[setor] || 0) - (metasPorSetor[setor] || 0));
-    }, 0);
-    const metaGeralAjustada = (Number(metaCfg.metaGeral) || 0) + extraFeriasTotal;
+    // Meta Geral já é digitada como o total FINAL do mês (incluindo o que os
+    // vendedores com meta diferenciada vão gerar) — validado na tela de Metas do Mês
+    // pra bater com a soma ajustada dos setores. Não soma o extra de novo aqui.
+    const metaGeralAjustada = Number(metaCfg.metaGeral) || 0;
 
     const linhas = getVendasFiltradas(false);
     const linhasAmbosSetores = getVendasFiltradas(true);

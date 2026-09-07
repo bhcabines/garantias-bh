@@ -324,12 +324,15 @@ Cockpit.DashboardAdmin = (function () {
 
     // Avisa em tempo real (sem precisar clicar em Salvar) se a Meta Geral digitada não
     // bate com a soma das metas por setor — pega erro de digitação (ex.: zero a mais)
-    // na hora, antes de virar um card confuso.
-    const somaSetores = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (metasPorSetor[setor] || 0); }, 0);
+    // na hora, antes de virar um card confuso. A Meta Geral é o total FINAL (já
+    // incluindo o que os vendedores com meta diferenciada vão gerar), então a
+    // comparação usa a soma AJUSTADA dos setores (base + extra de férias), não a base sozinha.
+    const ajustadasMensais = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
+    const somaSetoresAjustada = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (ajustadasMensais[setor] || 0); }, 0);
     const alertaEl = document.getElementById('alertaSomaMetas');
-    if (geral > 0 && Math.abs(somaSetores - geral) > 0.01) {
-      alertaEl.innerHTML = '<div class="alert error">A soma das metas por setor (' + fmt(somaSetores) +
-        ') não bate com a Meta Geral (' + fmt(geral) + '). Diferença: ' + fmt(Math.abs(somaSetores - geral)) + '.</div>';
+    if (geral > 0 && Math.abs(somaSetoresAjustada - geral) > 0.01) {
+      alertaEl.innerHTML = '<div class="alert error">A soma das metas por setor, já somando quem tem meta diferenciada, (' + fmt(somaSetoresAjustada) +
+        ') não bate com a Meta Geral (' + fmt(geral) + '). Diferença: ' + fmt(Math.abs(somaSetoresAjustada - geral)) + '.</div>';
     } else {
       alertaEl.innerHTML = '';
     }
@@ -350,10 +353,15 @@ Cockpit.DashboardAdmin = (function () {
       alertaEl.innerHTML = '<div class="alert error">Preencha Meta Geral e Dias Trabalhados.</div>';
       return;
     }
-    const soma = Object.keys(metasPorSetor).reduce(function (s, k) { return s + metasPorSetor[k]; }, 0);
+    // A Meta Geral é o total FINAL do mês (já incluindo o que os vendedores com meta
+    // diferenciada vão gerar) — por isso compara com a soma AJUSTADA dos setores
+    // (base + extra de férias/período inicial/etc.), não a soma base sozinha.
+    const roster = Cockpit.State.getVendedores();
+    const ajustadasMensais = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
+    const soma = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (ajustadasMensais[setor] || 0); }, 0);
     const diff = Math.abs(soma - geral);
     if (diff > 0.01) {
-      alertaEl.innerHTML = '<div class="alert error">A soma das metas por setor (' + fmt(soma) +
+      alertaEl.innerHTML = '<div class="alert error">A soma das metas por setor, já somando quem tem meta diferenciada, (' + fmt(soma) +
         ') não bate com a Meta Geral (' + fmt(geral) + '). Diferença: ' + fmt(diff) + '. Ajuste os valores antes de salvar.</div>';
       return;
     }
