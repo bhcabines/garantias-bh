@@ -368,7 +368,7 @@ async function carregarUsuarios() {
 function autenticar(nome, senha) {
   nome = nome.trim();
   senha = senha.trim();
-  if (nome === ADMIN_NOME && senha === ADMIN_SENHA) {
+  if (nome.toLowerCase() === ADMIN_NOME.toLowerCase() && senha === ADMIN_SENHA) {
     return { id: '__admin__', nome: ADMIN_NOME, isAdmin: true, projetos: PROJETOS.map(p => p.id) };
   }
   const user = getUsers().find(u => u.nome.toLowerCase() === nome.toLowerCase() && u.senha === senha);
