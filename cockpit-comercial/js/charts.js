@@ -60,6 +60,40 @@ Cockpit.Charts = (function () {
     });
   }
 
+  // Plugin custom (sem dependência externa) que escreve o total empilhado do dia
+  // (soma de todos os setores, ignorando a linha de meta) em cima de cada barra.
+  const totalDiarioLabelPlugin = {
+    id: 'totalDiarioLabel',
+    afterDatasetsDraw: function (chart) {
+      const barIdx = [];
+      chart.data.datasets.forEach(function (ds, i) { if (ds.type !== 'line') barIdx.push(i); });
+      if (!barIdx.length) return;
+      const meta0 = chart.getDatasetMeta(barIdx[0]);
+      if (!meta0.data.length) return;
+
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.font = '700 11px sans-serif';
+      ctx.fillStyle = '#515053';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+
+      meta0.data.forEach(function (_, idx) {
+        let total = 0, topY = Infinity, x = null;
+        barIdx.forEach(function (i) {
+          const meta = chart.getDatasetMeta(i);
+          if (meta.hidden) return;
+          total += Number(chart.data.datasets[i].data[idx]) || 0;
+          const bar = meta.data[idx];
+          if (bar) { x = bar.x; topY = Math.min(topY, bar.y); }
+        });
+        if (x === null || total <= 0) return;
+        ctx.fillText(fmtMoedaCompacta(total), x, topY - 4);
+      });
+      ctx.restore();
+    }
+  };
+
   // dias: [{data, porSetor:{TELEMARKETING:x, BALCAO:y, ...}, total}], metaDiariaGeral: number
   // Um dataset de barra empilhada por setor cadastrado (Cockpit.State.SETORES) — genérico,
   // não fica preso a Telemarketing/Balcão.
@@ -94,6 +128,7 @@ Cockpit.Charts = (function () {
       },
       options: {
         maintainAspectRatio: false,
+        layout: { padding: { top: 22 } },
         scales: {
           x: { stacked: true },
           y: { stacked: true, ticks: { callback: function (v) { return fmtMoedaCompacta(v); } } }
@@ -115,7 +150,8 @@ Cockpit.Charts = (function () {
             }
           }
         }
-      }
+      },
+      plugins: [totalDiarioLabelPlugin]
     });
   }
 

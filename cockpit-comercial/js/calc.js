@@ -212,6 +212,17 @@ Cockpit.Calc = (function () {
     return out;
   }
 
+  // Código de vendedor pode chegar em formatos diferentes dependendo da origem: texto
+  // com zeros à esquerda (vindo do .xls importado, ex. "0047486") ou número puro
+  // (quando a venda volta do Google Sheets via sincronização — planilha guarda células
+  // que "parecem número" como número de verdade, derrubando os zeros à esquerda).
+  // Usar o valor numérico como chave evita perder a venda de alguém só por causa
+  // desse formato — sem isso, dias sincronizados via servidor somem do acumulado do vendedor.
+  function normalizarCodigoVendedor(codigo) {
+    const n = Number(codigo);
+    return isNaN(n) ? String(codigo || '').trim() : String(n);
+  }
+
   // Ranking por vendedor a partir do roster + linhas do período filtrado.
   // Meta individual NÃO é cadastrada manualmente pro time ativo — ela é a meta do
   // setor (configurada em Metas do Mês) dividida entre os vendedores ATIVOS
@@ -236,11 +247,12 @@ Cockpit.Calc = (function () {
 
     const totaisPorCodigo = {};
     (linhasDoMes || []).forEach(function (r) {
-      totaisPorCodigo[r.vendedorCodigo] = (totaisPorCodigo[r.vendedorCodigo] || 0) + (Number(r.vendas) || 0);
+      const chave = normalizarCodigoVendedor(r.vendedorCodigo);
+      totaisPorCodigo[chave] = (totaisPorCodigo[chave] || 0) + (Number(r.vendas) || 0);
     });
 
     const lista = (roster || []).map(function (v) {
-      const acumulado = totaisPorCodigo[v.codigo] || 0;
+      const acumulado = totaisPorCodigo[normalizarCodigoVendedor(v.codigo)] || 0;
       const seusDiasParciais = Number(diasFeriasPorVendedor[v.codigo]) || 0;
       const suaMetaTotalParcial = Number(metaTotalFeriasPorVendedor[v.codigo]) || 0;
 
@@ -273,6 +285,7 @@ Cockpit.Calc = (function () {
 
   return {
     mesComercialDaData: mesComercialDaData,
+    normalizarCodigoVendedor: normalizarCodigoVendedor,
     parsePercentBR: parsePercentBR,
     parseNumeroBR: parseNumeroBR,
     metaDiaria: metaDiaria,

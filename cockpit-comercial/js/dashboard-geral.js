@@ -84,7 +84,9 @@ Cockpit.DashboardGeral = (function () {
       // Mês comercial: do dia 28 do mês anterior ao dia 27 do mês vigente — não é o
       // mês calendário puro (ver Cockpit.Calc.mesComercialDaData).
       if (Cockpit.Calc.mesComercialDaData(r.data) !== prefixo) return false;
-      if (f.vendedorCodigo && r.vendedorCodigo !== f.vendedorCodigo) return false;
+      // normalizarCodigoVendedor evita perder linhas cujo código voltou do Google
+      // Sheets como número puro (zeros à esquerda derrubados) — ver calc.js.
+      if (f.vendedorCodigo && Cockpit.Calc.normalizarCodigoVendedor(r.vendedorCodigo) !== Cockpit.Calc.normalizarCodigoVendedor(f.vendedorCodigo)) return false;
       if (!ignoreSetor && f.setor && r.setor !== f.setor) return false;
       return true;
     });
