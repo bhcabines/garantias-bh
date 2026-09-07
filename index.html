@@ -366,10 +366,12 @@ async function carregarUsuarios() {
    AUTENTICAÇÃO
    ========================================================= */
 function autenticar(nome, senha) {
-  if (nome.trim() === ADMIN_NOME && senha === ADMIN_SENHA) {
+  nome = nome.trim();
+  senha = senha.trim();
+  if (nome === ADMIN_NOME && senha === ADMIN_SENHA) {
     return { id: '__admin__', nome: ADMIN_NOME, isAdmin: true, projetos: PROJETOS.map(p => p.id) };
   }
-  const user = getUsers().find(u => u.nome.toLowerCase() === nome.trim().toLowerCase() && u.senha === senha);
+  const user = getUsers().find(u => u.nome.toLowerCase() === nome.toLowerCase() && u.senha === senha);
   return user || null;
 }
 
