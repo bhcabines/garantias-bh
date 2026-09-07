@@ -279,7 +279,14 @@ Cockpit.DashboardAdmin = (function () {
     // nunca o total mensal dele dividido pelos dias do mês inteiro (isso diluiria a
     // contribuição dele nos dias em que ele nem vai trabalhar).
     const extrasDiarios = Cockpit.Calc.extraDiariaPorSetor(roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
-    const extraDiariaGeral = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (extrasDiarios[setor] || 0); }, 0);
+
+    // "Meta Diária Geral" é sempre a SOMA dos cards de setor abaixo — nunca calculada
+    // separadamente a partir do campo "Meta Geral" digitado. Isso evita que ela fique
+    // dessincronizada se a Meta Geral não bater exatamente com a soma dos setores
+    // (erro de digitação, ou setor ainda não preenchido).
+    const metaDiariaGeralSoma = Cockpit.State.SETORES.reduce(function (s, setor) {
+      return s + Cockpit.Calc.metaDiaria(metasPorSetor[setor] || 0, dias) + (extrasDiarios[setor] || 0);
+    }, 0);
 
     const ativosTotalPorSetor = {};
     roster.forEach(function (v) {
@@ -287,7 +294,7 @@ Cockpit.DashboardAdmin = (function () {
     });
 
     let html = '<div class="sum-card"><span class="sum-label">Meta Diária Geral</span><span class="sum-value">' +
-      fmt(Cockpit.Calc.metaDiaria(geral, dias) + extraDiariaGeral) + '</span></div>';
+      fmt(metaDiariaGeralSoma) + '</span></div>';
 
     Cockpit.State.SETORES.forEach(function (s) {
       const metaSetor = metasPorSetor[s] || 0;
@@ -314,6 +321,18 @@ Cockpit.DashboardAdmin = (function () {
         fmt(Cockpit.Calc.metaDiaria(metaSetor, dias) + extraDiaria) + '</span>' + sub + '</div>';
     });
     document.getElementById('calcMetasDiariasGrid').innerHTML = html;
+
+    // Avisa em tempo real (sem precisar clicar em Salvar) se a Meta Geral digitada não
+    // bate com a soma das metas por setor — pega erro de digitação (ex.: zero a mais)
+    // na hora, antes de virar um card confuso.
+    const somaSetores = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (metasPorSetor[setor] || 0); }, 0);
+    const alertaEl = document.getElementById('alertaSomaMetas');
+    if (geral > 0 && Math.abs(somaSetores - geral) > 0.01) {
+      alertaEl.innerHTML = '<div class="alert error">A soma das metas por setor (' + fmt(somaSetores) +
+        ') não bate com a Meta Geral (' + fmt(geral) + '). Diferença: ' + fmt(Math.abs(somaSetores - geral)) + '.</div>';
+    } else {
+      alertaEl.innerHTML = '';
+    }
   }
 
   function salvarMetas() {
@@ -368,9 +387,13 @@ Cockpit.DashboardAdmin = (function () {
       const c = cfg[chave];
       const partes = chave.split('-');
       const label = MESES[Number(partes[1]) - 1] + '/' + partes[0];
+      const metasPorSetorSalvas = c.metasPorSetor || {};
       const extrasDiariosSalvos = Cockpit.Calc.extraDiariaPorSetor(roster, c.diasFeriasPorVendedor, c.metaTotalFeriasPorVendedor);
-      const extraDiariaGeralSalva = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (extrasDiariosSalvos[setor] || 0); }, 0);
-      const metaDiariaGeralSalva = Cockpit.Calc.metaDiaria(c.metaGeral, c.diasTrabalhados) + extraDiariaGeralSalva;
+      // Mesma regra do painel ao vivo: Meta Diária Geral é a soma dos setores, nunca
+      // calculada isoladamente a partir do campo Meta Geral salvo.
+      const metaDiariaGeralSalva = Cockpit.State.SETORES.reduce(function (s, setor) {
+        return s + Cockpit.Calc.metaDiaria(metasPorSetorSalvas[setor] || 0, c.diasTrabalhados) + (extrasDiariosSalvos[setor] || 0);
+      }, 0);
       return '<tr><td>' + label + '</td><td>' + fmt(c.metaGeral) + '</td><td>' + c.diasTrabalhados + '</td><td>' +
         fmt(metaDiariaGeralSalva) + '</td>' +
         '<td><button class="icon-btn" data-action="editar" data-chave="' + chave + '" title="Editar">✏️</button>' +
