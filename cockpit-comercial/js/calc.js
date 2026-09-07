@@ -17,6 +17,25 @@ Cockpit.Calc = (function () {
     return isNaN(n) ? 0 : n;
   }
 
+  // O "mês comercial" da empresa vai do dia 28 do mês anterior ao dia 27 do mês
+  // vigente — não é o mês calendário. Ex.: uma venda em 2026-08-28 conta pra
+  // Setembro/2026 (chave "2026-09"), não pra Agosto. Dias 1 a 27 ficam no mês
+  // calendário normal. Essa é a ÚNICA função que deve decidir "de qual mês" uma
+  // venda é — nenhum outro lugar do código deve fazer slice(0,7) na data pra isso.
+  function mesComercialDaData(dataStr) {
+    const partes = String(dataStr || '').split('-');
+    if (partes.length !== 3) return String(dataStr || '').slice(0, 7);
+    let ano = Number(partes[0]);
+    let mes = Number(partes[1]);
+    const dia = Number(partes[2]);
+    if (isNaN(ano) || isNaN(mes) || isNaN(dia)) return String(dataStr || '').slice(0, 7);
+    if (dia >= 28) {
+      mes += 1;
+      if (mes > 12) { mes = 1; ano += 1; }
+    }
+    return ano + '-' + String(mes).padStart(2, '0');
+  }
+
   // "R$ 1.234,56" / "1.234,56" (texto BR, com ou sem prefixo de moeda) ou número -> 1234.56
   function parseNumeroBR(v) {
     if (typeof v === 'number') return v;
@@ -253,6 +272,7 @@ Cockpit.Calc = (function () {
   }
 
   return {
+    mesComercialDaData: mesComercialDaData,
     parsePercentBR: parsePercentBR,
     parseNumeroBR: parseNumeroBR,
     metaDiaria: metaDiaria,

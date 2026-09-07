@@ -81,7 +81,9 @@ Cockpit.DashboardGeral = (function () {
     const f = getFiltros();
     const prefixo = chaveMesAno(f.mes, f.ano);
     return Cockpit.State.getVendas().filter(function (r) {
-      if (String(r.data).slice(0, 7) !== prefixo) return false;
+      // Mês comercial: do dia 28 do mês anterior ao dia 27 do mês vigente — não é o
+      // mês calendário puro (ver Cockpit.Calc.mesComercialDaData).
+      if (Cockpit.Calc.mesComercialDaData(r.data) !== prefixo) return false;
       if (f.vendedorCodigo && r.vendedorCodigo !== f.vendedorCodigo) return false;
       if (!ignoreSetor && f.setor && r.setor !== f.setor) return false;
       return true;
