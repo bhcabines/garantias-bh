@@ -8,8 +8,7 @@
 window.Cockpit = window.Cockpit || {};
 
 Cockpit.Auth = (function () {
-  // TODO: trocar por uma senha própria antes de liberar para a equipe.
-  const COCKPIT_ADMIN_SENHA = 'comercial2026';
+  const COCKPIT_ADMIN_SENHA = 'pandora@1234';
   const SESSION_KEY = 'cockpit_admin_unlocked';
 
   function isUnlocked() {
