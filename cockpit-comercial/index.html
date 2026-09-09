@@ -36,6 +36,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       <span>Visão Geral</span>
     </button>
+    <button class="nav-btn" data-view="individual" id="navBtnIndividual" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span>Minha Visão</span>
+    </button>
     <button class="nav-btn" data-view="admin">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       <span>Administração</span>
@@ -100,6 +104,51 @@
         <h3 class="card-title">🏁 Corrida Comercial</h3>
         <p class="muted" style="margin-bottom:14px">Cada caminhão mostra o quanto o vendedor já percorreu em direção à própria meta individual.</p>
         <div id="corridaContainer"></div>
+      </div>
+    </section>
+
+    <!-- ================= MINHA VISÃO (INDIVIDUAL) ================= -->
+    <section class="view" id="view-individual">
+      <div class="view-header">
+        <h2>Minha Visão</h2>
+        <p id="individualSubtitulo">Suas metas e vendas do mês comercial vigente (28 do mês anterior a 27 do mês atual).</p>
+      </div>
+
+      <div id="individualSemVendedor" class="card" style="display:none">
+        <p class="muted">Não encontramos um vendedor no cadastro com um nome parecido com o seu login. Peça pro administrador conferir o cadastro de vendedores em Administração → Vendedores.</p>
+      </div>
+
+      <div id="individualContent" style="display:none">
+        <div class="cards-grid">
+          <div class="sum-card orange"><span class="sum-label">Sua Meta Mensal</span><span class="sum-value" id="indMetaMensal">—</span></div>
+          <div class="sum-card orange"><span class="sum-label">Sua Meta Diária</span><span class="sum-value" id="indMetaDiaria">—</span></div>
+          <div class="sum-card"><span class="sum-label">Acumulado no Mês</span><span class="sum-value" id="indAcumulado">R$ 0,00</span></div>
+          <div class="sum-card"><span class="sum-label">% da Meta Mensal</span><span class="sum-value" id="indPercMensal">0%</span></div>
+          <div class="sum-card">
+            <span class="sum-label">Ritmo Diário</span><span class="sum-value" id="indRitmoDiario">0%</span>
+            <div class="sum-card-sub">Sua média diária vs. sua meta diária</div>
+          </div>
+        </div>
+
+        <div class="cards-grid" style="margin-top:16px">
+          <div class="sum-card"><span class="sum-label">Ticket Médio Acumulado</span><span class="sum-value" id="indTicketMedio">R$ 0,00</span></div>
+          <div class="sum-card"><span class="sum-label">Devoluções Acumuladas</span><span class="sum-value" id="indDevolucoes">R$ 0,00</span></div>
+        </div>
+
+        <div class="card" style="margin-top:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 class="card-title" style="margin-bottom:0">📅 Vendas do Mês, Dia a Dia</h3>
+            <button class="btn bgray" id="btnToggleDetalheIndividual">Ver detalhes diários ▼</button>
+          </div>
+          <div id="individualDetalheBox" style="display:none;margin-top:16px">
+            <div class="table-wrap">
+              <table id="tblIndividualDetalhe">
+                <thead><tr><th>Data</th><th>Vendas</th><th>Devolução</th><th>Qtd. Vendida</th><th>Ticket Médio</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -326,6 +375,7 @@
 <script src="js/charts.js"></script>
 <script src="js/dashboard-admin.js"></script>
 <script src="js/dashboard-geral.js"></script>
+<script src="js/dashboard-individual.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
