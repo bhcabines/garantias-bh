@@ -36,6 +36,28 @@ Cockpit.Calc = (function () {
     return ano + '-' + String(mes).padStart(2, '0');
   }
 
+  // Remove acento/caixa pra comparar nomes com tolerância ("Iago" == "IAGO").
+  function normalizarNome(txt) {
+    return String(txt || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  // Associa o nome de quem fez login (curto, ex. "iago") ao cadastro de vendedor
+  // (nome completo do ERP, ex. "IAGO MARQUES LEMOS") — usado pela Visão Individual
+  // pra decidir de qual vendedor mostrar os dados, sem precisar de um campo de
+  // vínculo explícito no cadastro. Casa se o nome de login for uma das PALAVRAS do
+  // nome do vendedor (evita falso positivo tipo "mar" batendo dentro de "marques").
+  // Limitação conhecida: dois vendedores com o mesmo primeiro nome colidem — o
+  // primeiro encontrado no cadastro ganha. Ok pra uma primeira versão.
+  function encontrarVendedorPorNomeLogin(nomeLogin, roster) {
+    const alvo = normalizarNome(nomeLogin);
+    if (!alvo) return null;
+    return (roster || []).find(function (v) {
+      const nomeVendedor = normalizarNome(v.nome);
+      if (nomeVendedor === alvo) return true;
+      return nomeVendedor.split(/\s+/).includes(alvo);
+    }) || null;
+  }
+
   // "R$ 1.234,56" / "1.234,56" (texto BR, com ou sem prefixo de moeda) ou número -> 1234.56
   function parseNumeroBR(v) {
     if (typeof v === 'number') return v;
@@ -256,15 +278,18 @@ Cockpit.Calc = (function () {
       const seusDiasParciais = Number(diasFeriasPorVendedor[v.codigo]) || 0;
       const suaMetaTotalParcial = Number(metaTotalFeriasPorVendedor[v.codigo]) || 0;
 
-      let presente, metaIndividual;
+      let presente, metaIndividual, metaIndividualDiaria;
       if (seusDiasParciais > 0 && suaMetaTotalParcial > 0) {
         presente = true;
         metaIndividual = suaMetaTotalParcial;
+        metaIndividualDiaria = suaMetaTotalParcial / seusDiasParciais;
       } else {
         presente = presentesSet.has(v.codigo);
         const taxaSetor = taxas[v.setor] ? taxas[v.setor].metaIndividualDiaria : null;
         const qtdAtivosSetor = taxas[v.setor] ? taxas[v.setor].qtdAtivos : 0;
-        metaIndividual = (presente && taxaSetor && qtdAtivosSetor > 0) ? (taxaSetor * (diasTrabalhados || 0)) : null;
+        const temMeta = presente && taxaSetor && qtdAtivosSetor > 0;
+        metaIndividual = temMeta ? (taxaSetor * (diasTrabalhados || 0)) : null;
+        metaIndividualDiaria = temMeta ? taxaSetor : null;
       }
 
       return {
@@ -275,6 +300,7 @@ Cockpit.Calc = (function () {
         presente: presente,
         acumulado: acumulado,
         metaIndividual: metaIndividual,
+        metaIndividualDiaria: metaIndividualDiaria,
         percAtingidoIndividual: metaIndividual !== null ? percAtingido(acumulado, metaIndividual) : null
       };
     });
@@ -286,6 +312,8 @@ Cockpit.Calc = (function () {
   return {
     mesComercialDaData: mesComercialDaData,
     normalizarCodigoVendedor: normalizarCodigoVendedor,
+    normalizarNome: normalizarNome,
+    encontrarVendedorPorNomeLogin: encontrarVendedorPorNomeLogin,
     parsePercentBR: parsePercentBR,
     parseNumeroBR: parseNumeroBR,
     metaDiaria: metaDiaria,

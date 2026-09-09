@@ -90,6 +90,22 @@
     });
   }
 
+  // Quem faz login com um nome que bate com um vendedor do cadastro ganha a aba
+  // "Minha Visão" (e começa nela) e continua vendo a "Visão Geral" normalmente —
+  // só a Administração fica escondida pra essa pessoa. Quem não bate com nenhum
+  // vendedor (gestores/admin) não vê a aba "Minha Visão".
+  function aplicarRestricaoDeAcessoIndividual() {
+    const souVendedor = !!Cockpit.DashboardIndividual.vendedorAtual();
+    const navAdmin = document.querySelector('.nav-btn[data-view="admin"]');
+    const navIndividual = document.getElementById('navBtnIndividual');
+
+    navIndividual.style.display = souVendedor ? 'flex' : 'none';
+    if (souVendedor) {
+      navAdmin.style.display = 'none';
+      switchView('individual');
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     setHeaderDate();
     wireNav();
@@ -98,14 +114,21 @@
     // quando o servidor responder, os dados são atualizados e as telas recalculadas.
     Cockpit.DashboardGeral.init();
     Cockpit.DashboardAdmin.init();
+    Cockpit.DashboardIndividual.init();
+    aplicarRestricaoDeAcessoIndividual();
+    Cockpit.DashboardIndividual.render();
 
     carregarDadosDoServidor().then(function () {
+      // Refaz a checagem de acesso: num aparelho novo, o cadastro de vendedores só
+      // chega depois desse fetch — sem isso, a restrição nunca "ligaria" na primeira vez.
+      aplicarRestricaoDeAcessoIndividual();
       Cockpit.DashboardGeral.populateFiltros();
       Cockpit.DashboardGeral.render();
       Cockpit.DashboardAdmin.renderTabelaMetas();
       Cockpit.DashboardAdmin.renderTabelaVendedores();
       Cockpit.DashboardAdmin.renderHistorico();
       Cockpit.DashboardAdmin.refreshMetasForm();
+      Cockpit.DashboardIndividual.render();
     });
   });
 })();
