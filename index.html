@@ -39,7 +39,7 @@
   }
 
   /* ===== LOGIN OVERLAY ===== */
-  #loginOverlay {
+  #loginOverlay, #trocarSenhaOverlay {
     position: fixed;inset: 0;z-index: 1000;
     background: linear-gradient(135deg, #1a1a1a 0%, #2d1a0a 100%);
     display: flex;align-items: center;justify-content: center;
@@ -186,6 +186,26 @@
   </div>
 </div>
 
+<!-- ===== TROCA DE SENHA OBRIGATÓRIA (primeiro acesso com senha temporária) ===== -->
+<div id="trocarSenhaOverlay" style="display:none">
+  <div class="login-box">
+    <img src="logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <h2>Defina sua nova senha</h2>
+    <p>Sua senha atual é temporária. Defina uma nova senha pra continuar.</p>
+    <div class="login-field">
+      <label>Nova senha</label>
+      <input type="password" id="novaSenha1" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div class="login-field">
+      <label>Confirmar nova senha</label>
+      <input type="password" id="novaSenha2" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <button class="btn-login" id="btnConfirmarTrocaSenha">Salvar nova senha e entrar</button>
+    <div class="login-error" id="trocarSenhaErro" style="display:none">Preencha os dois campos e confirme que as senhas são iguais.</div>
+    <button id="btnCancelarTrocaSenha" style="margin-top:14px;width:100%;background:none;border:none;color:#999;font-size:.78rem;cursor:pointer;text-decoration:underline">Cancelar e voltar ao login</button>
+  </div>
+</div>
+
 <!-- ===== HEADER ===== -->
 <header>
   <div class="header-logo">
@@ -237,6 +257,10 @@
           <div class="form-field"><label>Nome *</label><input type="text" id="uNome" placeholder="Nome do usuário"></div>
           <div class="form-field"><label>Senha *</label><input type="password" id="uSenha" placeholder="Senha de acesso"></div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--dark);margin-bottom:16px;cursor:pointer">
+          <input type="checkbox" id="uForcarTroca" checked style="width:16px;height:16px">
+          Senha temporária — exigir troca no próximo login
+        </label>
         <div style="font-size:.72rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Projetos liberados</div>
         <div class="projetos-check" id="projetosCheck"></div>
         <input type="hidden" id="uEditId">
@@ -447,10 +471,67 @@ function fazerLogin() {
     return;
   }
 
+  if (user.trocarSenhaObrigatoria) {
+    abrirTrocaSenhaObrigatoria(user);
+    return;
+  }
+
   saveSession(user);
   registrarLog(user, 'Login');
   iniciarSessao(user);
 }
+
+/* =========================================================
+   TROCA DE SENHA OBRIGATÓRIA (primeiro acesso com senha temporária)
+   ========================================================= */
+let _usuarioTrocandoSenha = null;
+
+function abrirTrocaSenhaObrigatoria(user) {
+  _usuarioTrocandoSenha = user;
+  document.getElementById('novaSenha1').value = '';
+  document.getElementById('novaSenha2').value = '';
+  document.getElementById('trocarSenhaErro').style.display = 'none';
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('trocarSenhaOverlay').style.display = 'flex';
+}
+
+function fecharTrocaSenhaObrigatoria() {
+  _usuarioTrocandoSenha = null;
+  document.getElementById('trocarSenhaOverlay').style.display = 'none';
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('loginSenha').value = '';
+  document.getElementById('loginSenha').focus();
+}
+
+document.getElementById('btnConfirmarTrocaSenha').addEventListener('click', () => {
+  if (!_usuarioTrocandoSenha) return;
+  const nova = document.getElementById('novaSenha1').value;
+  const confirmacao = document.getElementById('novaSenha2').value;
+
+  if (!nova || nova !== confirmacao) {
+    document.getElementById('trocarSenhaErro').style.display = 'block';
+    return;
+  }
+
+  const users = getUsers();
+  const idx = users.findIndex(u => u.id === _usuarioTrocandoSenha.id);
+  if (idx < 0) { fecharTrocaSenhaObrigatoria(); return; }
+
+  users[idx].senha = nova;
+  users[idx].trocarSenhaObrigatoria = false;
+  saveUsers(users);
+
+  const userAtualizado = users[idx];
+  document.getElementById('trocarSenhaOverlay').style.display = 'none';
+  _usuarioTrocandoSenha = null;
+
+  saveSession(userAtualizado);
+  registrarLog(userAtualizado, 'Login');
+  iniciarSessao(userAtualizado);
+});
+
+document.getElementById('novaSenha2').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btnConfirmarTrocaSenha').click(); });
+document.getElementById('btnCancelarTrocaSenha').addEventListener('click', fecharTrocaSenhaObrigatoria);
 
 function iniciarSessao(user) {
   document.getElementById('loginOverlay').style.display = 'none';
@@ -547,14 +628,15 @@ document.getElementById('btnSalvarUsuario').addEventListener('click', () => {
 
   const projetos = Array.from(document.querySelectorAll('#projetosCheck input:checked')).map(c => c.value);
   if (!projetos.length) { alert('Selecione ao menos um projeto.'); return; }
+  const trocarSenhaObrigatoria = document.getElementById('uForcarTroca').checked;
 
   const users = getUsers();
   if (editId) {
     const idx = users.findIndex(u => u.id === editId);
-    if (idx >= 0) { users[idx].nome = nome; users[idx].senha = senha; users[idx].projetos = projetos; }
+    if (idx >= 0) { users[idx].nome = nome; users[idx].senha = senha; users[idx].projetos = projetos; users[idx].trocarSenhaObrigatoria = trocarSenhaObrigatoria; }
   } else {
     if (users.some(u => u.nome.toLowerCase() === nome.toLowerCase())) { alert('Já existe um usuário com este nome.'); return; }
-    users.push({ id: 'u_' + Date.now(), nome, senha, projetos, isAdmin: false });
+    users.push({ id: 'u_' + Date.now(), nome, senha, projetos, isAdmin: false, trocarSenhaObrigatoria });
   }
 
   saveUsers(users);
@@ -568,6 +650,7 @@ function limparFormUsuario() {
   document.getElementById('uNome').value = '';
   document.getElementById('uSenha').value = '';
   document.getElementById('uEditId').value = '';
+  document.getElementById('uForcarTroca').checked = true;
   document.getElementById('btnCancelarEdicao').style.display = 'none';
   buildProjetosCheck();
 }
@@ -578,6 +661,7 @@ function editarUsuario(id) {
   document.getElementById('uNome').value = user.nome;
   document.getElementById('uSenha').value = user.senha;
   document.getElementById('uEditId').value = user.id;
+  document.getElementById('uForcarTroca').checked = !!user.trocarSenhaObrigatoria;
   document.getElementById('btnCancelarEdicao').style.display = 'inline-block';
   buildProjetosCheck(user.projetos);
   document.getElementById('uNome').focus();
@@ -602,8 +686,9 @@ function renderTabelaUsuarios() {
       const p = PROJETOS.find(x => x.id === pid);
       return `<span class="badge-proj">${p ? p.nome : pid}</span>`;
     }).join('');
+    const trocaNota = u.trocarSenhaObrigatoria ? ' <span title="Vai ter que trocar a senha no próximo login" style="font-size:.7rem;color:#c2410c">🔑 senha temporária</span>' : '';
     tbody.innerHTML += `<tr>
-      <td><strong>${u.nome}</strong></td>
+      <td><strong>${u.nome}</strong>${trocaNota}</td>
       <td>${badges}</td>
       <td style="white-space:nowrap">
         <button class="btn-danger" onclick="editarUsuario('${u.id}')">Editar</button>
