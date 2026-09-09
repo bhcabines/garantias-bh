@@ -62,19 +62,28 @@ Cockpit.DashboardIndividual = (function () {
       ? linhas.reduce(function (s, r) { return s + (Number(r.ticketMedio) || 0); }, 0) / linhas.length
       : 0;
     const diasComDados = Cockpit.Calc.diasImportadosNoMes(linhas);
-    const mediaDiariaRealizada = Cockpit.Calc.mediaDiariaRealizada(acumulado, diasComDados);
 
     // Meta individual (mensal e diária) — reaproveita EXATAMENTE a mesma fórmula da
-    // Corrida Comercial (ativo/férias/período inicial etc.), rodando só pra este vendedor.
+    // Corrida Comercial. IMPORTANTE: passa o ROSTER INTEIRO (não só este vendedor) —
+    // a divisão da meta do setor pela quantidade de ativos precisa contar todo mundo
+    // do setor, senão o cálculo trata este vendedor como se fosse o único do setor
+    // (dividindo por 1) e mostra a meta do setor inteiro como se fosse a dele.
     const ranking = Cockpit.Calc.rankingVendedores(
-      linhas, [vendedor], metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes,
+      linhas, roster, metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes,
       metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor
     );
-    const meuRanking = ranking[0] || {};
+    const meuRanking = ranking.find(function (r) {
+      return Cockpit.Calc.normalizarCodigoVendedor(r.codigo) === Cockpit.Calc.normalizarCodigoVendedor(vendedor.codigo);
+    }) || {};
     const metaMensal = meuRanking.metaIndividual;
     const metaDiaria = meuRanking.metaIndividualDiaria;
-    const percMensal = metaMensal ? Cockpit.Calc.percAtingido(acumulado, metaMensal) : null;
-    const ritmoDiario = metaDiaria ? Cockpit.Calc.percAtingido(mediaDiariaRealizada, metaDiaria) : null;
+    const percFeita = metaMensal ? Cockpit.Calc.percAtingido(acumulado, metaMensal) : null;
+
+    // % ideal = quanto do mês já deveria ter sido cumprido até agora, considerando
+    // só os dias já com dado importado (ex.: 1 de 25 dias trabalhados = 4% ideal).
+    // Comparar com percFeita mostra se está adiantado ou atrasado no ritmo.
+    const diasTrabalhados = Number(metaCfg.diasTrabalhados) || 0;
+    const percIdeal = diasTrabalhados > 0 ? (diasComDados / diasTrabalhados * 100) : null;
 
     document.getElementById('individualSubtitulo').textContent =
       vendedor.nome + ' · ' + Cockpit.State.setorLabel(vendedor.setor) + ' — mês comercial vigente (28 do mês anterior a 27 do mês atual).';
@@ -82,8 +91,8 @@ Cockpit.DashboardIndividual = (function () {
     document.getElementById('indMetaMensal').textContent = metaMensal != null ? fmt(metaMensal) : 'sem meta';
     document.getElementById('indMetaDiaria').textContent = metaDiaria != null ? fmt(metaDiaria) : 'sem meta';
     document.getElementById('indAcumulado').textContent = fmt(acumulado);
-    document.getElementById('indPercMensal').textContent = percMensal != null ? fmtPerc(percMensal) : '—';
-    document.getElementById('indRitmoDiario').textContent = ritmoDiario != null ? fmtPerc(ritmoDiario) : '—';
+    document.getElementById('indPercMensal').textContent = percFeita != null ? fmtPerc(percFeita) : '—';
+    document.getElementById('indPercIdeal').textContent = percIdeal != null ? fmtPerc(percIdeal) : '—';
     document.getElementById('indTicketMedio').textContent = fmt(ticketMedioAcumulado);
     document.getElementById('indDevolucoes').textContent = fmt(devolucoesAcumuladas);
 
