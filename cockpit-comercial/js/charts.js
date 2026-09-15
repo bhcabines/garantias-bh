@@ -94,10 +94,15 @@ Cockpit.Charts = (function () {
     }
   };
 
-  // dias: [{data, porSetor:{TELEMARKETING:x, BALCAO:y, ...}, total}], metaDiariaGeral: number
+  // dias: [{data, porSetor:{TELEMARKETING:x, BALCAO:y, ...}, total}], metaDiariaReferencia:
+  // number, labelMetaReferencia: texto da linha tracejada (ex.: "Meta Diária Geral" ou,
+  // quando filtrado por um vendedor específico, "Meta Diária Individual" — nesse caso o
+  // valor também é bem menor, então a escala do eixo Y encolhe sozinha pra caber os dados
+  // dele em vez de ficar esmagada pela escala do time inteiro).
   // Um dataset de barra empilhada por setor cadastrado (Cockpit.State.SETORES) — genérico,
   // não fica preso a Telemarketing/Balcão.
-  function renderDiarioSetor(canvasId, dias, metaDiariaGeral) {
+  function renderDiarioSetor(canvasId, dias, metaDiariaReferencia, labelMetaReferencia) {
+    const labelLinha = labelMetaReferencia || 'Meta Diária Geral';
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
     if (chartDiarioSetor) chartDiarioSetor.destroy();
@@ -120,8 +125,8 @@ Cockpit.Charts = (function () {
       data: {
         labels: labels,
         datasets: datasetsSetor.concat([{
-          type: 'line', label: 'Meta Diária Geral',
-          data: (dias || []).map(function () { return metaDiariaGeral || 0; }),
+          type: 'line', label: labelLinha,
+          data: (dias || []).map(function () { return metaDiariaReferencia || 0; }),
           borderColor: '#515053', borderDash: [6, 4], borderWidth: 2,
           pointRadius: 0, fill: false, order: 1
         }])
@@ -138,9 +143,7 @@ Cockpit.Charts = (function () {
           tooltip: {
             callbacks: {
               label: function (ctx) {
-                return ctx.dataset.type === 'line'
-                  ? 'Meta diária: ' + fmtMoeda(ctx.parsed.y)
-                  : ctx.dataset.label + ': ' + fmtMoeda(ctx.parsed.y);
+                return ctx.dataset.label + ': ' + fmtMoeda(ctx.parsed.y);
               },
               footer: function (items) {
                 const total = items.filter(function (i) { return i.dataset.type !== 'line'; })

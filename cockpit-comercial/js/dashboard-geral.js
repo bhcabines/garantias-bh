@@ -112,13 +112,32 @@ Cockpit.DashboardGeral = (function () {
     const linhas = getVendasFiltradas(false);
     const linhasAmbosSetores = getVendasFiltradas(true);
 
-    const metaUsada = f.setor ? (metasAjustadas[f.setor] || 0) : metaGeralAjustada;
+    // Quando o filtro é por um vendedor específico, a meta usada (card de %, valor
+    // restante, meta diária e linha tracejada do gráfico) passa a ser a META
+    // INDIVIDUAL dele — nunca a do setor/geral. O ranking aqui roda sobre o
+    // CADASTRO INTEIRO (só exclui inativos), nunca só o vendedor filtrado — senão a
+    // divisão "meta do setor ÷ ativos do setor" trataria ele como único ativo do
+    // setor e devolveria a meta do setor inteiro como se fosse a dele.
+    let metaUsada, metaDiaria, labelMetaGrafico;
+    if (f.vendedorCodigo) {
+      const rosterCompleto = roster.filter(function (v) { return v.status !== 'inativo'; });
+      const rankingCompleto = Cockpit.Calc.rankingVendedores(linhasAmbosSetores, rosterCompleto, metasPorSetor, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor);
+      const meuRanking = rankingCompleto.find(function (r) {
+        return Cockpit.Calc.normalizarCodigoVendedor(r.codigo) === Cockpit.Calc.normalizarCodigoVendedor(f.vendedorCodigo);
+      });
+      metaUsada = meuRanking && meuRanking.metaIndividual != null ? meuRanking.metaIndividual : 0;
+      metaDiaria = meuRanking && meuRanking.metaIndividualDiaria != null ? meuRanking.metaIndividualDiaria : 0;
+      labelMetaGrafico = 'Meta Diária Individual';
+    } else {
+      metaUsada = f.setor ? (metasAjustadas[f.setor] || 0) : metaGeralAjustada;
+      metaDiaria = Cockpit.Calc.metaDiaria(metaUsada, metaCfg.diasTrabalhados);
+      labelMetaGrafico = 'Meta Diária Geral';
+    }
 
     const vendasAcumuladas = linhas.reduce(function (s, r) { return s + (Number(r.vendas) || 0); }, 0);
     const diasComDados = Cockpit.Calc.diasImportadosNoMes(linhas);
     const percAtingido = Cockpit.Calc.percAtingido(vendasAcumuladas, metaUsada);
     const valorRestante = Cockpit.Calc.valorRestante(vendasAcumuladas, metaUsada);
-    const metaDiaria = Cockpit.Calc.metaDiaria(metaUsada, metaCfg.diasTrabalhados);
     const mediaDiaria = Cockpit.Calc.mediaDiariaRealizada(vendasAcumuladas, diasComDados);
 
     document.getElementById('cardVendasAcum').textContent = fmt(vendasAcumuladas);
@@ -145,7 +164,7 @@ Cockpit.DashboardGeral = (function () {
     Cockpit.Charts.renderParticipacao('chartParticipacao', ranking);
 
     const dias = Cockpit.Calc.agregarPorDia(linhas);
-    Cockpit.Charts.renderDiarioSetor('chartDiarioSetor', dias, metaDiaria);
+    Cockpit.Charts.renderDiarioSetor('chartDiarioSetor', dias, metaDiaria, labelMetaGrafico);
 
     renderCorrida(f);
   }
@@ -154,15 +173,19 @@ Cockpit.DashboardGeral = (function () {
     const cfg = Cockpit.State.getConfig();
     const metaCfg = cfg[chaveMesAno(filtros.mes, filtros.ano)] || { metasPorSetor: {} };
 
-    const roster = Cockpit.State.getVendedores().filter(function (v) {
-      if (v.status === 'inativo') return false;
-      if (filtros.setor && v.setor !== filtros.setor) return false;
-      if (filtros.vendedorCodigo && v.codigo !== filtros.vendedorCodigo) return false;
+    // O ranking roda sobre o CADASTRO INTEIRO (só exclui inativos) — filtrar o
+    // roster por setor/vendedor ANTES de calcular quebraria a divisão "meta do
+    // setor ÷ ativos do setor" pra quem sobrasse. O filtro de setor/vendedor só
+    // decide o que APARECE na lista, depois que a meta de cada um já foi calculada
+    // corretamente contra o time inteiro.
+    const rosterCompleto = Cockpit.State.getVendedores().filter(function (v) { return v.status !== 'inativo'; });
+    const linhas = getVendasFiltradas(false);
+    const rankingCompleto = Cockpit.Calc.rankingVendedores(linhas, rosterCompleto, metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor);
+    const ranking = rankingCompleto.filter(function (r) {
+      if (filtros.setor && r.setor !== filtros.setor) return false;
+      if (filtros.vendedorCodigo && Cockpit.Calc.normalizarCodigoVendedor(r.codigo) !== Cockpit.Calc.normalizarCodigoVendedor(filtros.vendedorCodigo)) return false;
       return true;
     });
-
-    const linhas = getVendasFiltradas(false);
-    const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metaCfg.metasPorSetor || {}, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor);
 
     const container = document.getElementById('corridaContainer');
     if (!ranking.length) {
