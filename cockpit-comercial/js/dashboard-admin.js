@@ -478,6 +478,16 @@ Cockpit.DashboardAdmin = (function () {
     const duplicado = lista.find(function (v) { return v.codigo === codigo && v.id !== editId; });
     if (duplicado) { alert('Já existe um vendedor cadastrado com este código.'); return; }
 
+    // Mesma pessoa cadastrada duas vezes (ex.: o código dela mudou no ERP e alguém
+    // criou um cadastro novo em vez de atualizar o código no existente) divide as
+    // vendas dela entre dois registros e duplica ela na Corrida Comercial — barra
+    // isso aqui, na criação, em vez de deixar pra descobrir depois.
+    const duplicadoNome = lista.find(function (v) { return Cockpit.Calc.normalizarNome(v.nome) === Cockpit.Calc.normalizarNome(nome) && v.id !== editId; });
+    if (duplicadoNome) {
+      alert('Já existe um vendedor cadastrado com esse nome: "' + duplicadoNome.nome + '" (código ' + duplicadoNome.codigo + ', ' + Cockpit.State.setorLabel(duplicadoNome.setor) + '). Se o código dele mudou no ERP, edite esse cadastro e atualize o código, em vez de criar um novo — senão as vendas ficam divididas entre dois cadastros.');
+      return;
+    }
+
     const agora = new Date().toISOString();
 
     if (editId) {
@@ -701,6 +711,17 @@ Cockpit.DashboardAdmin = (function () {
       const nome = document.getElementById('vrNovoNome').value.trim();
       const setor = document.getElementById('vrNovoSetor').value;
       if (!nome || !setor) { alert('Selecione um vendedor existente ou informe nome e setor para cadastrar um novo.'); return; }
+
+      // Já existe alguém com esse nome no cadastro — cadastrar "novo" aqui criaria
+      // um segundo registro pra mesma pessoa (código do ERP mudou, por exemplo) e
+      // dividiria as vendas dela entre dois cadastros diferentes. Use "Mapear para
+      // vendedor existente" acima em vez de preencher esses campos.
+      const duplicadoNome = lista.find(function (v) { return Cockpit.Calc.normalizarNome(v.nome) === Cockpit.Calc.normalizarNome(nome); });
+      if (duplicadoNome) {
+        alert('Já existe um vendedor cadastrado com esse nome: "' + duplicadoNome.nome + '" (código ' + duplicadoNome.codigo + ', ' + Cockpit.State.setorLabel(duplicadoNome.setor) + '). Use "Mapear para vendedor existente" acima e selecione esse cadastro, em vez de criar um novo.');
+        return;
+      }
+
       const agora = new Date().toISOString();
       vendedorResolvido = { id: 'v_' + codigo, codigo: codigo, nome: nome, setor: setor, status: 'ativo', criadoEm: agora, atualizadoEm: agora };
       lista.push(vendedorResolvido);
