@@ -591,6 +591,7 @@ Cockpit.DashboardAdmin = (function () {
     // Modal de vendedor não cadastrado
     popularSelectSetor(document.getElementById('vrNovoSetor'));
     document.getElementById('btnResolverVendedorRapido').addEventListener('click', resolverVendedorNaoCadastrado);
+    document.getElementById('btnNaoContabilizarVendedor').addEventListener('click', naoContabilizarVendedorNaoCadastrado);
     document.getElementById('btnCancelarVendedorRapido').addEventListener('click', fecharModalVendedorRapido);
     document.getElementById('closeModalVendedorRapido').addEventListener('click', fecharModalVendedorRapido);
 
@@ -620,14 +621,27 @@ Cockpit.DashboardAdmin = (function () {
       tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Nenhum arquivo carregado ainda.</td></tr>';
     } else {
       let totalVendas = 0;
-      tbody.innerHTML = linhasPendentes.map(function (l) {
+      tbody.innerHTML = linhasPendentes.map(function (l, idx) {
         totalVendas += l.vendas;
         const setorCel = l.vendedorNaoCadastrado
           ? '<span class="badge-status inativo">não identificado</span>'
           : Cockpit.State.setorBadgeHtml(l.setor);
-        return '<tr><td>' + l.vendedorCodigo + '</td><td>' + l.vendedorNome + '</td><td>' + setorCel + '</td><td>' +
+        return '<tr><td>' + l.vendedorCodigo + '</td>' +
+          '<td><input type="text" class="campo-vendedor-editavel" data-idx="' + idx + '" value="' + String(l.vendedorNome || '').replace(/"/g, '&quot;') + '"></td>' +
+          '<td>' + setorCel + '</td><td>' +
           fmt(l.vendas) + '</td><td>' + l.numVendas + '</td><td>' + fmt(l.ticketMedio) + '</td><td>' + fmt(l.metaDiariaErp) + '</td></tr>';
       }).join('') + '<tr style="font-weight:700;background:#f3f4f6"><td colspan="3">Total</td><td>' + fmt(totalVendas) + '</td><td colspan="3"></td></tr>';
+
+      // Editar o nome aqui só corrige o que vai ser importado (ex.: unificar duas
+      // linhas do mesmo vendedor com nomes escritos diferente) — não mexe no
+      // cadastro de vendedores. Nomes iguais (já editados ou não) são somados numa
+      // linha só ao confirmar a importação — ver mesclarLinhasPorVendedor.
+      tbody.querySelectorAll('.campo-vendedor-editavel').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+          const idx = Number(inp.dataset.idx);
+          if (linhasPendentes[idx]) linhasPendentes[idx].vendedorNome = inp.value.trim();
+        });
+      });
     }
 
     const pendentes = linhasPendentes.filter(function (l) { return l.vendedorNaoCadastrado; });
@@ -702,6 +716,18 @@ Cockpit.DashboardAdmin = (function () {
     refreshVendedoresPresentesSeVisivel();
   }
 
+  // Vendas esporádicas de alguém que não faz parte da equipe (não deve virar
+  // cadastro nem ser mapeado pra outro vendedor) — remove as linhas desse código da
+  // importação em andamento, sem contar pra meta de ninguém.
+  function naoContabilizarVendedorNaoCadastrado() {
+    const codigo = codigoEmResolucao;
+    if (!codigo) return;
+    if (!confirm('As vendas do código ' + codigo + ' não vão ser importadas nem contar para nenhuma meta. Confirmar?')) return;
+    linhasPendentes = Cockpit.Import.removerLinhasDoVendedor(linhasPendentes, codigo);
+    fecharModalVendedorRapido();
+    renderPreview();
+  }
+
   function confirmarImportacao() {
     const dataStr = document.getElementById('importData').value;
     if (!dataStr) { alert('Selecione a data de referência.'); return; }
@@ -726,8 +752,45 @@ Cockpit.DashboardAdmin = (function () {
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
   }
 
+  // Quando o ERP exporta a mesma pessoa em códigos diferentes (ex.: cadastro
+  // duplicado), o admin corrige o nome na pré-visualização até os nomes ficarem
+  // iguais — aqui, na confirmação, essas linhas de mesmo nome são somadas numa
+  // única linha, em vez de virarem dois registros de venda separados no mesmo dia.
+  function mesclarLinhasPorVendedor(linhas) {
+    const grupos = {};
+    const ordem = [];
+    (linhas || []).forEach(function (l) {
+      const chave = Cockpit.Calc.normalizarNome(l.vendedorNome);
+      if (!grupos[chave]) { grupos[chave] = []; ordem.push(chave); }
+      grupos[chave].push(l);
+    });
+
+    return ordem.map(function (chave) {
+      const grupo = grupos[chave];
+      if (grupo.length === 1) return grupo[0];
+
+      // Usa código/setor de uma linha já reconhecida no cadastro, se houver —
+      // evita que a linha somada fique com um código "não identificado".
+      const base = grupo.find(function (l) { return !l.vendedorNaoCadastrado; }) || grupo[0];
+      const somaCampo = function (campo) {
+        return grupo.reduce(function (s, l) { return s + (Number(l[campo]) || 0); }, 0);
+      };
+
+      const vendas = somaCampo('vendas');
+      const numVendas = somaCampo('numVendas');
+
+      return Object.assign({}, base, {
+        vendas: vendas,
+        numVendas: numVendas,
+        qtdVendida: somaCampo('qtdVendida'),
+        devolucoes: somaCampo('devolucoes'),
+        ticketMedio: numVendas > 0 ? (vendas / numVendas) : 0
+      });
+    });
+  }
+
   function enviarImportacao(dataStr, modo) {
-    const rows = linhasPendentes.map(function (l) {
+    const rows = mesclarLinhasPorVendedor(linhasPendentes).map(function (l) {
       return {
         vendedorCodigo: l.vendedorCodigo, vendedorNome: l.vendedorNome, setor: l.setor,
         vendas: l.vendas, metaDiariaErp: l.metaDiariaErp, numVendas: l.numVendas, qtdVendida: l.qtdVendida,
