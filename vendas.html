@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BH Cabines — DIFAL</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -297,21 +298,21 @@ async function step1(f){
 
 // ══════════════════════════════════════════════════════════════
 //  PARSER PDF
+//  Alguns orçamentos (ex.: SS Sistemas) vêm com a fonte do PDF sem o mapa
+//  /ToUnicode — o texto "embutido" no arquivo é só o número interno do glifo,
+//  sem nenhuma correspondência com letras/números de verdade. Isso é um
+//  defeito da geração do PDF, não dá pra corrigir com regex: nenhum leitor de
+//  texto (nem o navegador) consegue recuperar o texto real desses arquivos.
+//  Quando isso acontece (a extração de texto normal não encontra nenhum
+//  item), a única saída é reconhecer os números pela IMAGEM da página (OCR),
+//  usando exatamente a mesma lógica de linhas/colunas de antes — só troca de
+//  onde vêm os tokens posicionados (texto do PDF vs. palavras do OCR).
 // ══════════════════════════════════════════════════════════════
-async function lerPDF(buf){
-  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
-  const all=[];
-  const dbg=[];
-  for(let p=1;p<=pdf.numPages;p++){
-    const page=await pdf.getPage(p);
-    const vp=page.getViewport({scale:1});
-    const tc=await page.getTextContent();
-    for(const it of tc.items){
-      const s=(it.str||'').trim();
-      if(!s) continue;
-      all.push({s,x:r2(it.transform[4]),y:r2(vp.height-it.transform[5]),p});
-    }
-  }
+
+// Recebe tokens posicionados [{s,x,y,p}] (x/y em pontos do PDF, origem no topo)
+// e faz todo o trabalho de agrupar em linhas, achar cabeçalho e montar os itens
+// da tabela — usado tanto pelo texto nativo do PDF quanto pelo resultado do OCR.
+function parsearTokensEmItens(all,dbg){
   all.sort((a,b)=>a.p-b.p||a.y-b.y||a.x-b.x);
   const linhas=[];
   let cur=null,ulY=-9999,ulP=-1;
@@ -319,7 +320,7 @@ async function lerPDF(buf){
     if(it.p!==ulP||Math.abs(it.y-ulY)>5){cur={y:it.y,p:it.p,c:[]};linhas.push(cur);ulY=it.y;ulP=it.p;}
     cur.c.push(it);
   }
-  dbg.push(`Páginas:${pdf.numPages} | Itens:${all.length} | Linhas:${linhas.length}`);
+  dbg.push(`Itens de texto:${all.length} | Linhas:${linhas.length}`);
   const txt=l=>l.c.map(i=>i.s).join(' ');
   const h={nr:'',emissao:'',impressao:'',valido:'',cliente:'',cidade:'',cep:'',bairro:'',end:'',email:'',vendedor:'',fone1:''};
   for(const l of linhas){
@@ -389,6 +390,61 @@ async function lerPDF(buf){
   dbg.push(`\nTotal itens: ${itens.length}`);
   dbg.push('\n--- Primeiras 8 linhas da tabela ---');
   linhasTab.slice(0,8).forEach((l,i)=>dbg.push(`L${i}: ${txt(l).slice(0,100)}`));
+  return {h,itens};
+}
+
+// Renderiza cada página como imagem e reconhece o texto por OCR (Tesseract) —
+// usado só quando o texto embutido no PDF não deu em nada (ver comentário
+// acima). scale alto ajuda a acertar números pequenos/apertados da tabela.
+async function ocrPaginas(pdf,dbg){
+  const scale=3;
+  const all=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const ldMsgEl=document.getElementById('ldMsg');
+    if(ldMsgEl) ldMsgEl.textContent=`Texto do PDF ilegível — reconhecendo por imagem (OCR), página ${p}/${pdf.numPages}...`;
+    const page=await pdf.getPage(p);
+    const vp=page.getViewport({scale});
+    const canvas=document.createElement('canvas');
+    canvas.width=vp.width; canvas.height=vp.height;
+    const ctx=canvas.getContext('2d');
+    await page.render({canvasContext:ctx,viewport:vp}).promise;
+    const {data}=await Tesseract.recognize(canvas,'por');
+    (data.words||[]).forEach(w=>{
+      const s=(w.text||'').trim();
+      if(!s) return;
+      all.push({s,x:r2(w.bbox.x0/scale),y:r2(w.bbox.y0/scale),p});
+    });
+  }
+  dbg.push(`[OCR] Palavras reconhecidas: ${all.length}`);
+  return all;
+}
+
+async function lerPDF(buf){
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const all=[];
+  const dbg=[`Páginas:${pdf.numPages}`];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const vp=page.getViewport({scale:1});
+    const tc=await page.getTextContent();
+    for(const it of tc.items){
+      const s=(it.str||'').trim();
+      if(!s) continue;
+      all.push({s,x:r2(it.transform[4]),y:r2(vp.height-it.transform[5]),p});
+    }
+  }
+  let {h,itens}=parsearTokensEmItens(all,dbg);
+
+  if(itens.length===0 && all.length>0){
+    dbg.push('\n⚠ Nenhum item reconhecido no texto do PDF (a fonte desse arquivo não tem mapa de caracteres válido — comum em orçamentos do SS Sistemas). Tentando reconhecer pela imagem da página (OCR)...');
+    try{
+      const allOcr=await ocrPaginas(pdf,dbg);
+      const res2=parsearTokensEmItens(allOcr,dbg);
+      h=res2.h; itens=res2.itens;
+    }catch(e){
+      dbg.push('Falha ao tentar OCR: '+e.message);
+    }
+  }
   return {h,itens,dbg:dbg.join('\n')};
 }
 
