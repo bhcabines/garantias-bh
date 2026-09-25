@@ -97,17 +97,31 @@ Cockpit.Import = (function () {
     });
   }
 
-  // Aplica a resolução manual de um código não cadastrado (mapeado ou recém-criado)
-  // sobre o array de linhas em memória, sem precisar reparsear o arquivo.
+  // Aplica a resolução manual de um código não cadastrado (mapeado pra um
+  // vendedor já existente, ou recém-criado) sobre o array de linhas em memória,
+  // sem precisar reparsear o arquivo. Também troca o código NESSA LINHA pelo
+  // código real do cadastro (vendedorResolvido.codigo) — pra quem foi mapeado
+  // pra um vendedor já existente, isso faz a venda entrar sob a identidade
+  // certa (não sob o código avulso/errado que veio do ERP), sem precisar mexer
+  // no cadastro. Pra quem acabou de ser cadastrado, é um no-op (o código já é
+  // o mesmo).
   function aplicarResolucao(linhasParseadas, codigo, vendedorResolvido) {
     return (linhasParseadas || []).map(function (linha) {
       if (linha.vendedorCodigo !== codigo) return linha;
       const out = Object.assign({}, linha);
+      out.vendedorCodigo = vendedorResolvido.codigo;
       out.vendedorNome = vendedorResolvido.nome;
       out.setor = vendedorResolvido.setor;
       out.vendedorNaoCadastrado = false;
       return out;
     });
+  }
+
+  // Remove da importação em andamento as linhas de um código não cadastrado que o
+  // admin decidiu NÃO contabilizar (venda esporádica de alguém fora da equipe) — em
+  // vez de mapear pra um vendedor, essas vendas simplesmente não entram no sistema.
+  function removerLinhasDoVendedor(linhasParseadas, codigo) {
+    return (linhasParseadas || []).filter(function (linha) { return linha.vendedorCodigo !== codigo; });
   }
 
   function checarDuplicidadeLocal(dataStr) {
@@ -120,6 +134,7 @@ Cockpit.Import = (function () {
     parseRelatorioXlsx: parseRelatorioXlsx,
     joinComRoster: joinComRoster,
     aplicarResolucao: aplicarResolucao,
+    removerLinhasDoVendedor: removerLinhasDoVendedor,
     checarDuplicidadeLocal: checarDuplicidadeLocal
   };
 })();

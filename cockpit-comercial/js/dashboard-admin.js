@@ -701,11 +701,17 @@ Cockpit.DashboardAdmin = (function () {
     let vendedorResolvido;
 
     if (existenteId) {
-      // Código do ERP mudou para um vendedor já cadastrado — atualiza o código no cadastro.
+      // Essa venda (com um código não reconhecido) é de alguém que já está no
+      // cadastro — ex.: venda avulsa registrada com o código errado, ou de outra
+      // pessoa mesmo, mas que deve contar pra esse vendedor. NÃO mexe no código
+      // cadastrado dele: aplicarResolucao() troca o código NESSA LINHA pro código
+      // real do cadastro, então a venda entra certinho sob a identidade que já
+      // existe, sem sobrescrever o cadastro (que já corrigimos uma vez por causa
+      // disso — sobrescrever aqui apagaria o código de verdade da pessoa). Se o
+      // código dela realmente mudou pra sempre no ERP, atualize isso direto na
+      // aba Vendedores, como uma ação deliberada.
       const v = lista.find(function (x) { return x.id === existenteId; });
       if (!v) return;
-      v.codigo = codigo;
-      v.atualizadoEm = new Date().toISOString();
       vendedorResolvido = v;
     } else {
       const nome = document.getElementById('vrNovoNome').value.trim();
@@ -778,6 +784,7 @@ Cockpit.DashboardAdmin = (function () {
   // iguais — aqui, na confirmação, essas linhas de mesmo nome são somadas numa
   // única linha, em vez de virarem dois registros de venda separados no mesmo dia.
   function mesclarLinhasPorVendedor(linhas) {
+    const roster = Cockpit.State.getVendedores();
     const grupos = {};
     const ordem = [];
     (linhas || []).forEach(function (l) {
@@ -790,9 +797,16 @@ Cockpit.DashboardAdmin = (function () {
       const grupo = grupos[chave];
       if (grupo.length === 1) return grupo[0];
 
-      // Usa código/setor de uma linha já reconhecida no cadastro, se houver —
-      // evita que a linha somada fique com um código "não identificado".
-      const base = grupo.find(function (l) { return !l.vendedorNaoCadastrado; }) || grupo[0];
+      // Prioridade pra escolher o código/setor da linha somada: (1) a linha cujo
+      // código bate com o cadastro ATUAL de vendedores — a fonte mais confiável,
+      // já que uma linha pode ter "vendedorNaoCadastrado:false" mas carregar um
+      // código avulso/errado (ex.: veio de uma resolução manual antiga); (2) se
+      // nenhuma bater, cai pra uma linha só marcada como reconhecida; (3) por
+      // último, a primeira linha do grupo.
+      const vendedorNoCadastro = roster.find(function (v) { return Cockpit.Calc.normalizarNome(v.nome) === chave; });
+      const base = (vendedorNoCadastro && grupo.find(function (l) {
+        return Cockpit.Calc.normalizarCodigoVendedor(l.vendedorCodigo) === Cockpit.Calc.normalizarCodigoVendedor(vendedorNoCadastro.codigo);
+      })) || grupo.find(function (l) { return !l.vendedorNaoCadastrado; }) || grupo[0];
       const somaCampo = function (campo) {
         return grupo.reduce(function (s, l) { return s + (Number(l[campo]) || 0); }, 0);
       };
