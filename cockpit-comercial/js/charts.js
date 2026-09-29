@@ -128,7 +128,11 @@ Cockpit.Charts = (function () {
           type: 'line', label: labelLinha,
           data: (dias || []).map(function () { return metaDiariaReferencia || 0; }),
           borderColor: '#515053', borderDash: [6, 4], borderWidth: 2,
-          pointRadius: 0, fill: false, order: 1
+          // pointRadius>0 é necessário pro traço aparecer logo no início de um mês
+          // novo (1 dia só de dado) — uma linha precisa de 2+ pontos pra desenhar
+          // um segmento; com só 1 ponto e raio 0, não sobra nada visível.
+          pointRadius: 2, pointBackgroundColor: '#515053', pointBorderWidth: 0,
+          fill: false, order: 1
         }])
       },
       options: {

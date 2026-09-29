@@ -139,10 +139,16 @@ Cockpit.DashboardGeral = (function () {
     const percAtingido = Cockpit.Calc.percAtingido(vendasAcumuladas, metaUsada);
     const valorRestante = Cockpit.Calc.valorRestante(vendasAcumuladas, metaUsada);
     const mediaDiaria = Cockpit.Calc.mediaDiariaRealizada(vendasAcumuladas, diasComDados);
+    // % Meta Ideal: quanto do mês já deveria ter sido cumprido até agora, considerando
+    // só os dias já com dado importado (ex.: 1 de 25 dias trabalhados = 4% ideal) —
+    // comparar com percAtingido mostra se está adiantado ou atrasado no ritmo.
+    const diasTrabalhados = Number(metaCfg.diasTrabalhados) || 0;
+    const percIdeal = diasTrabalhados > 0 ? (diasComDados / diasTrabalhados * 100) : null;
 
     document.getElementById('cardVendasAcum').textContent = fmt(vendasAcumuladas);
     document.getElementById('cardMetaGeral').textContent = fmt(metaUsada);
     document.getElementById('cardPercAtingido').textContent = fmtPerc(percAtingido);
+    document.getElementById('cardPercIdeal').textContent = percIdeal != null ? fmtPerc(percIdeal) : '—';
     document.getElementById('cardValorRestante').textContent = fmt(valorRestante);
     document.getElementById('cardMetaDiaria').textContent = fmt(metaDiaria);
     document.getElementById('cardMediaDiaria').textContent = fmt(mediaDiaria);
