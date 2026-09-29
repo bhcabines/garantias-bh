@@ -63,7 +63,7 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 .sum-card.green-soft .sum-label,.sum-card.green-soft .sum-value{color:#15803d}
 .sum-card.green-soft .sum-card-sub{color:#166534}
 .sum-label{font-size:.68rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px;min-width:0}
-.sum-value{font-size:1.35rem;font-weight:700;color:var(--black);min-width:0;overflow-wrap:break-word;word-break:break-word}
+.sum-value{font-size:1.05rem;font-weight:700;color:var(--black);min-width:0;white-space:nowrap}
 .sum-value.good{color:var(--good)}
 .sum-value.bad{color:var(--bad)}
 
