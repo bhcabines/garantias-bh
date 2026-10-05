@@ -136,6 +136,17 @@
     input.addEventListener('blur', function () { input.value = fmt(parseNumeroBR(input.value)); });
   }
 
+  function zerarValoresDe(ids) {
+    const todos = getFuncionarios();
+    const idsSet = ids ? new Set(ids) : null;
+    todos.forEach(function (f) { if (!idsSet || idsSet.has(f.id)) f.valor = 0; });
+    salvarFuncionarios(todos);
+  }
+
+  function ordenarPorNome(lista) {
+    return lista.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
+  }
+
   function classeEmpresa(valor) {
     return valor === 'BHC PARTS' ? 'sel-empresa-bhc' : 'sel-empresa-bh';
   }
@@ -248,9 +259,7 @@
      --------------------------------------------------------------------- */
   function renderTabela() {
     const termoBusca = document.getElementById('buscaFuncionario').value.trim().toLowerCase();
-    let lista = getFuncionarios().slice().sort(function (a, b) {
-      return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
-    });
+    let lista = ordenarPorNome(getFuncionarios());
     if (termoBusca) lista = lista.filter(function (f) { return f.nome.toLowerCase().includes(termoBusca); });
 
     const tbody = document.querySelector('#tblFuncionarios tbody');
@@ -340,6 +349,14 @@
     renderTabela();
   }
 
+  document.getElementById('btnZerarValores').addEventListener('click', function () {
+    const todos = getFuncionarios();
+    if (!todos.length) { alert('Nenhum funcionário cadastrado.'); return; }
+    if (!confirm('Zerar o valor deste mês de TODOS os funcionários cadastrados? Essa ação não pode ser desfeita.')) return;
+    zerarValoresDe();
+    renderTabela();
+  });
+
   document.getElementById('btnSalvarFunc').addEventListener('click', function () {
     const nome = document.getElementById('fNome').value.trim();
     const empresa = document.getElementById('fEmpresa').value;
@@ -409,7 +426,7 @@
   // listaOverride: usado só na hora de IMPRIMIR, quando alguns funcionários
   // zerados são excluídos do lote final sem mexer na prévia normal da tela.
   function renderPreview(listaOverride) {
-    const incluidos = listaOverride || getFuncionarios().filter(function (f) { return f.incluir; });
+    const incluidos = listaOverride || ordenarPorNome(getFuncionarios().filter(function (f) { return f.incluir; }));
     const printArea = document.getElementById('printArea');
     const dataISO = document.getElementById('dataRecibo').value;
     const local = document.getElementById('localRecibo').value.trim() || 'Belo Horizonte';
@@ -483,7 +500,7 @@
   });
 
   document.getElementById('btnGerarRecibos').addEventListener('click', function () {
-    const incluidos = getFuncionarios().filter(function (f) { return f.incluir; });
+    const incluidos = ordenarPorNome(getFuncionarios().filter(function (f) { return f.incluir; }));
     const dataISO = document.getElementById('dataRecibo').value;
     const tipo = document.getElementById('tipoRecibo').value;
     if (!incluidos.length) { alert('Marque ao menos um funcionário pra incluir no lote.'); return; }
@@ -510,7 +527,10 @@
     renderPreview(listaFinal);
     setTimeout(function () {
       window.print();
-      renderPreview(); // restaura a prévia completa na tela depois de imprimir
+      // Zera o valor de quem recebeu recibo nesta leva, pra não sobrar valor do
+      // mês anterior pronto pra ser usado sem querer no próximo arquivo gerado.
+      zerarValoresDe(listaFinal.map(function (f) { return f.id; }));
+      renderTabela(); // re-renderiza a tabela (valores zerados) e a prévia junto
     }, 50);
   });
 
