@@ -12,15 +12,35 @@
 
   /* ---------------------------------------------------------------------
      STORAGE (local + servidor)
+     O backend só guarda o JSON cru que mandamos (PropertiesService), então
+     em vez de sincronizar só o array de funcionários, guardamos um objeto
+     { funcionarios, template } sob a mesma chave/ação de sempre — não precisa
+     mexer de novo no Apps Script pra isso.
      --------------------------------------------------------------------- */
   const LS_KEY = 'quadro_funcionarios';
+  const TEMPLATE_PADRAO = 'Recebi da {EMPRESA} a importância supra de {VALOR_EXTENSO}, referente ao valor do pagamento da comissão e restante meu salário do mês de {MES_ANO}.';
 
-  function getFuncionarios() {
-    try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { return []; }
+  function normalizarEstado(raw) {
+    if (Array.isArray(raw)) return { funcionarios: raw, template: TEMPLATE_PADRAO }; // formato antigo (só array)
+    if (raw && typeof raw === 'object') {
+      return {
+        funcionarios: Array.isArray(raw.funcionarios) ? raw.funcionarios : [],
+        template: (typeof raw.template === 'string' && raw.template.trim()) ? raw.template : TEMPLATE_PADRAO
+      };
+    }
+    return { funcionarios: [], template: TEMPLATE_PADRAO };
   }
-  function saveFuncionariosLocal(arr) {
-    localStorage.setItem(LS_KEY, JSON.stringify(arr || []));
+
+  function getEstado() {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
+    return normalizarEstado(raw);
   }
+  function saveEstadoLocal(estado) {
+    localStorage.setItem(LS_KEY, JSON.stringify(estado));
+  }
+  function getFuncionarios() { return getEstado().funcionarios; }
+  function getTemplate() { return getEstado().template; }
 
   function setSyncIndicador(texto, esconderDepois) {
     const el = document.getElementById('syncIndicador');
@@ -30,30 +50,32 @@
     if (esconderDepois) setTimeout(function () { el.style.display = 'none'; }, esconderDepois);
   }
 
-  function pushFuncionarios(lista) {
+  function pushEstado(estado) {
     // Sem header de Content-Type de propósito — setar 'application/json' força
     // preflight CORS que o Apps Script não responde direito, e o envio falha
     // silenciosamente (mesmo problema já visto e corrigido nos outros módulos).
     return fetch(SYNC_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'saveQuadroFuncionarios', data: lista })
+      body: JSON.stringify({ action: 'saveQuadroFuncionarios', data: estado })
     }).then(function (r) { return r.json(); });
   }
 
-  function fetchFuncionarios() {
+  function fetchEstado() {
     return fetch(SYNC_URL + '?action=getQuadroFuncionarios&t=' + Date.now()).then(function (r) { return r.json(); });
   }
 
   function carregarDoServidor() {
     setSyncIndicador('🔄 Sincronizando...');
-    return fetchFuncionarios().then(function (servidor) {
-      if (Array.isArray(servidor) && servidor.length > 0) {
-        saveFuncionariosLocal(servidor);
+    return fetchEstado().then(function (servidor) {
+      const estadoServidor = normalizarEstado(servidor);
+      const servidorTemConteudo = estadoServidor.funcionarios.length > 0 || estadoServidor.template !== TEMPLATE_PADRAO;
+      if (servidorTemConteudo) {
+        saveEstadoLocal(estadoServidor);
       } else {
-        // Servidor vazio mas já existe cadastro local: provável envio anterior
-        // falhou silenciosamente — reenvia em vez de apagar o que já existe aqui.
-        const local = getFuncionarios();
-        if (local.length > 0) pushFuncionarios(local).catch(function () {});
+        // Servidor vazio mas já existe cadastro/modelo local: provável envio
+        // anterior falhou silenciosamente — reenvia em vez de apagar o que já existe aqui.
+        const local = getEstado();
+        if (local.funcionarios.length > 0 || local.template !== TEMPLATE_PADRAO) pushEstado(local).catch(function () {});
       }
       setSyncIndicador('✅ Sincronizado', 2000);
     }).catch(function () {
@@ -61,9 +83,19 @@
     });
   }
 
+  function salvarEstado(estado) {
+    saveEstadoLocal(estado);
+    pushEstado(estado).catch(function () {});
+  }
   function salvarFuncionarios(lista) {
-    saveFuncionariosLocal(lista);
-    pushFuncionarios(lista).catch(function () {});
+    const estado = getEstado();
+    estado.funcionarios = lista;
+    salvarEstado(estado);
+  }
+  function salvarTemplate(texto) {
+    const estado = getEstado();
+    estado.template = texto;
+    salvarEstado(estado);
   }
 
   /* ---------------------------------------------------------------------
@@ -164,15 +196,24 @@
     return texto.charAt(0).toUpperCase() + texto.slice(1);
   }
 
-  // "do mês de agosto de 2026" é sempre o mês ANTERIOR ao da data do recibo
-  // (paga-se em setembro a comissão/salário de agosto) — ver o modelo enviado.
+  // Regra combinada: se a data do recibo é ANTES do dia 10 do mês, o salário
+  // referido é do mês ANTERIOR (ex.: 05/10/2026 -> setembro de 2026). A partir
+  // do dia 10 em diante, é o mesmo mês da data (ex.: 15/10/2026 -> outubro de 2026).
   function mesReferenciaDoRecibo(dataISO) {
     const partes = String(dataISO || '').split('-').map(Number);
-    const y = partes[0], m = partes[1];
-    if (!y || !m) return { mes: '', ano: '' };
-    let mesRef = m - 1, anoRef = y;
+    const y = partes[0], m = partes[1], d = partes[2];
+    if (!y || !m || !d) return { mes: '', ano: '' };
+    let mesRef = d < 10 ? m - 1 : m;
+    let anoRef = y;
     if (mesRef < 1) { mesRef = 12; anoRef -= 1; }
     return { mes: MESES_EXTENSO[mesRef - 1], ano: anoRef };
+  }
+
+  function renderizarTemplate(template, dados) {
+    return template
+      .replace(/\{EMPRESA\}/g, dados.empresa)
+      .replace(/\{VALOR_EXTENSO\}/g, dados.valorExtenso)
+      .replace(/\{MES_ANO\}/g, dados.mesAno);
   }
 
   /* ---------------------------------------------------------------------
@@ -298,11 +339,16 @@
     }
   }
 
-  function montarTiraHtml(f, dataISO, local) {
+  function montarTiraHtml(f, dataISO, local, template) {
     const dataBR = fmtDataBR(dataISO);
     const ref = mesReferenciaDoRecibo(dataISO);
     const nome = escapeHtml(String(f.nome || '').toUpperCase());
     const empresa = escapeHtml(f.empresa || 'BH CABINES');
+    const corpoTexto = renderizarTemplate(escapeHtml(template), {
+      empresa: empresa,
+      valorExtenso: escapeHtml(valorPorExtenso(f.valor)),
+      mesAno: escapeHtml(ref.mes + ' de ' + ref.ano)
+    }).replace(/\n/g, '<br>');
     return (
       '<div class="recibo-tira">' +
         '<div class="recibo-cabecalho">' +
@@ -310,8 +356,7 @@
           '<span class="recibo-valor">' + fmt(f.valor) + '</span>' +
         '</div>' +
         '<div class="recibo-corpo">' +
-          'Recebi da ' + empresa + ' a importância supra de ' + valorPorExtenso(f.valor) + ', referente ao valor do ' +
-          'pagamento da comissão e restante meu salário do mês de ' + ref.mes + ' de ' + ref.ano + '.' +
+          corpoTexto +
           '<br><br>' +
           escapeHtml(local) + ', <b>' + dataBR + '</b>&nbsp;&nbsp;&nbsp;<b>' + nome + '.</b>' +
         '</div>' +
@@ -324,11 +369,14 @@
     );
   }
 
-  function renderPreview() {
-    const incluidos = getFuncionarios().filter(function (f) { return f.incluir; });
+  // listaOverride: usado só na hora de IMPRIMIR, quando alguns funcionários
+  // zerados são excluídos do lote final sem mexer na prévia normal da tela.
+  function renderPreview(listaOverride) {
+    const incluidos = listaOverride || getFuncionarios().filter(function (f) { return f.incluir; });
     const printArea = document.getElementById('printArea');
     const dataISO = document.getElementById('dataRecibo').value;
     const local = document.getElementById('localRecibo').value.trim() || 'Belo Horizonte';
+    const template = getTemplate();
 
     if (!incluidos.length) {
       printArea.innerHTML = '<div class="empty-preview">Marque ao menos um funcionário na tabela acima pra ver a prévia dos recibos aqui.</div>';
@@ -343,7 +391,7 @@
     for (let i = 0; i < incluidos.length; i += 5) paginas.push(incluidos.slice(i, i + 5));
 
     printArea.innerHTML = paginas.map(function (pagina) {
-      return '<div class="recibo-pagina">' + pagina.map(function (f) { return montarTiraHtml(f, dataISO, local); }).join('') + '</div>';
+      return '<div class="recibo-pagina">' + pagina.map(function (f) { return montarTiraHtml(f, dataISO, local, template); }).join('') + '</div>';
     }).join('');
   }
 
@@ -355,18 +403,45 @@
   document.getElementById('dataRecibo').addEventListener('input', renderPreview);
   document.getElementById('localRecibo').addEventListener('input', renderPreview);
 
+  document.getElementById('templateCorpo').addEventListener('input', function () {
+    salvarTemplate(document.getElementById('templateCorpo').value);
+    renderPreview();
+  });
+  document.getElementById('btnRestaurarTemplate').addEventListener('click', function () {
+    if (!confirm('Restaurar o modelo padrão do texto? Isso substitui o texto atual.')) return;
+    document.getElementById('templateCorpo').value = TEMPLATE_PADRAO;
+    salvarTemplate(TEMPLATE_PADRAO);
+    renderPreview();
+  });
+
   document.getElementById('btnGerarRecibos').addEventListener('click', function () {
     const incluidos = getFuncionarios().filter(function (f) { return f.incluir; });
     const dataISO = document.getElementById('dataRecibo').value;
     if (!incluidos.length) { alert('Marque ao menos um funcionário pra incluir no lote.'); return; }
     if (!dataISO) { alert('Preencha a data dos recibos.'); return; }
-    const semValor = incluidos.filter(function (f) { return !(num(f.valor) > 0); });
-    if (semValor.length) {
-      alert('Preencha o valor deste mês antes de imprimir:\n' + semValor.map(function (f) { return '- ' + f.nome; }).join('\n'));
-      return;
+
+    const zerados = incluidos.filter(function (f) { return !(num(f.valor) > 0); });
+    let listaFinal = incluidos;
+
+    if (zerados.length) {
+      const nomesZerados = zerados.map(function (f) { return '- ' + f.nome; }).join('\n');
+      const confirmou = confirm(
+        'Os funcionários abaixo estão com o valor deste mês zerado:\n\n' + nomesZerados +
+        '\n\nClique em OK para gerar os recibos SEM essas pessoas, ou em Cancelar para preencher os valores antes.'
+      );
+      if (!confirmou) {
+        alert('Preencha o valor deste mês antes de gerar o recibo para:\n\n' + nomesZerados);
+        return;
+      }
+      listaFinal = incluidos.filter(function (f) { return num(f.valor) > 0; });
+      if (!listaFinal.length) { alert('Nenhum funcionário com valor preenchido pra gerar recibo.'); return; }
     }
-    renderPreview();
-    setTimeout(function () { window.print(); }, 50);
+
+    renderPreview(listaFinal);
+    setTimeout(function () {
+      window.print();
+      renderPreview(); // restaura a prévia completa na tela depois de imprimir
+    }, 50);
   });
 
   /* ---------------------------------------------------------------------
@@ -375,9 +450,15 @@
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
   document.getElementById('dataRecibo').value = new Date().toISOString().slice(0, 10);
 
+  function preencherTemplateNoForm() {
+    document.getElementById('templateCorpo').value = getTemplate();
+  }
+
+  preencherTemplateNoForm();
   renderTabela();
 
   carregarDoServidor().then(function () {
+    preencherTemplateNoForm();
     renderTabela();
   });
 

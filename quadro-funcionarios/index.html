@@ -59,6 +59,15 @@
   </div>
 
   <div class="card" style="margin-top:20px">
+    <h3 class="card-title">Modelo do Texto do Recibo</h3>
+    <p class="muted" style="margin-bottom:12px">Edite a frase do corpo do recibo à vontade. Os trechos <code>{EMPRESA}</code>, <code>{VALOR_EXTENSO}</code> e <code>{MES_ANO}</code> são preenchidos automaticamente — não apague essas marcações, só o texto ao redor delas. O local, a data e o nome do funcionário aparecem fixos logo abaixo, em uma linha separada, e não fazem parte deste modelo.</p>
+    <textarea id="templateCorpo" rows="4" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;resize:vertical"></textarea>
+    <div class="btn-row-h" style="margin-top:10px">
+      <button class="btn bgray" id="btnRestaurarTemplate">Restaurar modelo padrão</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
     <h3 class="card-title">Gerar Recibos para Impressão</h3>
     <div class="form-row">
       <div class="field"><label>Data (igual em todos os recibos) *</label><input type="date" id="dataRecibo"></div>
