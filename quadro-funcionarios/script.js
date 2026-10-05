@@ -14,21 +14,30 @@
      STORAGE (local + servidor)
      O backend só guarda o JSON cru que mandamos (PropertiesService), então
      em vez de sincronizar só o array de funcionários, guardamos um objeto
-     { funcionarios, template } sob a mesma chave/ação de sempre — não precisa
-     mexer de novo no Apps Script pra isso.
+     { funcionarios, templatePagamento, templateAdiantamento } sob a mesma
+     chave/ação de sempre — não precisa mexer de novo no Apps Script pra isso.
      --------------------------------------------------------------------- */
   const LS_KEY = 'quadro_funcionarios';
-  const TEMPLATE_PADRAO = 'Recebi da {EMPRESA} a importância supra de {VALOR_EXTENSO}, referente ao valor do pagamento da comissão e restante meu salário do mês de {MES_ANO}.';
+  const TEMPLATE_PAGAMENTO_PADRAO = 'Recebi da {EMPRESA} a importância supra de {VALOR_EXTENSO}, referente ao valor do pagamento da comissão e restante meu salário do mês de {MES_ANO}.';
+  const TEMPLATE_ADIANTAMENTO_PADRAO = 'Recebi da {EMPRESA} a importância supra de {VALOR_EXTENSO}, referente ao valor do adiantamento do meu salário referente ao mês de {MES_ANO}.';
 
   function normalizarEstado(raw) {
-    if (Array.isArray(raw)) return { funcionarios: raw, template: TEMPLATE_PADRAO }; // formato antigo (só array)
+    if (Array.isArray(raw)) return { funcionarios: raw, templatePagamento: TEMPLATE_PAGAMENTO_PADRAO, templateAdiantamento: TEMPLATE_ADIANTAMENTO_PADRAO }; // formato antigo (só array)
     if (raw && typeof raw === 'object') {
+      // "template" é o campo antigo (um modelo só) — migra pra "templatePagamento" se existir.
+      const templatePagamento = (typeof raw.templatePagamento === 'string' && raw.templatePagamento.trim())
+        ? raw.templatePagamento
+        : ((typeof raw.template === 'string' && raw.template.trim()) ? raw.template : TEMPLATE_PAGAMENTO_PADRAO);
+      const templateAdiantamento = (typeof raw.templateAdiantamento === 'string' && raw.templateAdiantamento.trim())
+        ? raw.templateAdiantamento
+        : TEMPLATE_ADIANTAMENTO_PADRAO;
       return {
         funcionarios: Array.isArray(raw.funcionarios) ? raw.funcionarios : [],
-        template: (typeof raw.template === 'string' && raw.template.trim()) ? raw.template : TEMPLATE_PADRAO
+        templatePagamento: templatePagamento,
+        templateAdiantamento: templateAdiantamento
       };
     }
-    return { funcionarios: [], template: TEMPLATE_PADRAO };
+    return { funcionarios: [], templatePagamento: TEMPLATE_PAGAMENTO_PADRAO, templateAdiantamento: TEMPLATE_ADIANTAMENTO_PADRAO };
   }
 
   function getEstado() {
@@ -40,7 +49,10 @@
     localStorage.setItem(LS_KEY, JSON.stringify(estado));
   }
   function getFuncionarios() { return getEstado().funcionarios; }
-  function getTemplate() { return getEstado().template; }
+  function getTemplate(tipo) {
+    const estado = getEstado();
+    return tipo === 'adiantamento' ? estado.templateAdiantamento : estado.templatePagamento;
+  }
 
   function setSyncIndicador(texto, esconderDepois) {
     const el = document.getElementById('syncIndicador');
@@ -68,14 +80,19 @@
     setSyncIndicador('🔄 Sincronizando...');
     return fetchEstado().then(function (servidor) {
       const estadoServidor = normalizarEstado(servidor);
-      const servidorTemConteudo = estadoServidor.funcionarios.length > 0 || estadoServidor.template !== TEMPLATE_PADRAO;
+      const servidorTemConteudo = estadoServidor.funcionarios.length > 0 ||
+        estadoServidor.templatePagamento !== TEMPLATE_PAGAMENTO_PADRAO ||
+        estadoServidor.templateAdiantamento !== TEMPLATE_ADIANTAMENTO_PADRAO;
       if (servidorTemConteudo) {
         saveEstadoLocal(estadoServidor);
       } else {
         // Servidor vazio mas já existe cadastro/modelo local: provável envio
         // anterior falhou silenciosamente — reenvia em vez de apagar o que já existe aqui.
         const local = getEstado();
-        if (local.funcionarios.length > 0 || local.template !== TEMPLATE_PADRAO) pushEstado(local).catch(function () {});
+        const localTemConteudo = local.funcionarios.length > 0 ||
+          local.templatePagamento !== TEMPLATE_PAGAMENTO_PADRAO ||
+          local.templateAdiantamento !== TEMPLATE_ADIANTAMENTO_PADRAO;
+        if (localTemConteudo) pushEstado(local).catch(function () {});
       }
       setSyncIndicador('✅ Sincronizado', 2000);
     }).catch(function () {
@@ -92,9 +109,10 @@
     estado.funcionarios = lista;
     salvarEstado(estado);
   }
-  function salvarTemplate(texto) {
+  function salvarTemplate(tipo, texto) {
     const estado = getEstado();
-    estado.template = texto;
+    if (tipo === 'adiantamento') estado.templateAdiantamento = texto;
+    else estado.templatePagamento = texto;
     salvarEstado(estado);
   }
 
@@ -376,7 +394,8 @@
     const printArea = document.getElementById('printArea');
     const dataISO = document.getElementById('dataRecibo').value;
     const local = document.getElementById('localRecibo').value.trim() || 'Belo Horizonte';
-    const template = getTemplate();
+    const tipo = document.getElementById('tipoRecibo').value;
+    const template = getTemplate(tipo);
 
     if (!incluidos.length) {
       printArea.innerHTML = '<div class="empty-preview">Marque ao menos um funcionário na tabela acima pra ver a prévia dos recibos aqui.</div>';
@@ -400,17 +419,41 @@
     renderPreview();
   }
 
-  document.getElementById('dataRecibo').addEventListener('input', renderPreview);
-  document.getElementById('localRecibo').addEventListener('input', renderPreview);
+  // Dias 20 a 25 do mês = adiantamento; fora disso, pagamento normal.
+  // Só sugere sozinho — o usuário pode trocar manualmente antes de gerar.
+  function autoDefinirTipoRecibo() {
+    const dataISO = document.getElementById('dataRecibo').value;
+    if (!dataISO) return;
+    const dia = Number(String(dataISO).split('-')[2]);
+    document.getElementById('tipoRecibo').value = (dia >= 20 && dia <= 25) ? 'adiantamento' : 'pagamento';
+  }
 
-  document.getElementById('templateCorpo').addEventListener('input', function () {
-    salvarTemplate(document.getElementById('templateCorpo').value);
+  document.getElementById('dataRecibo').addEventListener('input', function () {
+    autoDefinirTipoRecibo();
     renderPreview();
   });
-  document.getElementById('btnRestaurarTemplate').addEventListener('click', function () {
-    if (!confirm('Restaurar o modelo padrão do texto? Isso substitui o texto atual.')) return;
-    document.getElementById('templateCorpo').value = TEMPLATE_PADRAO;
-    salvarTemplate(TEMPLATE_PADRAO);
+  document.getElementById('localRecibo').addEventListener('input', renderPreview);
+  document.getElementById('tipoRecibo').addEventListener('change', renderPreview);
+
+  document.getElementById('templateCorpoPagamento').addEventListener('input', function () {
+    salvarTemplate('pagamento', this.value);
+    renderPreview();
+  });
+  document.getElementById('btnRestaurarTemplatePagamento').addEventListener('click', function () {
+    if (!confirm('Restaurar o modelo padrão de Pagamento? Isso substitui o texto atual.')) return;
+    document.getElementById('templateCorpoPagamento').value = TEMPLATE_PAGAMENTO_PADRAO;
+    salvarTemplate('pagamento', TEMPLATE_PAGAMENTO_PADRAO);
+    renderPreview();
+  });
+
+  document.getElementById('templateCorpoAdiantamento').addEventListener('input', function () {
+    salvarTemplate('adiantamento', this.value);
+    renderPreview();
+  });
+  document.getElementById('btnRestaurarTemplateAdiantamento').addEventListener('click', function () {
+    if (!confirm('Restaurar o modelo padrão de Adiantamento? Isso substitui o texto atual.')) return;
+    document.getElementById('templateCorpoAdiantamento').value = TEMPLATE_ADIANTAMENTO_PADRAO;
+    salvarTemplate('adiantamento', TEMPLATE_ADIANTAMENTO_PADRAO);
     renderPreview();
   });
 
@@ -449,16 +492,18 @@
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
   document.getElementById('dataRecibo').value = new Date().toISOString().slice(0, 10);
+  autoDefinirTipoRecibo();
 
-  function preencherTemplateNoForm() {
-    document.getElementById('templateCorpo').value = getTemplate();
+  function preencherTemplatesNoForm() {
+    document.getElementById('templateCorpoPagamento').value = getTemplate('pagamento');
+    document.getElementById('templateCorpoAdiantamento').value = getTemplate('adiantamento');
   }
 
-  preencherTemplateNoForm();
+  preencherTemplatesNoForm();
   renderTabela();
 
   carregarDoServidor().then(function () {
-    preencherTemplateNoForm();
+    preencherTemplatesNoForm();
     renderTabela();
   });
 

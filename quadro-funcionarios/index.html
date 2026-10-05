@@ -60,10 +60,22 @@
 
   <div class="card" style="margin-top:20px">
     <h3 class="card-title">Modelo do Texto do Recibo</h3>
-    <p class="muted" style="margin-bottom:12px">Edite a frase do corpo do recibo à vontade. Os trechos <code>{EMPRESA}</code>, <code>{VALOR_EXTENSO}</code> e <code>{MES_ANO}</code> são preenchidos automaticamente — não apague essas marcações, só o texto ao redor delas. O local, a data e o nome do funcionário aparecem fixos logo abaixo, em uma linha separada, e não fazem parte deste modelo.</p>
-    <textarea id="templateCorpo" rows="4" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;resize:vertical"></textarea>
-    <div class="btn-row-h" style="margin-top:10px">
-      <button class="btn bgray" id="btnRestaurarTemplate">Restaurar modelo padrão</button>
+    <p class="muted" style="margin-bottom:14px">Dois modelos — um pra pagamento normal, outro pra adiantamento. O "Tipo de Recibo" lá embaixo, em "Gerar Recibos", decide qual dos dois entra no lote (já vem pré-selecionado sozinho pela data: dias 20 a 25 do mês = Adiantamento, pode trocar manualmente se precisar). Os trechos <code>{EMPRESA}</code>, <code>{VALOR_EXTENSO}</code> e <code>{MES_ANO}</code> são preenchidos automaticamente — não apague essas marcações, só o texto ao redor delas. O local, a data e o nome do funcionário aparecem fixos logo abaixo, em uma linha separada, e não fazem parte destes modelos.</p>
+
+    <div class="field" style="margin-bottom:16px">
+      <label>Modelo — Pagamento</label>
+      <textarea id="templateCorpoPagamento" rows="4" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;resize:vertical"></textarea>
+      <div class="btn-row-h" style="margin-top:8px">
+        <button class="btn bgray" id="btnRestaurarTemplatePagamento">Restaurar padrão (Pagamento)</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Modelo — Adiantamento</label>
+      <textarea id="templateCorpoAdiantamento" rows="4" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;resize:vertical"></textarea>
+      <div class="btn-row-h" style="margin-top:8px">
+        <button class="btn bgray" id="btnRestaurarTemplateAdiantamento">Restaurar padrão (Adiantamento)</button>
+      </div>
     </div>
   </div>
 
@@ -72,6 +84,13 @@
     <div class="form-row">
       <div class="field"><label>Data (igual em todos os recibos) *</label><input type="date" id="dataRecibo"></div>
       <div class="field"><label>Local *</label><input type="text" id="localRecibo" value="Belo Horizonte"></div>
+      <div class="field">
+        <label>Tipo de Recibo *</label>
+        <select id="tipoRecibo">
+          <option value="pagamento">Pagamento</option>
+          <option value="adiantamento">Adiantamento</option>
+        </select>
+      </div>
     </div>
     <div class="btn-row-h" style="margin-top:10px">
       <button class="btn bo" id="btnGerarRecibos">🖨 Gerar e Imprimir</button>
