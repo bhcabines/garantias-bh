@@ -238,10 +238,16 @@
      CADASTRO DE FUNCIONÁRIOS (tabela + form)
      --------------------------------------------------------------------- */
   function renderTabela() {
-    const lista = getFuncionarios();
+    const termoBusca = document.getElementById('buscaFuncionario').value.trim().toLowerCase();
+    let lista = getFuncionarios().slice().sort(function (a, b) {
+      return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+    });
+    if (termoBusca) lista = lista.filter(function (f) { return f.nome.toLowerCase().includes(termoBusca); });
+
     const tbody = document.querySelector('#tblFuncionarios tbody');
     if (!lista.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Nenhum funcionário cadastrado ainda.</td></tr>';
+      const msg = termoBusca ? 'Nenhum funcionário encontrado.' : 'Nenhum funcionário cadastrado ainda.';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">' + msg + '</td></tr>';
     } else {
       tbody.innerHTML = lista.map(function (f) {
         const empresa = f.empresa || 'BH CABINES';
@@ -493,6 +499,7 @@
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
   document.getElementById('dataRecibo').value = new Date().toISOString().slice(0, 10);
   autoDefinirTipoRecibo();
+  document.getElementById('buscaFuncionario').addEventListener('input', renderTabela);
 
   function preencherTemplatesNoForm() {
     document.getElementById('templateCorpoPagamento').value = getTemplate('pagamento');
