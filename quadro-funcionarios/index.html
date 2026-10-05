@@ -50,18 +50,13 @@
   <div class="card" style="margin-top:20px">
     <h3 class="card-title">Funcionários Cadastrados</h3>
     <p class="muted" style="margin-bottom:12px">Todo funcionário novo já entra marcado pra receber recibo. Desmarque "Incluir no lote" quem NÃO deve receber neste mês — o campo de valor só fica editável enquanto marcado, porque o valor muda todo mês. A empresa define o nome que aparece no corpo do recibo.</p>
-    <div class="form-row" style="align-items:end;margin-bottom:12px">
-      <div class="field" style="max-width:320px">
-        <label>Localizar funcionário</label>
-        <input type="text" id="buscaFuncionario" placeholder="Digite o nome...">
-      </div>
-      <div class="field" style="max-width:200px">
-        <button class="btn bred" id="btnZerarValores" style="width:100%">Zerar Valores</button>
-      </div>
+    <div class="field" style="max-width:320px;margin-bottom:12px">
+      <label>Localizar funcionário</label>
+      <input type="text" id="buscaFuncionario" placeholder="Digite o nome...">
     </div>
     <div class="table-wrap">
       <table id="tblFuncionarios">
-        <thead><tr><th class="tc">Incluir no lote</th><th>Nome</th><th>Empresa</th><th>Valor</th><th></th></tr></thead>
+        <thead><tr><th class="tc">Incluir no lote</th><th>Nome</th><th>Empresa</th><th class="tc">Valor<br><button class="btn bgreen-light" id="btnZerarValores" style="margin-top:4px;padding:3px 9px;font-size:.65rem">Zerar Valores</button></th><th></th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
