@@ -182,12 +182,17 @@
     const lista = getFuncionarios();
     const tbody = document.querySelector('#tblFuncionarios tbody');
     if (!lista.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Nenhum funcionário cadastrado ainda.</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Nenhum funcionário cadastrado ainda.</td></tr>';
     } else {
       tbody.innerHTML = lista.map(function (f) {
+        const empresa = f.empresa || 'BH CABINES';
         return '<tr>' +
           '<td class="tc"><input type="checkbox" class="chk-incluir" data-id="' + f.id + '" ' + (f.incluir ? 'checked' : '') + '></td>' +
           '<td class="nome-cel">' + escapeHtml(f.nome) + '</td>' +
+          '<td><select class="campo-empresa-tabela" data-id="' + f.id + '">' +
+            '<option value="BH CABINES"' + (empresa === 'BH CABINES' ? ' selected' : '') + '>BH Cabines</option>' +
+            '<option value="BHC PARTS"' + (empresa === 'BHC PARTS' ? ' selected' : '') + '>BHC Parts</option>' +
+          '</select></td>' +
           '<td><input type="text" inputmode="decimal" class="campo-valor-tabela campo-valor-editavel" data-id="' + f.id + '" value="' + fmt(f.valor) + '" ' + (f.incluir ? '' : 'disabled') + '></td>' +
           '<td class="tc" style="white-space:nowrap">' +
             '<button class="icon-btn" data-editar="' + f.id + '" title="Editar">✏️</button>' +
@@ -212,6 +217,13 @@
         if (f) { f.valor = parseNumeroBR(inp.value); inp.value = fmt(f.valor); salvarFuncionarios(lista2); atualizarResumoEPreview(); }
       });
     });
+    tbody.querySelectorAll('.campo-empresa-tabela').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        const lista2 = getFuncionarios();
+        const f = lista2.find(function (x) { return x.id === sel.dataset.id; });
+        if (f) { f.empresa = sel.value; salvarFuncionarios(lista2); atualizarResumoEPreview(); }
+      });
+    });
     tbody.querySelectorAll('[data-editar]').forEach(function (btn) {
       btn.addEventListener('click', function () { editarFuncionario(btn.dataset.editar); });
     });
@@ -224,6 +236,7 @@
 
   function limparFormFuncionario() {
     document.getElementById('fNome').value = '';
+    document.getElementById('fEmpresa').value = 'BH CABINES';
     document.getElementById('fEditId').value = '';
     document.getElementById('tituloFormFunc').textContent = 'Cadastrar Funcionário';
     document.getElementById('btnCancelarEdicaoFunc').style.display = 'none';
@@ -233,6 +246,7 @@
     const f = getFuncionarios().find(function (x) { return x.id === id; });
     if (!f) return;
     document.getElementById('fNome').value = f.nome;
+    document.getElementById('fEmpresa').value = f.empresa || 'BH CABINES';
     document.getElementById('fEditId').value = f.id;
     document.getElementById('tituloFormFunc').textContent = 'Editar Funcionário';
     document.getElementById('btnCancelarEdicaoFunc').style.display = 'inline-flex';
@@ -250,17 +264,18 @@
 
   document.getElementById('btnSalvarFunc').addEventListener('click', function () {
     const nome = document.getElementById('fNome').value.trim();
+    const empresa = document.getElementById('fEmpresa').value;
     const editId = document.getElementById('fEditId').value;
     if (!nome) { alert('Preencha o nome do funcionário.'); return; }
 
     const lista = getFuncionarios();
     if (editId) {
       const f = lista.find(function (x) { return x.id === editId; });
-      if (f) { f.nome = nome; }
+      if (f) { f.nome = nome; f.empresa = empresa; }
     } else {
       const duplicado = lista.find(function (x) { return x.nome.trim().toLowerCase() === nome.toLowerCase(); });
       if (duplicado) { alert('Já existe um funcionário cadastrado com esse nome.'); return; }
-      lista.push({ id: uid(), nome: nome, valor: 0, incluir: true });
+      lista.push({ id: uid(), nome: nome, empresa: empresa, valor: 0, incluir: true });
     }
     salvarFuncionarios(lista);
     limparFormFuncionario();
@@ -287,6 +302,7 @@
     const dataBR = fmtDataBR(dataISO);
     const ref = mesReferenciaDoRecibo(dataISO);
     const nome = escapeHtml(String(f.nome || '').toUpperCase());
+    const empresa = escapeHtml(f.empresa || 'BH CABINES');
     return (
       '<div class="recibo-tira">' +
         '<div class="recibo-cabecalho">' +
@@ -294,7 +310,7 @@
           '<span class="recibo-valor">' + fmt(f.valor) + '</span>' +
         '</div>' +
         '<div class="recibo-corpo">' +
-          'Recebi da BH CABINES a importância supra de ' + valorPorExtenso(f.valor) + ', referente ao valor do ' +
+          'Recebi da ' + empresa + ' a importância supra de ' + valorPorExtenso(f.valor) + ', referente ao valor do ' +
           'pagamento da comissão e restante meu salário do mês de ' + ref.mes + ' de ' + ref.ano + '.' +
           '<br><br>' +
           escapeHtml(local) + ', <b>' + dataBR + '</b>&nbsp;&nbsp;&nbsp;<b>' + nome + '.</b>' +

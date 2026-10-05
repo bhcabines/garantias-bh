@@ -32,6 +32,13 @@
     <h3 class="card-title" id="tituloFormFunc">Cadastrar Funcionário</h3>
     <div class="form-row">
       <div class="field field-wide"><label>Nome *</label><input type="text" id="fNome" placeholder="Nome completo do funcionário"></div>
+      <div class="field">
+        <label>Empresa *</label>
+        <select id="fEmpresa">
+          <option value="BH CABINES">BH Cabines</option>
+          <option value="BHC PARTS">BHC Parts</option>
+        </select>
+      </div>
     </div>
     <input type="hidden" id="fEditId">
     <div class="btn-row-h" style="margin-top:6px">
@@ -42,10 +49,10 @@
 
   <div class="card" style="margin-top:20px">
     <h3 class="card-title">Funcionários Cadastrados</h3>
-    <p class="muted" style="margin-bottom:12px">Todo funcionário novo já entra marcado pra receber recibo. Desmarque "Incluir no lote" quem NÃO deve receber neste mês — o campo de valor só fica editável enquanto marcado, porque o valor muda todo mês.</p>
+    <p class="muted" style="margin-bottom:12px">Todo funcionário novo já entra marcado pra receber recibo. Desmarque "Incluir no lote" quem NÃO deve receber neste mês — o campo de valor só fica editável enquanto marcado, porque o valor muda todo mês. A empresa define o nome que aparece no corpo do recibo.</p>
     <div class="table-wrap">
       <table id="tblFuncionarios">
-        <thead><tr><th class="tc">Incluir no lote</th><th>Nome</th><th>Valor</th><th></th></tr></thead>
+        <thead><tr><th class="tc">Incluir no lote</th><th>Nome</th><th>Empresa</th><th>Valor</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
