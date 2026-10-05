@@ -65,11 +65,11 @@
   <div class="card" style="margin-top:20px">
     <h3 class="card-title">Gerar Recibos para Impressão</h3>
     <div class="form-row">
-      <div class="field"><label>Data (igual em todos os recibos) *</label><input type="date" id="dataRecibo" required></div>
+      <div class="field"><label>Data (igual em todos os recibos) *</label><input type="date" id="dataRecibo" required autocomplete="off"></div>
       <div class="field"><label>Local *</label><input type="text" id="localRecibo" value="Belo Horizonte"></div>
       <div class="field">
         <label>Tipo de Recibo *</label>
-        <select id="tipoRecibo" required>
+        <select id="tipoRecibo" required autocomplete="off">
           <option value="" selected disabled>Selecione...</option>
           <option value="pagamento">Pagamento</option>
           <option value="adiantamento">Adiantamento</option>

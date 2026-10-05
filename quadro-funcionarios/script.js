@@ -518,12 +518,24 @@
      INICIALIZAÇÃO
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
   // Data e Tipo de Recibo ficam vazios de propósito — a pessoa escolhe toda vez,
   // pra não gerar recibo errado por causa de um valor que ficou de uma vez anterior.
+  // O navegador às vezes restaura valor de formulário sozinho ao recarregar a
+  // página (sem disparar 'change'), então forçamos a limpeza de novo no 'pageshow'
+  // (dispara depois dessa restauração, inclusive quando a página volta do cache
+  // de navegação) pra garantir que nunca fique nada preenchido/selecionado sozinho.
+  function resetarCamposGeracao() {
+    document.getElementById('dataRecibo').value = '';
+    document.getElementById('tipoRecibo').value = '';
+    mostrarBlocoTemplateDoTipo();
+  }
+  resetarCamposGeracao();
+  window.addEventListener('pageshow', resetarCamposGeracao);
+
   document.getElementById('buscaFuncionario').addEventListener('input', renderTabela);
   document.getElementById('fEmpresa').addEventListener('change', atualizarCorEmpresaForm);
   atualizarCorEmpresaForm();
-  mostrarBlocoTemplateDoTipo();
 
   function preencherTemplatesNoForm() {
     document.getElementById('templateCorpoPagamento').value = getTemplate('pagamento');
