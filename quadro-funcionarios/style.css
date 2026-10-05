@@ -50,6 +50,10 @@ input:focus,select:focus{outline:none;border-color:var(--orange)}
 .campo-valor-tabela{padding:5px 7px;font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums;min-width:110px}
 .campo-valor-tabela:disabled{background:#f1f0ef;color:#bbb;cursor:not-allowed;border-color:#eee}
 
+/* Empresa: laranja = BH Cabines, roxo = BHC Parts — aplicado no cadastro e na tabela */
+select.sel-empresa-bh{background:#fdecdf;color:#b94a0a;border-color:var(--orange);font-weight:700}
+select.sel-empresa-bhc{background:#ede4fb;color:#6d28d9;border-color:#7c3aed;font-weight:700}
+
 /* ===== Buttons ===== */
 .btn{padding:9px 16px;border-radius:8px;border:none;cursor:pointer;font-size:.8rem;font-weight:700;transition:all .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .bo{background:var(--orange);color:var(--white)}.bo:hover{background:#c84a08}

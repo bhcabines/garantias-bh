@@ -136,6 +136,15 @@
     input.addEventListener('blur', function () { input.value = fmt(parseNumeroBR(input.value)); });
   }
 
+  function classeEmpresa(valor) {
+    return valor === 'BHC PARTS' ? 'sel-empresa-bhc' : 'sel-empresa-bh';
+  }
+  function atualizarCorEmpresaForm() {
+    const sel = document.getElementById('fEmpresa');
+    sel.classList.remove('sel-empresa-bh', 'sel-empresa-bhc');
+    sel.classList.add(classeEmpresa(sel.value));
+  }
+
   function fmtDataBR(iso) {
     const p = String(iso || '').split('-');
     return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : '';
@@ -254,7 +263,7 @@
         return '<tr>' +
           '<td class="tc"><input type="checkbox" class="chk-incluir" data-id="' + f.id + '" ' + (f.incluir ? 'checked' : '') + '></td>' +
           '<td class="nome-cel">' + escapeHtml(f.nome) + '</td>' +
-          '<td><select class="campo-empresa-tabela" data-id="' + f.id + '">' +
+          '<td><select class="campo-empresa-tabela ' + classeEmpresa(empresa) + '" data-id="' + f.id + '">' +
             '<option value="BH CABINES"' + (empresa === 'BH CABINES' ? ' selected' : '') + '>BH Cabines</option>' +
             '<option value="BHC PARTS"' + (empresa === 'BHC PARTS' ? ' selected' : '') + '>BHC Parts</option>' +
           '</select></td>' +
@@ -287,6 +296,8 @@
         const lista2 = getFuncionarios();
         const f = lista2.find(function (x) { return x.id === sel.dataset.id; });
         if (f) { f.empresa = sel.value; salvarFuncionarios(lista2); atualizarResumoEPreview(); }
+        sel.classList.remove('sel-empresa-bh', 'sel-empresa-bhc');
+        sel.classList.add(classeEmpresa(sel.value));
       });
     });
     tbody.querySelectorAll('[data-editar]').forEach(function (btn) {
@@ -305,6 +316,7 @@
     document.getElementById('fEditId').value = '';
     document.getElementById('tituloFormFunc').textContent = 'Cadastrar Funcionário';
     document.getElementById('btnCancelarEdicaoFunc').style.display = 'none';
+    atualizarCorEmpresaForm();
   }
 
   function editarFuncionario(id) {
@@ -316,6 +328,7 @@
     document.getElementById('tituloFormFunc').textContent = 'Editar Funcionário';
     document.getElementById('btnCancelarEdicaoFunc').style.display = 'inline-flex';
     document.getElementById('fNome').focus();
+    atualizarCorEmpresaForm();
   }
 
   function excluirFuncionario(id) {
@@ -500,6 +513,8 @@
   document.getElementById('dataRecibo').value = new Date().toISOString().slice(0, 10);
   autoDefinirTipoRecibo();
   document.getElementById('buscaFuncionario').addEventListener('input', renderTabela);
+  document.getElementById('fEmpresa').addEventListener('change', atualizarCorEmpresaForm);
+  atualizarCorEmpresaForm();
 
   function preencherTemplatesNoForm() {
     document.getElementById('templateCorpoPagamento').value = getTemplate('pagamento');
