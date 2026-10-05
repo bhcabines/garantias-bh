@@ -414,7 +414,6 @@
     const dataISO = document.getElementById('dataRecibo').value;
     const local = document.getElementById('localRecibo').value.trim() || 'Belo Horizonte';
     const tipo = document.getElementById('tipoRecibo').value;
-    const template = getTemplate(tipo);
 
     if (!incluidos.length) {
       printArea.innerHTML = '<div class="empty-preview">Marque ao menos um funcionário na tabela acima pra ver a prévia dos recibos aqui.</div>';
@@ -424,6 +423,11 @@
       printArea.innerHTML = '<div class="empty-preview">Preencha a data pra ver a prévia dos recibos aqui.</div>';
       return;
     }
+    if (!tipo) {
+      printArea.innerHTML = '<div class="empty-preview">Selecione o Tipo de Recibo (Pagamento ou Adiantamento) pra ver a prévia aqui.</div>';
+      return;
+    }
+    const template = getTemplate(tipo);
 
     const paginas = [];
     for (let i = 0; i < incluidos.length; i += 5) paginas.push(incluidos.slice(i, i + 5));
@@ -438,21 +442,23 @@
     renderPreview();
   }
 
-  // Dias 20 a 25 do mês = adiantamento; fora disso, pagamento normal.
-  // Só sugere sozinho — o usuário pode trocar manualmente antes de gerar.
-  function autoDefinirTipoRecibo() {
-    const dataISO = document.getElementById('dataRecibo').value;
-    if (!dataISO) return;
-    const dia = Number(String(dataISO).split('-')[2]);
-    document.getElementById('tipoRecibo').value = (dia >= 20 && dia <= 25) ? 'adiantamento' : 'pagamento';
+  // Mostra só o bloco do modelo (Pagamento/Adiantamento) que bate com o Tipo de
+  // Recibo escolhido — nada de automático, a pessoa escolhe e o resto do
+  // formulário continua vazio até isso acontecer (evita gerar recibo errado
+  // por causa de um valor que ficou selecionado de uma vez anterior).
+  function mostrarBlocoTemplateDoTipo() {
+    const tipo = document.getElementById('tipoRecibo').value;
+    document.getElementById('blocoTemplateVazio').style.display = tipo ? 'none' : 'block';
+    document.getElementById('blocoTemplatePagamento').style.display = (tipo === 'pagamento') ? 'flex' : 'none';
+    document.getElementById('blocoTemplateAdiantamento').style.display = (tipo === 'adiantamento') ? 'flex' : 'none';
   }
 
-  document.getElementById('dataRecibo').addEventListener('input', function () {
-    autoDefinirTipoRecibo();
+  document.getElementById('dataRecibo').addEventListener('input', renderPreview);
+  document.getElementById('localRecibo').addEventListener('input', renderPreview);
+  document.getElementById('tipoRecibo').addEventListener('change', function () {
+    mostrarBlocoTemplateDoTipo();
     renderPreview();
   });
-  document.getElementById('localRecibo').addEventListener('input', renderPreview);
-  document.getElementById('tipoRecibo').addEventListener('change', renderPreview);
 
   document.getElementById('templateCorpoPagamento').addEventListener('input', function () {
     salvarTemplate('pagamento', this.value);
@@ -479,8 +485,10 @@
   document.getElementById('btnGerarRecibos').addEventListener('click', function () {
     const incluidos = getFuncionarios().filter(function (f) { return f.incluir; });
     const dataISO = document.getElementById('dataRecibo').value;
+    const tipo = document.getElementById('tipoRecibo').value;
     if (!incluidos.length) { alert('Marque ao menos um funcionário pra incluir no lote.'); return; }
     if (!dataISO) { alert('Preencha a data dos recibos.'); return; }
+    if (!tipo) { alert('Selecione o Tipo de Recibo (Pagamento ou Adiantamento).'); return; }
 
     const zerados = incluidos.filter(function (f) { return !(num(f.valor) > 0); });
     let listaFinal = incluidos;
@@ -510,11 +518,12 @@
      INICIALIZAÇÃO
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-  document.getElementById('dataRecibo').value = new Date().toISOString().slice(0, 10);
-  autoDefinirTipoRecibo();
+  // Data e Tipo de Recibo ficam vazios de propósito — a pessoa escolhe toda vez,
+  // pra não gerar recibo errado por causa de um valor que ficou de uma vez anterior.
   document.getElementById('buscaFuncionario').addEventListener('input', renderTabela);
   document.getElementById('fEmpresa').addEventListener('change', atualizarCorEmpresaForm);
   atualizarCorEmpresaForm();
+  mostrarBlocoTemplateDoTipo();
 
   function preencherTemplatesNoForm() {
     document.getElementById('templateCorpoPagamento').value = getTemplate('pagamento');
