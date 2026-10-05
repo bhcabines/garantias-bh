@@ -188,7 +188,7 @@
         return '<tr>' +
           '<td class="tc"><input type="checkbox" class="chk-incluir" data-id="' + f.id + '" ' + (f.incluir ? 'checked' : '') + '></td>' +
           '<td class="nome-cel">' + escapeHtml(f.nome) + '</td>' +
-          '<td><input type="text" inputmode="decimal" class="campo-valor-tabela campo-valor-editavel" data-id="' + f.id + '" value="' + fmt(f.valor) + '"></td>' +
+          '<td><input type="text" inputmode="decimal" class="campo-valor-tabela campo-valor-editavel" data-id="' + f.id + '" value="' + fmt(f.valor) + '" ' + (f.incluir ? '' : 'disabled') + '></td>' +
           '<td class="tc" style="white-space:nowrap">' +
             '<button class="icon-btn" data-editar="' + f.id + '" title="Editar">✏️</button>' +
             '<button class="icon-btn" data-excluir="' + f.id + '" title="Excluir">🗑️</button>' +
@@ -201,7 +201,7 @@
       chk.addEventListener('change', function () {
         const lista2 = getFuncionarios();
         const f = lista2.find(function (x) { return x.id === chk.dataset.id; });
-        if (f) { f.incluir = chk.checked; salvarFuncionarios(lista2); atualizarResumoEPreview(); }
+        if (f) { f.incluir = chk.checked; salvarFuncionarios(lista2); renderTabela(); }
       });
     });
     tbody.querySelectorAll('.campo-valor-editavel').forEach(function (inp) {
@@ -224,7 +224,6 @@
 
   function limparFormFuncionario() {
     document.getElementById('fNome').value = '';
-    document.getElementById('fValor').value = '';
     document.getElementById('fEditId').value = '';
     document.getElementById('tituloFormFunc').textContent = 'Cadastrar Funcionário';
     document.getElementById('btnCancelarEdicaoFunc').style.display = 'none';
@@ -234,7 +233,6 @@
     const f = getFuncionarios().find(function (x) { return x.id === id; });
     if (!f) return;
     document.getElementById('fNome').value = f.nome;
-    document.getElementById('fValor').value = fmt(f.valor);
     document.getElementById('fEditId').value = f.id;
     document.getElementById('tituloFormFunc').textContent = 'Editar Funcionário';
     document.getElementById('btnCancelarEdicaoFunc').style.display = 'inline-flex';
@@ -252,26 +250,23 @@
 
   document.getElementById('btnSalvarFunc').addEventListener('click', function () {
     const nome = document.getElementById('fNome').value.trim();
-    const valor = parseNumeroBR(document.getElementById('fValor').value);
     const editId = document.getElementById('fEditId').value;
     if (!nome) { alert('Preencha o nome do funcionário.'); return; }
-    if (valor <= 0) { alert('Preencha um valor maior que zero.'); return; }
 
     const lista = getFuncionarios();
     if (editId) {
       const f = lista.find(function (x) { return x.id === editId; });
-      if (f) { f.nome = nome; f.valor = valor; }
+      if (f) { f.nome = nome; }
     } else {
       const duplicado = lista.find(function (x) { return x.nome.trim().toLowerCase() === nome.toLowerCase(); });
       if (duplicado) { alert('Já existe um funcionário cadastrado com esse nome.'); return; }
-      lista.push({ id: uid(), nome: nome, valor: valor, incluir: true });
+      lista.push({ id: uid(), nome: nome, valor: 0, incluir: true });
     }
     salvarFuncionarios(lista);
     limparFormFuncionario();
     renderTabela();
   });
   document.getElementById('btnCancelarEdicaoFunc').addEventListener('click', limparFormFuncionario);
-  wireMascaraMoeda(document.getElementById('fValor'));
 
   /* ---------------------------------------------------------------------
      GERAÇÃO DOS RECIBOS (pré-visualização = o que vai pra impressão)
@@ -349,6 +344,11 @@
     const dataISO = document.getElementById('dataRecibo').value;
     if (!incluidos.length) { alert('Marque ao menos um funcionário pra incluir no lote.'); return; }
     if (!dataISO) { alert('Preencha a data dos recibos.'); return; }
+    const semValor = incluidos.filter(function (f) { return !(num(f.valor) > 0); });
+    if (semValor.length) {
+      alert('Preencha o valor deste mês antes de imprimir:\n' + semValor.map(function (f) { return '- ' + f.nome; }).join('\n'));
+      return;
+    }
     renderPreview();
     setTimeout(function () { window.print(); }, 50);
   });
