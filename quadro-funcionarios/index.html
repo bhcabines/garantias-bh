@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BH Cabines — Quadro de Funcionários</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hdr no-print">
+  <div class="hdr-in">
+    <a href="../index.html" class="hdr-back" title="Voltar ao painel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <div class="hdr-title">
+      <h1>Quadro de Funcionários</h1>
+      <small>Cadastro · Recibos salariais para impressão</small>
+    </div>
+    <div class="ml hdr-right">
+      <span id="syncIndicador" style="display:none;font-size:.72rem;font-weight:600;color:#666;padding:4px 10px;background:#f3f4f6;border-radius:20px"></span>
+      <span class="header-date" id="headerDate"></span>
+      <a href="../index.html" class="btn-menu">🏠 Menu</a>
+    </div>
+  </div>
+</header>
+
+<main class="content no-print">
+
+  <div class="card">
+    <h3 class="card-title" id="tituloFormFunc">Cadastrar Funcionário</h3>
+    <div class="form-row">
+      <div class="field field-wide"><label>Nome *</label><input type="text" id="fNome" placeholder="Nome completo do funcionário"></div>
+      <div class="field"><label>Valor (R$) *</label><input type="text" inputmode="decimal" id="fValor" class="campo-valor-br" placeholder="R$ 0,00"></div>
+    </div>
+    <input type="hidden" id="fEditId">
+    <div class="btn-row-h" style="margin-top:6px">
+      <button class="btn bo" id="btnSalvarFunc">Salvar Funcionário</button>
+      <button class="btn bgray" id="btnCancelarEdicaoFunc" style="display:none">Cancelar edição</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <h3 class="card-title">Funcionários Cadastrados</h3>
+    <p class="muted" style="margin-bottom:12px">Marque "Incluir no lote" quem deve receber recibo nesta impressão. O valor é editável direto na tabela (atualiza sozinho ao sair do campo).</p>
+    <div class="table-wrap">
+      <table id="tblFuncionarios">
+        <thead><tr><th class="tc">Incluir no lote</th><th>Nome</th><th>Valor</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <h3 class="card-title">Gerar Recibos para Impressão</h3>
+    <div class="form-row">
+      <div class="field"><label>Data (igual em todos os recibos) *</label><input type="date" id="dataRecibo"></div>
+      <div class="field"><label>Local *</label><input type="text" id="localRecibo" value="Belo Horizonte"></div>
+    </div>
+    <div class="btn-row-h" style="margin-top:10px">
+      <button class="btn bo" id="btnGerarRecibos">🖨 Gerar e Imprimir</button>
+    </div>
+    <p class="muted" id="resumoLote" style="margin-top:10px"></p>
+  </div>
+
+</main>
+
+<!-- FORA do bloco .no-print de propósito: na impressão, tudo com .no-print some e
+     só isto aqui fica visível (ver @media print no style.css). Em tela, o
+     .preview-card em volta dá a moldura de "card" igual ao resto da página. -->
+<div class="content">
+  <div class="card preview-card">
+    <h3 class="card-title no-print">Pré-visualização (5 recibos por folha A4)</h3>
+    <div class="preview-scroll">
+      <div id="printArea"></div>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

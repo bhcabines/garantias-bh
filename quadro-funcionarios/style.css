@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root{
+  --orange:#EA5B0C;
+  --orange-dim:rgba(234,91,12,.08);
+  --dark:#515053;
+  --black:#1a1a1a;
+  --white:#ffffff;
+  --bg:#f6f5f4;
+  --border:#e2e0de;
+  --good:#16a34a;
+  --warn:#d97706;
+  --bad:#dc2626;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--black);min-height:100vh}
+
+/* ===== Header ===== */
+.hdr{background:var(--white);border-bottom:3px solid var(--orange);box-shadow:0 2px 12px rgba(0,0,0,.06);position:sticky;top:0;z-index:200}
+.hdr-in{display:flex;align-items:center;gap:14px;padding:.7rem 1.5rem}
+.hdr-in img{height:40px}
+.hdr-back{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;color:var(--dark);text-decoration:none;transition:background .15s}
+.hdr-back:hover{background:var(--orange-dim);color:var(--orange)}
+.hdr-back svg{width:20px;height:20px}
+.hdr-title h1{font-size:1rem;font-weight:700;color:var(--black);text-transform:uppercase;letter-spacing:.4px}
+.hdr-title small{font-size:.7rem;color:#999;display:block;margin-top:1px}
+.ml{margin-left:auto}
+.hdr-right{display:flex;align-items:center;gap:14px}
+.header-date{font-size:.75rem;color:#999}
+.btn-menu{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:1.5px solid var(--orange);background:var(--orange-dim);color:var(--orange);font-size:.8rem;font-weight:700;text-decoration:none;white-space:nowrap;transition:all .15s}
+.btn-menu:hover{background:var(--orange);color:var(--white)}
+
+/* ===== Layout ===== */
+.content{max-width:1100px;margin:0 auto;padding:28px 32px 60px}
+
+/* ===== Cards ===== */
+.card{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:20px 22px;box-shadow:0 2px 10px rgba(0,0,0,.03)}
+.card-title{font-size:.78rem;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
+.muted{font-size:.78rem;color:#999}
+
+/* ===== Forms ===== */
+.form-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field-wide{grid-column:span 2}
+label{font-size:.7rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px}
+input,select{padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;background:var(--white);color:var(--black);width:100%}
+input:focus,select:focus{outline:none;border-color:var(--orange)}
+.campo-valor-br{text-align:right;font-variant-numeric:tabular-nums}
+.campo-valor-tabela{padding:5px 7px;font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums;min-width:110px}
+
+/* ===== Buttons ===== */
+.btn{padding:9px 16px;border-radius:8px;border:none;cursor:pointer;font-size:.8rem;font-weight:700;transition:all .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.bo{background:var(--orange);color:var(--white)}.bo:hover{background:#c84a08}
+.bk{background:var(--good);color:var(--white)}.bk:hover{background:#0f7a37}
+.bgray{background:#6b7280;color:var(--white)}.bgray:hover{background:#52555c}
+.bred{background:var(--bad);color:var(--white)}.bred:hover{background:#b91c1c}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-row-h{display:flex;gap:10px;flex-wrap:wrap}
+.icon-btn{background:none;border:none;cursor:pointer;color:#999;padding:4px}
+.icon-btn:hover{color:var(--orange)}
+.icon-btn svg{width:16px;height:16px}
+
+/* ===== Tables ===== */
+.table-wrap{overflow:auto;max-height:62vh}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+thead th{position:sticky;top:0;z-index:3;background:#f7f6f5;border:1px solid var(--border);padding:8px 10px;font-size:.65rem;font-weight:700;color:var(--dark);text-transform:uppercase;white-space:nowrap;letter-spacing:.3px}
+tbody td{border:1px solid var(--border);padding:7px 10px;vertical-align:middle}
+tbody tr:nth-child(even){background:#fafafa}
+.empty-row td{text-align:center;color:#bbb;font-style:italic;padding:18px}
+.tc{text-align:center}
+.chk-incluir{width:17px;height:17px;accent-color:var(--orange);cursor:pointer}
+.nome-cel{font-weight:600}
+
+/* ============================================================
+   RECIBOS — pré-visualização em tela E impressão compartilham
+   as mesmas classes, pra não ter duas versões de layout.
+   ============================================================ */
+.preview-card{margin-top:0}
+.preview-scroll{overflow-x:auto}
+
+.recibo-pagina{width:190mm;margin:0 auto 24px;background:var(--white)}
+.recibo-tira{
+  width:100%;
+  box-sizing:border-box;
+  border:1.4px solid #000;
+  padding:2.5mm 4mm;
+  min-height:50mm;
+  margin-bottom:3mm;
+  font-family:Arial,Helvetica,sans-serif;
+  color:#000;
+  display:flex;
+  flex-direction:column;
+}
+.recibo-tira:last-child{margin-bottom:0}
+
+.recibo-cabecalho{
+  display:flex;justify-content:space-between;align-items:baseline;
+  border-bottom:1.2px solid #000;padding-bottom:2mm;margin-bottom:2.5mm;
+}
+.recibo-titulo{font-weight:700;font-size:11.5pt;letter-spacing:.3px}
+.recibo-valor{font-weight:700;font-size:11.5pt;white-space:nowrap}
+
+.recibo-corpo{font-size:9pt;line-height:1.4;flex:1}
+.recibo-corpo b{font-weight:700}
+
+.recibo-rodape{margin-top:auto;padding-top:4mm}
+.recibo-assinatura-linha{border-top:1px solid #000;width:75mm;margin:0 auto 1.2mm}
+.recibo-assinatura-nome{text-align:center;font-weight:700;font-size:8.5pt;text-transform:uppercase}
+.recibo-assinatura-label{text-align:center;font-size:7.5pt;color:#444;margin-top:1mm}
+
+.empty-preview{padding:30px;text-align:center;color:#999;font-size:.85rem}
+
+/* ===== Impressão ===== */
+@media print{
+  .no-print{display:none !important}
+  body{background:#fff}
+  .content{max-width:none;margin:0;padding:0}
+  .preview-card{border:none;box-shadow:none;padding:0;border-radius:0}
+  .preview-scroll{overflow:visible}
+  .recibo-pagina{width:auto;margin:0;page-break-after:always}
+  .recibo-pagina:last-child{page-break-after:auto}
+  @page{size:A4;margin:10mm}
+}
