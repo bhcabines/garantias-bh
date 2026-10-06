@@ -49,24 +49,6 @@
   </div>
 
   <div class="card" style="margin-top:20px">
-    <h3 class="card-title">Funcionários Cadastrados</h3>
-    <p class="muted" style="margin-bottom:12px">Todo funcionário novo já entra marcado pra receber recibo. Desmarque "Incluir no lote" quem NÃO deve receber neste mês — o campo de valor só fica editável enquanto marcado, porque o valor muda todo mês. A empresa define o nome que aparece no corpo do recibo.</p>
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin-bottom:12px">
-      <div class="field" style="max-width:320px;margin-bottom:0">
-        <label>Localizar funcionário</label>
-        <input type="text" id="buscaFuncionario" placeholder="Digite o nome...">
-      </div>
-      <button class="btn bgreen-light" id="btnZerarValores" style="margin-right:68px">Zerar Valores</button>
-    </div>
-    <div class="table-wrap">
-      <table id="tblFuncionarios">
-        <thead><tr><th class="tc">Incluir no lote</th><th>Nome</th><th>Empresa</th><th class="tc">Valor</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:20px">
     <h3 class="card-title">Importar Planilha de Pagamento</h3>
     <p class="muted" style="margin-bottom:12px">Sobe o <code>.xlsx</code> do pagamento do mês. A planilha tem dois blocos de funcionários — o primeiro é tratado como BH Cabines, o segundo como BHC Parts. Escolha se são os valores de Pagamento (coluna "Total a receber") ou Adiantamento (coluna "Vale dia 20") antes de processar.</p>
     <div class="form-row">
@@ -105,6 +87,24 @@
           <button class="btn bk" id="btnFinalizarImportacao">Finalizar Importação</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <h3 class="card-title">Funcionários Cadastrados</h3>
+    <p class="muted" style="margin-bottom:12px">Todo funcionário novo já entra marcado pra receber recibo. Desmarque "Incluir no lote" quem NÃO deve receber neste mês — o campo de valor só fica editável enquanto marcado, porque o valor muda todo mês. A empresa define o nome que aparece no corpo do recibo.</p>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin-bottom:12px">
+      <div class="field" style="max-width:320px;margin-bottom:0">
+        <label>Localizar funcionário</label>
+        <input type="text" id="buscaFuncionario" placeholder="Digite o nome...">
+      </div>
+      <button class="btn bgreen-light" id="btnZerarValores" style="margin-right:68px">Zerar Valores</button>
+    </div>
+    <div class="table-wrap">
+      <table id="tblFuncionarios">
+        <thead><tr><th class="tc">Incluir no lote</th><th>Nome</th><th>Empresa</th><th class="tc">Valor</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
 
