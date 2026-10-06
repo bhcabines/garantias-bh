@@ -458,17 +458,23 @@
         const nomePlanilha = String((row && row[0]) || '').trim();
         if (!nomePlanilha) return;
         const valor = Number(row[colIndex]) || 0;
+        // Sem valor a pagar nessa linha: não vale a pena perguntar nada sobre
+        // ela (ambígua, não encontrada, nome suspeito — tanto faz), simplesmente
+        // não há o que aplicar. Só os matches automáticos seguem adiante mesmo
+        // com valor zero, porque aí é só zerar quem já está cadastrado mesmo.
         if (nomeSuspeito(nomePlanilha)) {
-          pendentes.push({
-            nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: 'suspeito',
-            candidatos: getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === empresa; })
-          });
+          if (valor > 0) {
+            pendentes.push({
+              nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: 'suspeito',
+              candidatos: getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === empresa; })
+            });
+          }
           return;
         }
         const r = encontrarCandidatoPlanilha(nomePlanilha, empresa);
         if (r.tipo === 'auto') {
           candidatosAuto.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, candidato: r.candidato });
-        } else {
+        } else if (valor > 0) {
           pendentes.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: r.tipo, candidatos: r.candidatos });
         }
       });
@@ -477,12 +483,20 @@
     // Duas linhas da planilha não podem "ganhar" o mesmo cadastrado (ex.:
     // "Gabriel" e "Gabriel Gonçalves" batendo só com "Gabriel Carvalho" por
     // nome solto) — nesse caso nenhuma das duas entra automático, vão as
-    // duas pra resolução manual, pra uma pessoa de verdade escolher.
+    // duas pra resolução manual, pra uma pessoa de verdade escolher. Conflitos
+    // só contam entre linhas que realmente têm valor a pagar — a com valor
+    // zerado nem entra na contagem.
+    const candidatosComValor = candidatosAuto.filter(function (c) { return c.valor > 0; });
     const contagemPorId = {};
-    candidatosAuto.forEach(function (c) { contagemPorId[c.candidato.id] = (contagemPorId[c.candidato.id] || 0) + 1; });
+    candidatosComValor.forEach(function (c) { contagemPorId[c.candidato.id] = (contagemPorId[c.candidato.id] || 0) + 1; });
 
+    // "encontrados" junta todo mundo que apareceu na planilha com nome batendo
+    // de forma única (com ou sem valor) — usado só pra NÃO perguntar "foi
+    // desligado?" de quem foi encontrado e só está zerado este mês.
     const autoMatches = [];
+    const encontrados = [];
     candidatosAuto.forEach(function (c) {
+      if (c.valor <= 0) { encontrados.push(c.candidato.id); return; }
       if (contagemPorId[c.candidato.id] > 1) {
         pendentes.push({
           nomePlanilha: c.nomePlanilha, empresa: c.empresa, valor: c.valor, motivo: 'conflito',
@@ -490,10 +504,11 @@
         });
       } else {
         autoMatches.push({ funcionarioId: c.candidato.id, valor: c.valor });
+        encontrados.push(c.candidato.id);
       }
     });
 
-    return { autoMatches: autoMatches, pendentes: pendentes, empresasEnvolvidas: empresasEnvolvidas };
+    return { autoMatches: autoMatches, pendentes: pendentes, empresasEnvolvidas: empresasEnvolvidas, encontrados: encontrados };
   }
 
   function renderPendentesImport() {
@@ -561,7 +576,7 @@
   }
 
   function aplicarResolucaoImportacao() {
-    const idsEnvolvidos = importEstado.autoMatches.map(function (m) { return m.funcionarioId; });
+    const idsEnvolvidos = importEstado.encontrados.slice();
     const valoresPorId = {};
     importEstado.autoMatches.forEach(function (m) { valoresPorId[m.funcionarioId] = m.valor; });
 
