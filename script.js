@@ -136,6 +136,26 @@
     input.addEventListener('blur', function () { input.value = fmt(parseNumeroBR(input.value)); });
   }
 
+  function zerarValoresDe(ids) {
+    const todos = getFuncionarios();
+    const idsSet = ids ? new Set(ids) : null;
+    todos.forEach(function (f) { if (!idsSet || idsSet.has(f.id)) f.valor = 0; });
+    salvarFuncionarios(todos);
+  }
+
+  function ordenarPorNome(lista) {
+    return lista.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
+  }
+
+  function classeEmpresa(valor) {
+    return valor === 'BHC PARTS' ? 'sel-empresa-bhc' : 'sel-empresa-bh';
+  }
+  function atualizarCorEmpresaForm() {
+    const sel = document.getElementById('fEmpresa');
+    sel.classList.remove('sel-empresa-bh', 'sel-empresa-bhc');
+    sel.classList.add(classeEmpresa(sel.value));
+  }
+
   function fmtDataBR(iso) {
     const p = String(iso || '').split('-');
     return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : '';
@@ -239,9 +259,7 @@
      --------------------------------------------------------------------- */
   function renderTabela() {
     const termoBusca = document.getElementById('buscaFuncionario').value.trim().toLowerCase();
-    let lista = getFuncionarios().slice().sort(function (a, b) {
-      return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
-    });
+    let lista = ordenarPorNome(getFuncionarios());
     if (termoBusca) lista = lista.filter(function (f) { return f.nome.toLowerCase().includes(termoBusca); });
 
     const tbody = document.querySelector('#tblFuncionarios tbody');
@@ -254,7 +272,7 @@
         return '<tr>' +
           '<td class="tc"><input type="checkbox" class="chk-incluir" data-id="' + f.id + '" ' + (f.incluir ? 'checked' : '') + '></td>' +
           '<td class="nome-cel">' + escapeHtml(f.nome) + '</td>' +
-          '<td><select class="campo-empresa-tabela" data-id="' + f.id + '">' +
+          '<td><select class="campo-empresa-tabela ' + classeEmpresa(empresa) + '" data-id="' + f.id + '">' +
             '<option value="BH CABINES"' + (empresa === 'BH CABINES' ? ' selected' : '') + '>BH Cabines</option>' +
             '<option value="BHC PARTS"' + (empresa === 'BHC PARTS' ? ' selected' : '') + '>BHC Parts</option>' +
           '</select></td>' +
@@ -287,6 +305,8 @@
         const lista2 = getFuncionarios();
         const f = lista2.find(function (x) { return x.id === sel.dataset.id; });
         if (f) { f.empresa = sel.value; salvarFuncionarios(lista2); atualizarResumoEPreview(); }
+        sel.classList.remove('sel-empresa-bh', 'sel-empresa-bhc');
+        sel.classList.add(classeEmpresa(sel.value));
       });
     });
     tbody.querySelectorAll('[data-editar]').forEach(function (btn) {
@@ -305,6 +325,7 @@
     document.getElementById('fEditId').value = '';
     document.getElementById('tituloFormFunc').textContent = 'Cadastrar Funcionário';
     document.getElementById('btnCancelarEdicaoFunc').style.display = 'none';
+    atualizarCorEmpresaForm();
   }
 
   function editarFuncionario(id) {
@@ -316,6 +337,7 @@
     document.getElementById('tituloFormFunc').textContent = 'Editar Funcionário';
     document.getElementById('btnCancelarEdicaoFunc').style.display = 'inline-flex';
     document.getElementById('fNome').focus();
+    atualizarCorEmpresaForm();
   }
 
   function excluirFuncionario(id) {
@@ -326,6 +348,14 @@
     salvarFuncionarios(lista);
     renderTabela();
   }
+
+  document.getElementById('btnZerarValores').addEventListener('click', function () {
+    const todos = getFuncionarios();
+    if (!todos.length) { alert('Nenhum funcionário cadastrado.'); return; }
+    if (!confirm('Zerar o valor deste mês de TODOS os funcionários cadastrados? Essa ação não pode ser desfeita.')) return;
+    zerarValoresDe();
+    renderTabela();
+  });
 
   document.getElementById('btnSalvarFunc').addEventListener('click', function () {
     const nome = document.getElementById('fNome').value.trim();
@@ -347,6 +377,348 @@
     renderTabela();
   });
   document.getElementById('btnCancelarEdicaoFunc').addEventListener('click', limparFormFuncionario);
+
+  /* ---------------------------------------------------------------------
+     IMPORTAR PLANILHA DE PAGAMENTO (.xlsx)
+     A planilha tem dois blocos de funcionários empilhados na mesma aba —
+     o 1º bloco é sempre BH Cabines, o 2º sempre BHC Parts (confirmado com
+     o usuário). Coluna G = "Vale dia 20" > "Dinheiro" (adiantamento);
+     coluna O = "Total a receber" > "Dinheiro" (pagamento).
+     --------------------------------------------------------------------- */
+  const IMPORT_COL_ADIANTAMENTO = 6;  // G
+  const IMPORT_COL_PAGAMENTO = 14;    // O
+  const IMPORT_EMPRESAS_POR_BLOCO = ['BH CABINES', 'BHC PARTS'];
+  const IMPORT_MOTIVO_LABEL = {
+    'ambiguo': 'Nome ambíguo (bate com mais de um cadastrado)',
+    'nao-encontrado': 'Não encontrado no cadastro',
+    'suspeito': 'Nome com aparência de erro na planilha',
+    'conflito': 'Bateu com o mesmo cadastrado de outra linha da planilha'
+  };
+
+  let importEstado = null;
+
+  function normalizarNomeBusca(s) {
+    return String(s || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .trim().toUpperCase().replace(/\s+/g, ' ');
+  }
+
+  function dividirBlocosPlanilha(linhas) {
+    const blocos = [];
+    let i = 0;
+    while (i < linhas.length) {
+      const row = linhas[i] || [];
+      if (normalizarNomeBusca(row[0]) === 'NOME') {
+        const inicio = i + 2; // pula a linha "Nome" e a sublinha "Dinheiro/Depositado/Total"
+        let fim = inicio;
+        while (fim < linhas.length) {
+          const colA = normalizarNomeBusca((linhas[fim] || [])[0]);
+          if (colA === 'TOTAL' || colA.indexOf('TOTAL PAGO') === 0) break;
+          fim++;
+        }
+        blocos.push(linhas.slice(inicio, fim));
+        i = fim + 1;
+      } else {
+        i++;
+      }
+    }
+    return blocos;
+  }
+
+  function nomeSuspeito(nome) {
+    return /[+=:]/.test(nome) || /\d/.test(nome);
+  }
+
+  // Só os cadastrados que têm alguma palavra em comum com o nome da planilha
+  // (ex.: "Felipe" bate com "Josemar Felipe de Souza") — evita mostrar a lista
+  // inteira de funcionários da empresa quando ninguém bate de verdade.
+  function candidatosPlausiveis(nomePlanilha, empresa) {
+    const palavrasAlvo = normalizarNomeBusca(nomePlanilha).split(' ').filter(Boolean);
+    return getFuncionarios()
+      .filter(function (f) {
+        if ((f.empresa || 'BH CABINES') !== empresa) return false;
+        const palavrasCand = normalizarNomeBusca(f.nome).split(' ');
+        return palavrasAlvo.some(function (p) { return palavrasCand.indexOf(p) !== -1; });
+      })
+      .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
+  }
+
+  function encontrarCandidatoPlanilha(nomePlanilha, empresa) {
+    const alvo = normalizarNomeBusca(nomePlanilha);
+    const cands = getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === empresa; });
+    const exato = cands.find(function (f) { return normalizarNomeBusca(f.nome) === alvo; });
+    if (exato) return { tipo: 'auto', candidato: exato };
+    const soltos = cands.filter(function (f) {
+      const fn = normalizarNomeBusca(f.nome);
+      return fn.indexOf(alvo + ' ') === 0 || alvo.indexOf(fn + ' ') === 0 || fn.split(' ')[0] === alvo.split(' ')[0];
+    }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
+    if (soltos.length === 1) return { tipo: 'auto', candidato: soltos[0] };
+    if (soltos.length > 1) return { tipo: 'ambiguo', candidatos: soltos };
+    return { tipo: 'nao-encontrado', candidatos: candidatosPlausiveis(nomePlanilha, empresa) };
+  }
+
+  function processarPlanilha(linhas, tipo) {
+    const blocos = dividirBlocosPlanilha(linhas);
+    const colIndex = tipo === 'adiantamento' ? IMPORT_COL_ADIANTAMENTO : IMPORT_COL_PAGAMENTO;
+    const candidatosAuto = []; // { nomePlanilha, empresa, valor, candidato }
+    const pendentes = [];
+    const empresasEnvolvidas = [];
+
+    blocos.forEach(function (bloco, idxBloco) {
+      const empresa = IMPORT_EMPRESAS_POR_BLOCO[idxBloco];
+      if (!empresa) return;
+      empresasEnvolvidas.push(empresa);
+      bloco.forEach(function (row) {
+        const nomePlanilha = String((row && row[0]) || '').trim();
+        if (!nomePlanilha) return;
+        const valor = Number(row[colIndex]) || 0;
+        // Sem valor a pagar nessa linha: não vale a pena perguntar nada sobre
+        // ela (ambígua, não encontrada, nome suspeito — tanto faz), simplesmente
+        // não há o que aplicar. Só os matches automáticos seguem adiante mesmo
+        // com valor zero, porque aí é só zerar quem já está cadastrado mesmo.
+        if (nomeSuspeito(nomePlanilha)) {
+          if (valor > 0) {
+            pendentes.push({
+              nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: 'suspeito',
+              candidatos: candidatosPlausiveis(nomePlanilha, empresa)
+            });
+          }
+          return;
+        }
+        const r = encontrarCandidatoPlanilha(nomePlanilha, empresa);
+        if (r.tipo === 'auto') {
+          candidatosAuto.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, candidato: r.candidato });
+        } else if (valor > 0) {
+          pendentes.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: r.tipo, candidatos: r.candidatos });
+        }
+      });
+    });
+
+    // Duas linhas da planilha não podem "ganhar" o mesmo cadastrado (ex.:
+    // "Gabriel" e "Gabriel Gonçalves" batendo só com "Gabriel Carvalho" por
+    // nome solto) — nesse caso nenhuma das duas entra automático, vão as
+    // duas pra resolução manual, pra uma pessoa de verdade escolher. Conflitos
+    // só contam entre linhas que realmente têm valor a pagar — a com valor
+    // zerado nem entra na contagem.
+    const candidatosComValor = candidatosAuto.filter(function (c) { return c.valor > 0; });
+    const contagemPorId = {};
+    candidatosComValor.forEach(function (c) { contagemPorId[c.candidato.id] = (contagemPorId[c.candidato.id] || 0) + 1; });
+
+    // "encontrados" junta todo mundo que apareceu na planilha com nome batendo
+    // de forma única (com ou sem valor) — usado só pra NÃO perguntar "foi
+    // desligado?" de quem foi encontrado e só está zerado este mês.
+    const autoMatches = [];
+    const encontrados = [];
+    candidatosAuto.forEach(function (c) {
+      if (c.valor <= 0) { encontrados.push(c.candidato.id); return; }
+      if (contagemPorId[c.candidato.id] > 1) {
+        pendentes.push({
+          nomePlanilha: c.nomePlanilha, empresa: c.empresa, valor: c.valor, motivo: 'conflito',
+          candidatos: candidatosPlausiveis(c.nomePlanilha, c.empresa)
+        });
+      } else {
+        autoMatches.push({ funcionarioId: c.candidato.id, valor: c.valor });
+        encontrados.push(c.candidato.id);
+      }
+    });
+
+    return { autoMatches: autoMatches, pendentes: pendentes, empresasEnvolvidas: empresasEnvolvidas, encontrados: encontrados };
+  }
+
+  function renderPendentesImport() {
+    const lista = document.getElementById('listaPendentes');
+    lista.innerHTML = importEstado.pendentes.map(function (p, idx) {
+      // candidatos já vem ordenado alfabeticamente e filtrado por palavra em
+      // comum com o nome da planilha (ver candidatosPlausiveis).
+      const opcoesExistentes = p.candidatos.map(function (f) {
+        return '<option value="' + f.id + '" data-nome="' + escapeHtml(normalizarNomeBusca(f.nome)) + '">' + escapeHtml(f.nome) + '</option>';
+      }).join('');
+      return (
+        '<div class="import-item">' +
+          '<div class="import-item-topo">' +
+            '<div><b>"' + escapeHtml(p.nomePlanilha) + '"</b> <span class="muted">(' + (p.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ') — ' + fmt(p.valor) + '</span></div>' +
+            '<div class="import-item-motivo">' + IMPORT_MOTIVO_LABEL[p.motivo] + '</div>' +
+          '</div>' +
+          '<input type="text" class="input-filtro-import" data-idx="' + idx + '" placeholder="Pesquisar nome na lista abaixo..." style="margin-bottom:6px">' +
+          '<select class="sel-resolucao-import" data-idx="' + idx + '">' +
+            '<option value="">— Selecione —</option>' +
+            opcoesExistentes +
+            '<option value="__novo__">➕ Cadastrar como novo funcionário</option>' +
+            '<option value="__ignorar__">🚫 Ignorar esta linha</option>' +
+          '</select>' +
+          '<div class="import-item-novo-nome" data-idx="' + idx + '" style="display:none">' +
+            '<input type="text" class="input-novo-nome-import" data-idx="' + idx + '" value="' + escapeHtml(p.nomePlanilha) + '">' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    lista.querySelectorAll('.sel-resolucao-import').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        const idx = sel.dataset.idx;
+        const campoNovo = lista.querySelector('.import-item-novo-nome[data-idx="' + idx + '"]');
+        campoNovo.style.display = (sel.value === '__novo__') ? 'block' : 'none';
+      });
+    });
+
+    lista.querySelectorAll('.input-filtro-import').forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        const idx = inp.dataset.idx;
+        const termo = normalizarNomeBusca(inp.value);
+        const sel = lista.querySelector('.sel-resolucao-import[data-idx="' + idx + '"]');
+        Array.prototype.forEach.call(sel.options, function (opt) {
+          if (!opt.dataset.nome) return; // "— Selecione —" / "Cadastrar novo" / "Ignorar" ficam sempre visíveis
+          opt.style.display = opt.dataset.nome.indexOf(termo) !== -1 ? '' : 'none';
+        });
+      });
+    });
+  }
+
+  function renderAusentesImport(idsEnvolvidos) {
+    const lista = document.getElementById('listaAusentes');
+    const ausentes = getFuncionarios().filter(function (f) {
+      return importEstado.empresasEnvolvidas.indexOf(f.empresa || 'BH CABINES') !== -1 && idsEnvolvidos.indexOf(f.id) === -1;
+    });
+    if (!ausentes.length) {
+      document.getElementById('blocoAusentes').style.display = 'none';
+      return ausentes;
+    }
+    lista.innerHTML = ausentes.map(function (f) {
+      return (
+        '<div class="import-ausente-item">' +
+          '<input type="checkbox" class="chk-desligado-import" data-id="' + f.id + '">' +
+          '<span>' + escapeHtml(f.nome) + ' <span class="muted">(' + (f.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ')</span></span>' +
+        '</div>'
+      );
+    }).join('');
+    document.getElementById('blocoAusentes').style.display = 'block';
+    return ausentes;
+  }
+
+  function resetarTelaImportacao() {
+    importEstado = null;
+    document.getElementById('importResultado').style.display = 'none';
+    document.getElementById('blocoPendentes').style.display = 'none';
+    document.getElementById('blocoAusentes').style.display = 'none';
+    document.getElementById('importArquivo').value = '';
+    document.getElementById('importTipo').value = '';
+  }
+
+  function aplicarResolucaoImportacao() {
+    const idsEnvolvidos = importEstado.encontrados.slice();
+    const valoresPorId = {};
+    importEstado.autoMatches.forEach(function (m) { valoresPorId[m.funcionarioId] = m.valor; });
+
+    if (importEstado.pendentes.length) {
+      const selects = document.querySelectorAll('.sel-resolucao-import');
+      for (let i = 0; i < selects.length; i++) {
+        if (!selects[i].value) { alert('Resolva todas as linhas pendentes antes de continuar.'); return; }
+      }
+
+      const lista = getFuncionarios();
+      let mudouCadastro = false;
+
+      importEstado.pendentes.forEach(function (p, idx) {
+        const sel = document.querySelector('.sel-resolucao-import[data-idx="' + idx + '"]');
+        const valorSel = sel.value;
+        if (valorSel === '__ignorar__') return;
+        if (valorSel === '__novo__') {
+          const inputNome = document.querySelector('.input-novo-nome-import[data-idx="' + idx + '"]');
+          const novoNome = (inputNome.value || '').trim();
+          if (!novoNome) return;
+          const novo = { id: uid(), nome: novoNome, empresa: p.empresa, valor: p.valor, incluir: p.valor > 0 };
+          lista.push(novo);
+          idsEnvolvidos.push(novo.id);
+          valoresPorId[novo.id] = p.valor;
+          mudouCadastro = true;
+        } else {
+          idsEnvolvidos.push(valorSel);
+          valoresPorId[valorSel] = p.valor;
+        }
+      });
+
+      if (mudouCadastro) salvarFuncionarios(lista);
+    }
+
+    const todos = getFuncionarios();
+    Object.keys(valoresPorId).forEach(function (id) {
+      const f = todos.find(function (x) { return x.id === id; });
+      if (f) { f.valor = valoresPorId[id]; f.incluir = valoresPorId[id] > 0; }
+    });
+    salvarFuncionarios(todos);
+    renderTabela();
+
+    document.getElementById('blocoPendentes').style.display = 'none';
+    const ausentes = renderAusentesImport(idsEnvolvidos);
+    if (!ausentes.length) {
+      alert('Importação concluída! ' + idsEnvolvidos.length + ' funcionário(s) atualizado(s).');
+      resetarTelaImportacao();
+    }
+  }
+
+  document.getElementById('btnProcessarPlanilha').addEventListener('click', function () {
+    const arquivo = document.getElementById('importArquivo').files[0];
+    const tipo = document.getElementById('importTipo').value;
+    if (!arquivo) { alert('Selecione o arquivo .xlsx.'); return; }
+    if (!tipo) { alert('Selecione o Tipo de Valor a Importar.'); return; }
+
+    const leitor = new FileReader();
+    leitor.onload = function (e) {
+      let linhas;
+      try {
+        const dados = new Uint8Array(e.target.result);
+        const wb = XLSX.read(dados, { type: 'array' });
+        const nomeAba = wb.SheetNames.find(function (n) { return n.trim().toLowerCase().indexOf('pagamento') === 0; }) || wb.SheetNames[0];
+        linhas = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, defval: '' });
+      } catch (err) {
+        alert('Não consegui ler esse arquivo. Confirme se é um .xlsx válido.');
+        return;
+      }
+
+      importEstado = processarPlanilha(linhas, tipo);
+
+      document.getElementById('importResultado').style.display = 'block';
+      const totalLinhas = importEstado.autoMatches.length + importEstado.pendentes.length;
+      document.getElementById('importResumo').textContent =
+        totalLinhas + ' funcionário(s) encontrado(s) na planilha — ' + importEstado.autoMatches.length + ' reconhecido(s) automaticamente, ' + importEstado.pendentes.length + ' precisam de atenção.';
+
+      if (importEstado.pendentes.length) {
+        document.getElementById('blocoPendentes').style.display = 'block';
+        renderPendentesImport();
+      } else {
+        document.getElementById('blocoPendentes').style.display = 'none';
+        aplicarResolucaoImportacao();
+      }
+    };
+    leitor.onerror = function () { alert('Erro ao ler o arquivo.'); };
+    leitor.readAsArrayBuffer(arquivo);
+  });
+
+  document.getElementById('btnCancelarImportacao').addEventListener('click', function () {
+    if (!confirm('Cancelar esta importação? Nada será alterado.')) return;
+    resetarTelaImportacao();
+  });
+
+  document.getElementById('btnConfirmarResolucao').addEventListener('click', aplicarResolucaoImportacao);
+
+  document.getElementById('btnFinalizarImportacao').addEventListener('click', function () {
+    const checks = document.querySelectorAll('.chk-desligado-import:checked');
+    if (checks.length) {
+      const nomes = [];
+      let lista = getFuncionarios();
+      checks.forEach(function (chk) {
+        const f = lista.find(function (x) { return x.id === chk.dataset.id; });
+        if (f) nomes.push(f.nome);
+      });
+      if (!confirm('Excluir do cadastro os seguintes funcionários desligados?\n\n' + nomes.map(function (n) { return '- ' + n; }).join('\n'))) return;
+      const idsExcluir = Array.prototype.map.call(checks, function (chk) { return chk.dataset.id; });
+      lista = lista.filter(function (f) { return idsExcluir.indexOf(f.id) === -1; });
+      salvarFuncionarios(lista);
+      renderTabela();
+    }
+    alert('Importação concluída!');
+    resetarTelaImportacao();
+  });
 
   /* ---------------------------------------------------------------------
      GERAÇÃO DOS RECIBOS (pré-visualização = o que vai pra impressão)
@@ -396,12 +768,11 @@
   // listaOverride: usado só na hora de IMPRIMIR, quando alguns funcionários
   // zerados são excluídos do lote final sem mexer na prévia normal da tela.
   function renderPreview(listaOverride) {
-    const incluidos = listaOverride || getFuncionarios().filter(function (f) { return f.incluir; });
+    const incluidos = listaOverride || ordenarPorNome(getFuncionarios().filter(function (f) { return f.incluir; }));
     const printArea = document.getElementById('printArea');
     const dataISO = document.getElementById('dataRecibo').value;
     const local = document.getElementById('localRecibo').value.trim() || 'Belo Horizonte';
     const tipo = document.getElementById('tipoRecibo').value;
-    const template = getTemplate(tipo);
 
     if (!incluidos.length) {
       printArea.innerHTML = '<div class="empty-preview">Marque ao menos um funcionário na tabela acima pra ver a prévia dos recibos aqui.</div>';
@@ -411,6 +782,11 @@
       printArea.innerHTML = '<div class="empty-preview">Preencha a data pra ver a prévia dos recibos aqui.</div>';
       return;
     }
+    if (!tipo) {
+      printArea.innerHTML = '<div class="empty-preview">Selecione o Tipo de Recibo (Pagamento ou Adiantamento) pra ver a prévia aqui.</div>';
+      return;
+    }
+    const template = getTemplate(tipo);
 
     const paginas = [];
     for (let i = 0; i < incluidos.length; i += 5) paginas.push(incluidos.slice(i, i + 5));
@@ -425,21 +801,23 @@
     renderPreview();
   }
 
-  // Dias 20 a 25 do mês = adiantamento; fora disso, pagamento normal.
-  // Só sugere sozinho — o usuário pode trocar manualmente antes de gerar.
-  function autoDefinirTipoRecibo() {
-    const dataISO = document.getElementById('dataRecibo').value;
-    if (!dataISO) return;
-    const dia = Number(String(dataISO).split('-')[2]);
-    document.getElementById('tipoRecibo').value = (dia >= 20 && dia <= 25) ? 'adiantamento' : 'pagamento';
+  // Mostra só o bloco do modelo (Pagamento/Adiantamento) que bate com o Tipo de
+  // Recibo escolhido — nada de automático, a pessoa escolhe e o resto do
+  // formulário continua vazio até isso acontecer (evita gerar recibo errado
+  // por causa de um valor que ficou selecionado de uma vez anterior).
+  function mostrarBlocoTemplateDoTipo() {
+    const tipo = document.getElementById('tipoRecibo').value;
+    document.getElementById('blocoTemplateVazio').style.display = tipo ? 'none' : 'block';
+    document.getElementById('blocoTemplatePagamento').style.display = (tipo === 'pagamento') ? 'flex' : 'none';
+    document.getElementById('blocoTemplateAdiantamento').style.display = (tipo === 'adiantamento') ? 'flex' : 'none';
   }
 
-  document.getElementById('dataRecibo').addEventListener('input', function () {
-    autoDefinirTipoRecibo();
+  document.getElementById('dataRecibo').addEventListener('input', renderPreview);
+  document.getElementById('localRecibo').addEventListener('input', renderPreview);
+  document.getElementById('tipoRecibo').addEventListener('change', function () {
+    mostrarBlocoTemplateDoTipo();
     renderPreview();
   });
-  document.getElementById('localRecibo').addEventListener('input', renderPreview);
-  document.getElementById('tipoRecibo').addEventListener('change', renderPreview);
 
   document.getElementById('templateCorpoPagamento').addEventListener('input', function () {
     salvarTemplate('pagamento', this.value);
@@ -464,10 +842,12 @@
   });
 
   document.getElementById('btnGerarRecibos').addEventListener('click', function () {
-    const incluidos = getFuncionarios().filter(function (f) { return f.incluir; });
+    const incluidos = ordenarPorNome(getFuncionarios().filter(function (f) { return f.incluir; }));
     const dataISO = document.getElementById('dataRecibo').value;
+    const tipo = document.getElementById('tipoRecibo').value;
     if (!incluidos.length) { alert('Marque ao menos um funcionário pra incluir no lote.'); return; }
     if (!dataISO) { alert('Preencha a data dos recibos.'); return; }
+    if (!tipo) { alert('Selecione o Tipo de Recibo (Pagamento ou Adiantamento).'); return; }
 
     const zerados = incluidos.filter(function (f) { return !(num(f.valor) > 0); });
     let listaFinal = incluidos;
@@ -489,7 +869,10 @@
     renderPreview(listaFinal);
     setTimeout(function () {
       window.print();
-      renderPreview(); // restaura a prévia completa na tela depois de imprimir
+      // Zera o valor de quem recebeu recibo nesta leva, pra não sobrar valor do
+      // mês anterior pronto pra ser usado sem querer no próximo arquivo gerado.
+      zerarValoresDe(listaFinal.map(function (f) { return f.id; }));
+      renderTabela(); // re-renderiza a tabela (valores zerados) e a prévia junto
     }, 50);
   });
 
@@ -497,9 +880,24 @@
      INICIALIZAÇÃO
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-  document.getElementById('dataRecibo').value = new Date().toISOString().slice(0, 10);
-  autoDefinirTipoRecibo();
+
+  // Data e Tipo de Recibo ficam vazios de propósito — a pessoa escolhe toda vez,
+  // pra não gerar recibo errado por causa de um valor que ficou de uma vez anterior.
+  // O navegador às vezes restaura valor de formulário sozinho ao recarregar a
+  // página (sem disparar 'change'), então forçamos a limpeza de novo no 'pageshow'
+  // (dispara depois dessa restauração, inclusive quando a página volta do cache
+  // de navegação) pra garantir que nunca fique nada preenchido/selecionado sozinho.
+  function resetarCamposGeracao() {
+    document.getElementById('dataRecibo').value = '';
+    document.getElementById('tipoRecibo').value = '';
+    mostrarBlocoTemplateDoTipo();
+  }
+  resetarCamposGeracao();
+  window.addEventListener('pageshow', resetarCamposGeracao);
+
   document.getElementById('buscaFuncionario').addEventListener('input', renderTabela);
+  document.getElementById('fEmpresa').addEventListener('change', atualizarCorEmpresaForm);
+  atualizarCorEmpresaForm();
 
   function preencherTemplatesNoForm() {
     document.getElementById('templateCorpoPagamento').value = getTemplate('pagamento');
