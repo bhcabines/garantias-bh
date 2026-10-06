@@ -429,6 +429,20 @@
     return /[+=:]/.test(nome) || /\d/.test(nome);
   }
 
+  // Só os cadastrados que têm alguma palavra em comum com o nome da planilha
+  // (ex.: "Felipe" bate com "Josemar Felipe de Souza") — evita mostrar a lista
+  // inteira de funcionários da empresa quando ninguém bate de verdade.
+  function candidatosPlausiveis(nomePlanilha, empresa) {
+    const palavrasAlvo = normalizarNomeBusca(nomePlanilha).split(' ').filter(Boolean);
+    return getFuncionarios()
+      .filter(function (f) {
+        if ((f.empresa || 'BH CABINES') !== empresa) return false;
+        const palavrasCand = normalizarNomeBusca(f.nome).split(' ');
+        return palavrasAlvo.some(function (p) { return palavrasCand.indexOf(p) !== -1; });
+      })
+      .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
+  }
+
   function encontrarCandidatoPlanilha(nomePlanilha, empresa) {
     const alvo = normalizarNomeBusca(nomePlanilha);
     const cands = getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === empresa; });
@@ -437,10 +451,10 @@
     const soltos = cands.filter(function (f) {
       const fn = normalizarNomeBusca(f.nome);
       return fn.indexOf(alvo + ' ') === 0 || alvo.indexOf(fn + ' ') === 0 || fn.split(' ')[0] === alvo.split(' ')[0];
-    });
+    }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
     if (soltos.length === 1) return { tipo: 'auto', candidato: soltos[0] };
     if (soltos.length > 1) return { tipo: 'ambiguo', candidatos: soltos };
-    return { tipo: 'nao-encontrado', candidatos: cands };
+    return { tipo: 'nao-encontrado', candidatos: candidatosPlausiveis(nomePlanilha, empresa) };
   }
 
   function processarPlanilha(linhas, tipo) {
@@ -466,7 +480,7 @@
           if (valor > 0) {
             pendentes.push({
               nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: 'suspeito',
-              candidatos: getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === empresa; })
+              candidatos: candidatosPlausiveis(nomePlanilha, empresa)
             });
           }
           return;
@@ -500,7 +514,7 @@
       if (contagemPorId[c.candidato.id] > 1) {
         pendentes.push({
           nomePlanilha: c.nomePlanilha, empresa: c.empresa, valor: c.valor, motivo: 'conflito',
-          candidatos: getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === c.empresa; })
+          candidatos: candidatosPlausiveis(c.nomePlanilha, c.empresa)
         });
       } else {
         autoMatches.push({ funcionarioId: c.candidato.id, valor: c.valor });
@@ -514,8 +528,10 @@
   function renderPendentesImport() {
     const lista = document.getElementById('listaPendentes');
     lista.innerHTML = importEstado.pendentes.map(function (p, idx) {
+      // candidatos já vem ordenado alfabeticamente e filtrado por palavra em
+      // comum com o nome da planilha (ver candidatosPlausiveis).
       const opcoesExistentes = p.candidatos.map(function (f) {
-        return '<option value="' + f.id + '">' + escapeHtml(f.nome) + '</option>';
+        return '<option value="' + f.id + '" data-nome="' + escapeHtml(normalizarNomeBusca(f.nome)) + '">' + escapeHtml(f.nome) + '</option>';
       }).join('');
       return (
         '<div class="import-item">' +
@@ -523,6 +539,7 @@
             '<div><b>"' + escapeHtml(p.nomePlanilha) + '"</b> <span class="muted">(' + (p.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ') — ' + fmt(p.valor) + '</span></div>' +
             '<div class="import-item-motivo">' + IMPORT_MOTIVO_LABEL[p.motivo] + '</div>' +
           '</div>' +
+          '<input type="text" class="input-filtro-import" data-idx="' + idx + '" placeholder="Pesquisar nome na lista abaixo..." style="margin-bottom:6px">' +
           '<select class="sel-resolucao-import" data-idx="' + idx + '">' +
             '<option value="">— Selecione —</option>' +
             opcoesExistentes +
@@ -541,6 +558,18 @@
         const idx = sel.dataset.idx;
         const campoNovo = lista.querySelector('.import-item-novo-nome[data-idx="' + idx + '"]');
         campoNovo.style.display = (sel.value === '__novo__') ? 'block' : 'none';
+      });
+    });
+
+    lista.querySelectorAll('.input-filtro-import').forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        const idx = inp.dataset.idx;
+        const termo = normalizarNomeBusca(inp.value);
+        const sel = lista.querySelector('.sel-resolucao-import[data-idx="' + idx + '"]');
+        Array.prototype.forEach.call(sel.options, function (opt) {
+          if (!opt.dataset.nome) return; // "— Selecione —" / "Cadastrar novo" / "Ignorar" ficam sempre visíveis
+          opt.style.display = opt.dataset.nome.indexOf(termo) !== -1 ? '' : 'none';
+        });
       });
     });
   }
