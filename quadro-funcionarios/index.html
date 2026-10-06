@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BH Cabines — Quadro de Funcionários</title>
 <link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -62,6 +63,48 @@
         <thead><tr><th class="tc">Incluir no lote</th><th>Nome</th><th>Empresa</th><th class="tc">Valor</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <h3 class="card-title">Importar Planilha de Pagamento</h3>
+    <p class="muted" style="margin-bottom:12px">Sobe o <code>.xlsx</code> do pagamento do mês. A planilha tem dois blocos de funcionários — o primeiro é tratado como BH Cabines, o segundo como BHC Parts. Escolha se são os valores de Pagamento (coluna "Total a receber") ou Adiantamento (coluna "Vale dia 20") antes de processar.</p>
+    <div class="form-row">
+      <div class="field"><label>Arquivo (.xlsx) *</label><input type="file" id="importArquivo" accept=".xlsx"></div>
+      <div class="field">
+        <label>Tipo de Valor a Importar *</label>
+        <select id="importTipo">
+          <option value="" selected disabled>Selecione...</option>
+          <option value="pagamento">Pagamento (Total a receber)</option>
+          <option value="adiantamento">Adiantamento (Vale dia 20)</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-row-h" style="margin-top:10px">
+      <button class="btn bo" id="btnProcessarPlanilha">Processar Planilha</button>
+    </div>
+
+    <div id="importResultado" style="display:none;margin-top:18px">
+      <p class="muted" id="importResumo"></p>
+
+      <div id="blocoPendentes" style="display:none;margin-top:14px">
+        <h4 class="import-subtitle">Precisam de atenção</h4>
+        <p class="muted" style="margin-bottom:10px">Escolha o funcionário certo, cadastre como novo, ou ignore a linha (ex.: nome corrompido na planilha).</p>
+        <div id="listaPendentes"></div>
+        <div class="btn-row-h" style="margin-top:10px">
+          <button class="btn bo" id="btnConfirmarResolucao">Confirmar Resolução e Continuar</button>
+          <button class="btn bgray" id="btnCancelarImportacao">Cancelar Importação</button>
+        </div>
+      </div>
+
+      <div id="blocoAusentes" style="display:none;margin-top:14px">
+        <h4 class="import-subtitle">Cadastrados que não apareceram na planilha</h4>
+        <p class="muted" style="margin-bottom:10px">Marque quem foi desligado — será excluído do cadastro. Quem ficar desmarcado continua como está, sem alterações.</p>
+        <div id="listaAusentes"></div>
+        <div class="btn-row-h" style="margin-top:10px">
+          <button class="btn bk" id="btnFinalizarImportacao">Finalizar Importação</button>
+        </div>
+      </div>
     </div>
   </div>
 

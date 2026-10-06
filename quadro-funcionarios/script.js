@@ -379,6 +379,304 @@
   document.getElementById('btnCancelarEdicaoFunc').addEventListener('click', limparFormFuncionario);
 
   /* ---------------------------------------------------------------------
+     IMPORTAR PLANILHA DE PAGAMENTO (.xlsx)
+     A planilha tem dois blocos de funcionários empilhados na mesma aba —
+     o 1º bloco é sempre BH Cabines, o 2º sempre BHC Parts (confirmado com
+     o usuário). Coluna G = "Vale dia 20" > "Dinheiro" (adiantamento);
+     coluna O = "Total a receber" > "Dinheiro" (pagamento).
+     --------------------------------------------------------------------- */
+  const IMPORT_COL_ADIANTAMENTO = 6;  // G
+  const IMPORT_COL_PAGAMENTO = 14;    // O
+  const IMPORT_EMPRESAS_POR_BLOCO = ['BH CABINES', 'BHC PARTS'];
+  const IMPORT_MOTIVO_LABEL = {
+    'ambiguo': 'Nome ambíguo (bate com mais de um cadastrado)',
+    'nao-encontrado': 'Não encontrado no cadastro',
+    'suspeito': 'Nome com aparência de erro na planilha',
+    'conflito': 'Bateu com o mesmo cadastrado de outra linha da planilha'
+  };
+
+  let importEstado = null;
+
+  function normalizarNomeBusca(s) {
+    return String(s || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .trim().toUpperCase().replace(/\s+/g, ' ');
+  }
+
+  function dividirBlocosPlanilha(linhas) {
+    const blocos = [];
+    let i = 0;
+    while (i < linhas.length) {
+      const row = linhas[i] || [];
+      if (normalizarNomeBusca(row[0]) === 'NOME') {
+        const inicio = i + 2; // pula a linha "Nome" e a sublinha "Dinheiro/Depositado/Total"
+        let fim = inicio;
+        while (fim < linhas.length) {
+          const colA = normalizarNomeBusca((linhas[fim] || [])[0]);
+          if (colA === 'TOTAL' || colA.indexOf('TOTAL PAGO') === 0) break;
+          fim++;
+        }
+        blocos.push(linhas.slice(inicio, fim));
+        i = fim + 1;
+      } else {
+        i++;
+      }
+    }
+    return blocos;
+  }
+
+  function nomeSuspeito(nome) {
+    return /[+=:]/.test(nome) || /\d/.test(nome);
+  }
+
+  function encontrarCandidatoPlanilha(nomePlanilha, empresa) {
+    const alvo = normalizarNomeBusca(nomePlanilha);
+    const cands = getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === empresa; });
+    const exato = cands.find(function (f) { return normalizarNomeBusca(f.nome) === alvo; });
+    if (exato) return { tipo: 'auto', candidato: exato };
+    const soltos = cands.filter(function (f) {
+      const fn = normalizarNomeBusca(f.nome);
+      return fn.indexOf(alvo + ' ') === 0 || alvo.indexOf(fn + ' ') === 0 || fn.split(' ')[0] === alvo.split(' ')[0];
+    });
+    if (soltos.length === 1) return { tipo: 'auto', candidato: soltos[0] };
+    if (soltos.length > 1) return { tipo: 'ambiguo', candidatos: soltos };
+    return { tipo: 'nao-encontrado', candidatos: cands };
+  }
+
+  function processarPlanilha(linhas, tipo) {
+    const blocos = dividirBlocosPlanilha(linhas);
+    const colIndex = tipo === 'adiantamento' ? IMPORT_COL_ADIANTAMENTO : IMPORT_COL_PAGAMENTO;
+    const candidatosAuto = []; // { nomePlanilha, empresa, valor, candidato }
+    const pendentes = [];
+    const empresasEnvolvidas = [];
+
+    blocos.forEach(function (bloco, idxBloco) {
+      const empresa = IMPORT_EMPRESAS_POR_BLOCO[idxBloco];
+      if (!empresa) return;
+      empresasEnvolvidas.push(empresa);
+      bloco.forEach(function (row) {
+        const nomePlanilha = String((row && row[0]) || '').trim();
+        if (!nomePlanilha) return;
+        const valor = Number(row[colIndex]) || 0;
+        if (nomeSuspeito(nomePlanilha)) {
+          pendentes.push({
+            nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: 'suspeito',
+            candidatos: getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === empresa; })
+          });
+          return;
+        }
+        const r = encontrarCandidatoPlanilha(nomePlanilha, empresa);
+        if (r.tipo === 'auto') {
+          candidatosAuto.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, candidato: r.candidato });
+        } else {
+          pendentes.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: r.tipo, candidatos: r.candidatos });
+        }
+      });
+    });
+
+    // Duas linhas da planilha não podem "ganhar" o mesmo cadastrado (ex.:
+    // "Gabriel" e "Gabriel Gonçalves" batendo só com "Gabriel Carvalho" por
+    // nome solto) — nesse caso nenhuma das duas entra automático, vão as
+    // duas pra resolução manual, pra uma pessoa de verdade escolher.
+    const contagemPorId = {};
+    candidatosAuto.forEach(function (c) { contagemPorId[c.candidato.id] = (contagemPorId[c.candidato.id] || 0) + 1; });
+
+    const autoMatches = [];
+    candidatosAuto.forEach(function (c) {
+      if (contagemPorId[c.candidato.id] > 1) {
+        pendentes.push({
+          nomePlanilha: c.nomePlanilha, empresa: c.empresa, valor: c.valor, motivo: 'conflito',
+          candidatos: getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === c.empresa; })
+        });
+      } else {
+        autoMatches.push({ funcionarioId: c.candidato.id, valor: c.valor });
+      }
+    });
+
+    return { autoMatches: autoMatches, pendentes: pendentes, empresasEnvolvidas: empresasEnvolvidas };
+  }
+
+  function renderPendentesImport() {
+    const lista = document.getElementById('listaPendentes');
+    lista.innerHTML = importEstado.pendentes.map(function (p, idx) {
+      const opcoesExistentes = p.candidatos.map(function (f) {
+        return '<option value="' + f.id + '">' + escapeHtml(f.nome) + '</option>';
+      }).join('');
+      return (
+        '<div class="import-item">' +
+          '<div class="import-item-topo">' +
+            '<div><b>"' + escapeHtml(p.nomePlanilha) + '"</b> <span class="muted">(' + (p.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ') — ' + fmt(p.valor) + '</span></div>' +
+            '<div class="import-item-motivo">' + IMPORT_MOTIVO_LABEL[p.motivo] + '</div>' +
+          '</div>' +
+          '<select class="sel-resolucao-import" data-idx="' + idx + '">' +
+            '<option value="">— Selecione —</option>' +
+            opcoesExistentes +
+            '<option value="__novo__">➕ Cadastrar como novo funcionário</option>' +
+            '<option value="__ignorar__">🚫 Ignorar esta linha</option>' +
+          '</select>' +
+          '<div class="import-item-novo-nome" data-idx="' + idx + '" style="display:none">' +
+            '<input type="text" class="input-novo-nome-import" data-idx="' + idx + '" value="' + escapeHtml(p.nomePlanilha) + '">' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    lista.querySelectorAll('.sel-resolucao-import').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        const idx = sel.dataset.idx;
+        const campoNovo = lista.querySelector('.import-item-novo-nome[data-idx="' + idx + '"]');
+        campoNovo.style.display = (sel.value === '__novo__') ? 'block' : 'none';
+      });
+    });
+  }
+
+  function renderAusentesImport(idsEnvolvidos) {
+    const lista = document.getElementById('listaAusentes');
+    const ausentes = getFuncionarios().filter(function (f) {
+      return importEstado.empresasEnvolvidas.indexOf(f.empresa || 'BH CABINES') !== -1 && idsEnvolvidos.indexOf(f.id) === -1;
+    });
+    if (!ausentes.length) {
+      document.getElementById('blocoAusentes').style.display = 'none';
+      return ausentes;
+    }
+    lista.innerHTML = ausentes.map(function (f) {
+      return (
+        '<div class="import-ausente-item">' +
+          '<input type="checkbox" class="chk-desligado-import" data-id="' + f.id + '">' +
+          '<span>' + escapeHtml(f.nome) + ' <span class="muted">(' + (f.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ')</span></span>' +
+        '</div>'
+      );
+    }).join('');
+    document.getElementById('blocoAusentes').style.display = 'block';
+    return ausentes;
+  }
+
+  function resetarTelaImportacao() {
+    importEstado = null;
+    document.getElementById('importResultado').style.display = 'none';
+    document.getElementById('blocoPendentes').style.display = 'none';
+    document.getElementById('blocoAusentes').style.display = 'none';
+    document.getElementById('importArquivo').value = '';
+    document.getElementById('importTipo').value = '';
+  }
+
+  function aplicarResolucaoImportacao() {
+    const idsEnvolvidos = importEstado.autoMatches.map(function (m) { return m.funcionarioId; });
+    const valoresPorId = {};
+    importEstado.autoMatches.forEach(function (m) { valoresPorId[m.funcionarioId] = m.valor; });
+
+    if (importEstado.pendentes.length) {
+      const selects = document.querySelectorAll('.sel-resolucao-import');
+      for (let i = 0; i < selects.length; i++) {
+        if (!selects[i].value) { alert('Resolva todas as linhas pendentes antes de continuar.'); return; }
+      }
+
+      const lista = getFuncionarios();
+      let mudouCadastro = false;
+
+      importEstado.pendentes.forEach(function (p, idx) {
+        const sel = document.querySelector('.sel-resolucao-import[data-idx="' + idx + '"]');
+        const valorSel = sel.value;
+        if (valorSel === '__ignorar__') return;
+        if (valorSel === '__novo__') {
+          const inputNome = document.querySelector('.input-novo-nome-import[data-idx="' + idx + '"]');
+          const novoNome = (inputNome.value || '').trim();
+          if (!novoNome) return;
+          const novo = { id: uid(), nome: novoNome, empresa: p.empresa, valor: p.valor, incluir: p.valor > 0 };
+          lista.push(novo);
+          idsEnvolvidos.push(novo.id);
+          valoresPorId[novo.id] = p.valor;
+          mudouCadastro = true;
+        } else {
+          idsEnvolvidos.push(valorSel);
+          valoresPorId[valorSel] = p.valor;
+        }
+      });
+
+      if (mudouCadastro) salvarFuncionarios(lista);
+    }
+
+    const todos = getFuncionarios();
+    Object.keys(valoresPorId).forEach(function (id) {
+      const f = todos.find(function (x) { return x.id === id; });
+      if (f) { f.valor = valoresPorId[id]; f.incluir = valoresPorId[id] > 0; }
+    });
+    salvarFuncionarios(todos);
+    renderTabela();
+
+    document.getElementById('blocoPendentes').style.display = 'none';
+    const ausentes = renderAusentesImport(idsEnvolvidos);
+    if (!ausentes.length) {
+      alert('Importação concluída! ' + idsEnvolvidos.length + ' funcionário(s) atualizado(s).');
+      resetarTelaImportacao();
+    }
+  }
+
+  document.getElementById('btnProcessarPlanilha').addEventListener('click', function () {
+    const arquivo = document.getElementById('importArquivo').files[0];
+    const tipo = document.getElementById('importTipo').value;
+    if (!arquivo) { alert('Selecione o arquivo .xlsx.'); return; }
+    if (!tipo) { alert('Selecione o Tipo de Valor a Importar.'); return; }
+
+    const leitor = new FileReader();
+    leitor.onload = function (e) {
+      let linhas;
+      try {
+        const dados = new Uint8Array(e.target.result);
+        const wb = XLSX.read(dados, { type: 'array' });
+        const nomeAba = wb.SheetNames.find(function (n) { return n.trim().toLowerCase().indexOf('pagamento') === 0; }) || wb.SheetNames[0];
+        linhas = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, defval: '' });
+      } catch (err) {
+        alert('Não consegui ler esse arquivo. Confirme se é um .xlsx válido.');
+        return;
+      }
+
+      importEstado = processarPlanilha(linhas, tipo);
+
+      document.getElementById('importResultado').style.display = 'block';
+      const totalLinhas = importEstado.autoMatches.length + importEstado.pendentes.length;
+      document.getElementById('importResumo').textContent =
+        totalLinhas + ' funcionário(s) encontrado(s) na planilha — ' + importEstado.autoMatches.length + ' reconhecido(s) automaticamente, ' + importEstado.pendentes.length + ' precisam de atenção.';
+
+      if (importEstado.pendentes.length) {
+        document.getElementById('blocoPendentes').style.display = 'block';
+        renderPendentesImport();
+      } else {
+        document.getElementById('blocoPendentes').style.display = 'none';
+        aplicarResolucaoImportacao();
+      }
+    };
+    leitor.onerror = function () { alert('Erro ao ler o arquivo.'); };
+    leitor.readAsArrayBuffer(arquivo);
+  });
+
+  document.getElementById('btnCancelarImportacao').addEventListener('click', function () {
+    if (!confirm('Cancelar esta importação? Nada será alterado.')) return;
+    resetarTelaImportacao();
+  });
+
+  document.getElementById('btnConfirmarResolucao').addEventListener('click', aplicarResolucaoImportacao);
+
+  document.getElementById('btnFinalizarImportacao').addEventListener('click', function () {
+    const checks = document.querySelectorAll('.chk-desligado-import:checked');
+    if (checks.length) {
+      const nomes = [];
+      let lista = getFuncionarios();
+      checks.forEach(function (chk) {
+        const f = lista.find(function (x) { return x.id === chk.dataset.id; });
+        if (f) nomes.push(f.nome);
+      });
+      if (!confirm('Excluir do cadastro os seguintes funcionários desligados?\n\n' + nomes.map(function (n) { return '- ' + n; }).join('\n'))) return;
+      const idsExcluir = Array.prototype.map.call(checks, function (chk) { return chk.dataset.id; });
+      lista = lista.filter(function (f) { return idsExcluir.indexOf(f.id) === -1; });
+      salvarFuncionarios(lista);
+      renderTabela();
+    }
+    alert('Importação concluída!');
+    resetarTelaImportacao();
+  });
+
+  /* ---------------------------------------------------------------------
      GERAÇÃO DOS RECIBOS (pré-visualização = o que vai pra impressão)
      --------------------------------------------------------------------- */
   function atualizarResumoLote() {
