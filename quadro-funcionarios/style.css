@@ -56,8 +56,11 @@ input:focus,select:focus{outline:none;border-color:var(--orange)}
 .import-item-topo{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:8px}
 .import-item-motivo{font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--warn)}
 .import-item-novo-nome{margin-top:8px}
-.import-ausente-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.import-ausente-item{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
 .import-ausente-item:last-child{border-bottom:none}
+.import-ausente-item input[type="checkbox"]{width:auto;flex:0 0 auto;accent-color:var(--bad);cursor:pointer}
+.import-ausente-nome{flex:1;text-align:left}
+.import-ausente-item .icon-btn{flex:0 0 auto}
 
 /* Empresa: laranja = BH Cabines, roxo = BHC Parts — aplicado no cadastro e na tabela */
 select.sel-empresa-bh{background:#fdecdf;color:#b94a0a;border-color:var(--orange);font-weight:700}

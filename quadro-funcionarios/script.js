@@ -587,10 +587,17 @@
       return (
         '<div class="import-ausente-item">' +
           '<input type="checkbox" class="chk-desligado-import" data-id="' + f.id + '">' +
-          '<span>' + escapeHtml(f.nome) + ' <span class="muted">(' + (f.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ')</span></span>' +
+          '<span class="import-ausente-nome">' + escapeHtml(f.nome) + ' <span class="muted">(' + (f.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ')</span></span>' +
+          '<button class="icon-btn" data-editar-ausente="' + f.id + '" title="Editar cadastro (ex.: corrigir nome)">✏️ Editar</button>' +
         '</div>'
       );
     }).join('');
+    lista.querySelectorAll('[data-editar-ausente]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        editarFuncionario(btn.dataset.editarAusente);
+        document.getElementById('fNome').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    });
     document.getElementById('blocoAusentes').style.display = 'block';
     return ausentes;
   }
