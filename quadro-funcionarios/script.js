@@ -549,6 +549,7 @@
           '<div class="import-item-novo-nome" data-idx="' + idx + '" style="display:none">' +
             '<input type="text" class="input-novo-nome-import" data-idx="' + idx + '" value="' + escapeHtml(p.nomePlanilha) + '">' +
           '</div>' +
+          '<button type="button" class="btn-buscar-todos" data-idx="' + idx + '">🔍 Buscar em todos os cadastrados (ex.: nome com erro de digitação)</button>' +
         '</div>'
       );
     }).join('');
@@ -559,6 +560,10 @@
         const campoNovo = lista.querySelector('.import-item-novo-nome[data-idx="' + idx + '"]');
         campoNovo.style.display = (sel.value === '__novo__') ? 'block' : 'none';
       });
+    });
+
+    lista.querySelectorAll('.btn-buscar-todos').forEach(function (btn) {
+      btn.addEventListener('click', function () { abrirModalBuscaFuncionario(btn.dataset.idx); });
     });
 
     lista.querySelectorAll('.input-filtro-import').forEach(function (inp) {
@@ -573,6 +578,70 @@
       });
     });
   }
+
+  /* ---------------------------------------------------------------------
+     MODAL DE BUSCA — fallback manual pra achar o funcionário certo quando o
+     casamento automático falha (ex.: nome cadastrado com erro de digitação,
+     tipo "WELLIGTON" em vez de "WELLINGTON").
+     --------------------------------------------------------------------- */
+  let modalBuscaAlvoIdx = null;
+
+  function renderModalBuscaLista(termo) {
+    const alvo = normalizarNomeBusca(termo);
+    const todos = getFuncionarios().slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
+    const filtrados = alvo ? todos.filter(function (f) { return normalizarNomeBusca(f.nome).indexOf(alvo) !== -1; }) : todos;
+    const el = document.getElementById('modalBuscaLista');
+    if (!filtrados.length) {
+      el.innerHTML = '<p class="muted" style="padding:10px">Nenhum funcionário encontrado.</p>';
+      return;
+    }
+    el.innerHTML = filtrados.map(function (f) {
+      return '<div class="modal-lista-item" data-id="' + f.id + '">' + escapeHtml(f.nome) +
+        ' <span class="muted">(' + (f.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ')</span></div>';
+    }).join('');
+    el.querySelectorAll('.modal-lista-item').forEach(function (item) {
+      item.addEventListener('click', function () { selecionarFuncionarioDoModal(item.dataset.id); });
+    });
+  }
+
+  function abrirModalBuscaFuncionario(idx) {
+    modalBuscaAlvoIdx = idx;
+    document.getElementById('modalBuscaInput').value = '';
+    renderModalBuscaLista('');
+    document.getElementById('modalBuscaFuncionario').style.display = 'flex';
+    document.getElementById('modalBuscaInput').focus();
+  }
+
+  function fecharModalBuscaFuncionario() {
+    document.getElementById('modalBuscaFuncionario').style.display = 'none';
+    modalBuscaAlvoIdx = null;
+  }
+
+  function selecionarFuncionarioDoModal(funcionarioId) {
+    if (modalBuscaAlvoIdx === null) return;
+    const sel = document.querySelector('.sel-resolucao-import[data-idx="' + modalBuscaAlvoIdx + '"]');
+    const f = getFuncionarios().find(function (x) { return x.id === funcionarioId; });
+    if (sel && f) {
+      let opt = sel.querySelector('option[value="' + funcionarioId + '"]');
+      if (!opt) {
+        opt = document.createElement('option');
+        opt.value = funcionarioId;
+        opt.textContent = f.nome;
+        opt.dataset.nome = normalizarNomeBusca(f.nome);
+        sel.insertBefore(opt, sel.querySelector('option[value="__novo__"]'));
+      }
+      opt.style.display = '';
+      sel.value = funcionarioId;
+      sel.dispatchEvent(new Event('change'));
+    }
+    fecharModalBuscaFuncionario();
+  }
+
+  document.getElementById('btnFecharModalBusca').addEventListener('click', fecharModalBuscaFuncionario);
+  document.getElementById('modalBuscaInput').addEventListener('input', function () { renderModalBuscaLista(this.value); });
+  document.getElementById('modalBuscaFuncionario').addEventListener('click', function (e) {
+    if (e.target === this) fecharModalBuscaFuncionario();
+  });
 
   function renderAusentesImport(idsEnvolvidos) {
     const lista = document.getElementById('listaAusentes');

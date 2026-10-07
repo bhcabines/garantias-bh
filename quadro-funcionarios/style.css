@@ -62,6 +62,18 @@ input:focus,select:focus{outline:none;border-color:var(--orange)}
 .import-ausente-nome{flex:1;text-align:left}
 .import-ausente-item .icon-btn{flex:0 0 auto}
 
+.btn-buscar-todos{background:none;border:none;color:var(--orange);font-size:.75rem;font-weight:700;cursor:pointer;padding:4px 0;margin-top:6px}
+.btn-buscar-todos:hover{text-decoration:underline}
+
+/* ===== Modal de busca (selecionar funcionário entre todos os cadastrados) ===== */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px}
+.modal-box{background:var(--white);border-radius:14px;padding:20px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.modal-header h4{font-size:.85rem;font-weight:700;color:var(--black)}
+.modal-lista{overflow-y:auto;margin-top:10px;flex:1}
+.modal-lista-item{padding:9px 10px;border-radius:8px;cursor:pointer;font-size:.85rem}
+.modal-lista-item:hover{background:var(--orange-dim)}
+
 /* Empresa: laranja = BH Cabines, roxo = BHC Parts — aplicado no cadastro e na tabela */
 select.sel-empresa-bh{background:#fdecdf;color:#b94a0a;border-color:var(--orange);font-weight:700}
 select.sel-empresa-bhc{background:#ede4fb;color:#6d28d9;border-color:#7c3aed;font-weight:700}
