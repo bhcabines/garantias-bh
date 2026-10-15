@@ -47,6 +47,12 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 .main-area{flex:1;min-width:0;padding:24px 32px 60px 0}
 .view{display:flex;flex-direction:column}
 
+/* ===== Status (usado na busca geral do Histórico de Nota Fiscal) ===== */
+.status-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+.status-aguardando_nf{background:#fef3c7;color:#92400e}
+.status-aguardando_transportadora{background:#dbeafe;color:#1d4ed8}
+.status-concluido{background:#dcfce7;color:#15803d}
+
 /* ===== Checklist de bipagem ===== */
 .bip-checklist{display:flex;flex-wrap:wrap;gap:8px}
 .bip-volume{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:1.5px solid var(--border);font-size:.8rem;font-weight:700}

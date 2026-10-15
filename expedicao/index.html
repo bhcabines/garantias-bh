@@ -55,6 +55,7 @@
 
       <div class="card">
         <h3 class="card-title" id="tituloFormCad">Cadastrar Venda Aguardando NF</h3>
+        <p class="muted" style="margin-bottom:12px">Ao salvar, as etiquetas (uma por volume, cada uma com QR Code único) aparecem logo abaixo pra impressão — a nota fiscal é preenchida depois, em "Processamento de Notas Fiscais".</p>
         <div class="form-row">
           <div class="field"><label>Transportadora *</label><input type="text" id="cTransportadora" placeholder="Nome da transportadora"></div>
           <div class="field"><label>Número do Pedido *</label><input type="text" id="cPedido" placeholder="Ex.: 12345"></div>
@@ -69,32 +70,16 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px">
-        <h3 class="card-title">Aguardando Nota Fiscal</h3>
-        <p class="muted" style="margin-bottom:12px">Cada cadastro gera 1 etiqueta por volume (ex.: 4 volumes = 4 etiquetas, numeradas 1/4 a 4/4), cada uma com um QR Code <b>único</b> pra conferência na bipagem. Preencha a Nota Fiscal pra mandar o pedido pra próxima etapa.</p>
-
-        <div class="form-row">
-          <div class="field"><label>Transportadora</label><input type="text" id="embFiltroTransportadora" placeholder="Filtrar..."></div>
-          <div class="field"><label>Pedido</label><input type="text" id="embFiltroPedido" placeholder="Filtrar..."></div>
-          <div class="field"><label>Cliente</label><input type="text" id="embFiltroCliente" placeholder="Filtrar..."></div>
-          <div class="field"><label>Embalador</label><input type="text" id="embFiltroEmbalador" placeholder="Filtrar..."></div>
-        </div>
-
-        <div class="table-wrap" style="margin-top:12px">
-          <table id="tblCadastros">
-            <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th>Embalador</th><th>Nota Fiscal</th><th class="tc">Cadastrado em</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-
     </section>
 
     <!-- ===================== PROCESSAMENTO DE NOTAS FISCAIS ===================== -->
     <section class="view" id="view-notafiscal" style="display:none">
       <div class="card">
-        <h3 class="card-title">Processamento de Notas Fiscais</h3>
-        <p class="muted" style="margin-bottom:12px">Pedidos que já têm nota fiscal preenchida, aguardando a transportadora retirar. Pode corrigir o número da NF aqui se precisar.</p>
+        <div class="btn-row-h" style="margin-bottom:16px">
+          <button class="btn bk" type="button" id="btnToggleHistoricoNF">🔍 Histórico de Nota Fiscal</button>
+        </div>
+        <h3 class="card-title">Aguardando Nota Fiscal</h3>
+        <p class="muted" style="margin-bottom:12px">Preencha a Nota Fiscal de cada pedido pra mandar ele pra próxima etapa (Bipagem de Saída).</p>
 
         <div class="form-row">
           <div class="field"><label>Transportadora</label><input type="text" id="nfFiltroTransportadora" placeholder="Filtrar..."></div>
@@ -105,7 +90,21 @@
 
         <div class="table-wrap" style="margin-top:12px">
           <table id="tblNotaFiscal">
-            <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th>Embalador</th><th>Nota Fiscal</th><th class="tc">NF preenchida em</th></tr></thead>
+            <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th>Embalador</th><th>Nota Fiscal</th><th class="tc">Cadastrado em</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="historicoNFCard" style="margin-top:20px;display:none">
+        <h3 class="card-title">Histórico de Nota Fiscal — Buscar Processo</h3>
+        <p class="muted" style="margin-bottom:12px">Procure qualquer pedido em qualquer etapa — aguardando NF, aguardando transportadora ou já concluído.</p>
+        <div class="form-row">
+          <div class="field field-wide"><label>Buscar</label><input type="text" id="histNFBusca" placeholder="Transportadora, pedido, cliente, embalador ou nota fiscal..."></div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table id="tblHistoricoNF">
+            <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th>Embalador</th><th>Status</th><th>Nota Fiscal</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -116,9 +115,9 @@
     <section class="view" id="view-bipagem" style="display:none">
       <div class="card">
         <h3 class="card-title">Bipagem de Saída</h3>
-        <p class="muted" style="margin-bottom:12px">Digite (ou bipe com o leitor) a nota fiscal ou o número do pedido pra abrir, depois bipe o QR Code de cada volume. A quantidade bipada precisa bater com a quantidade de volumes cadastrada.</p>
+        <p class="muted" style="margin-bottom:12px">Abra o pedido pela nota fiscal ou pelo número do pedido, depois leia o QR Code de cada etiqueta. A quantidade lida precisa bater com a quantidade de volumes cadastrada.</p>
         <div class="form-row">
-          <div class="field field-wide"><label>Nota Fiscal ou Número do Pedido</label><input type="text" id="bipBusca" placeholder="Digite e pressione Enter, ou clique em Abrir..." autocomplete="off"></div>
+          <div class="field field-wide"><label>Escreva o número da nota fiscal ou pedido</label><input type="text" id="bipBusca" placeholder="Escreva o número da nota fiscal ou pedido..." autocomplete="off"></div>
         </div>
         <div class="btn-row-h" style="margin-top:8px">
           <button class="btn bo" id="btnAbrirPedido">Abrir Pedido</button>
@@ -130,12 +129,12 @@
         <h3 class="card-title">Pedido Aberto</h3>
         <div id="bipResumo" style="margin-bottom:14px"></div>
         <div id="bipChecklist" class="bip-checklist" style="margin-bottom:16px"></div>
-        <div class="field">
-          <label>Bipar QR Code do volume</label>
-          <input type="text" id="bipInput" placeholder="Aponte o leitor (USB/Bluetooth) aqui e bipe..." autocomplete="off">
-        </div>
         <div class="btn-row-h" style="margin-top:8px">
-          <button class="btn bo" type="button" id="btnAbrirCamera">📷 Usar Câmera do Celular</button>
+          <button class="btn bo" type="button" id="btnAbrirCamera">📷 Ler Etiquetas de Envio</button>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label>Ou bipar com leitor USB/Bluetooth</label>
+          <input type="text" id="bipInput" placeholder="Aponte o leitor aqui e bipe..." autocomplete="off">
         </div>
         <div id="bipCameraWrap" class="bip-camera-wrap" style="display:none">
           <video id="bipVideo" playsinline autoplay muted></video>
@@ -181,22 +180,22 @@
 <!-- FORA do bloco .no-print de propósito: na impressão, tudo com .no-print some e
      só isto aqui fica visível (ver @media print no style.css). Em tela, o
      .preview-card em volta dá a moldura de "card" igual ao resto da página. -->
-<div class="content">
+<div class="content" id="previewSecao">
   <div class="card preview-card">
     <h3 class="card-title no-print">Pré-visualização das Etiquetas</h3>
-    <p class="muted no-print" id="previewAviso">Clique em "🏷️ Gerar Etiquetas" na lista de Registro de Embalagem pra ver a prévia aqui.</p>
+    <div class="btn-row-h no-print" style="margin-bottom:14px">
+      <button class="btn bo" id="btnImprimirPreview">🖨 Imprimir Etiqueta</button>
+    </div>
+    <p class="muted no-print" id="previewAviso">Cadastre uma venda ao lado pra ver a prévia das etiquetas aqui.</p>
     <div class="preview-scroll">
       <div id="printArea"></div>
-    </div>
-    <div class="btn-row-h no-print" style="margin-top:14px">
-      <button class="btn bo" id="btnImprimirPreview">🖨 Imprimir / Salvar PDF</button>
     </div>
   </div>
 
   <div class="card no-print" style="margin-top:20px">
     <h3 class="card-title">Código Zebra (ZPL)</h3>
     <p class="muted" style="margin-bottom:10px">Cole esse código no Zebra Setup Utilities (ou outro programa de envio de ZPL) pra imprimir direto na impressora, sem passar pelo driver do Windows — evita etiqueta girada ou impressão fraca. Calculado pra impressora de 203dpi (padrão em modelos como ZD220/GC420); me avise se a sua for 300dpi.</p>
-    <textarea id="zplOutput" readonly rows="10" placeholder='Clique em "🏷️ Gerar Etiquetas" na lista de Registro de Embalagem pra gerar o código aqui.' style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Courier New',monospace;font-size:.75rem;resize:vertical;background:#fafafa"></textarea>
+    <textarea id="zplOutput" readonly rows="10" placeholder="Cadastre uma venda pra gerar o código aqui." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Courier New',monospace;font-size:.75rem;resize:vertical;background:#fafafa"></textarea>
     <div class="btn-row-h" style="margin-top:10px">
       <button class="btn bgray" id="btnCopiarZPL">📋 Copiar Código ZPL</button>
     </div>

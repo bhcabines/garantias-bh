@@ -114,61 +114,25 @@
   /* ---------------------------------------------------------------------
      NAVEGAÇÃO (mapa de ações na lateral)
      --------------------------------------------------------------------- */
+  function irParaView(view) {
+    document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.toggle('active', b.dataset.view === view); });
+    document.querySelectorAll('.view').forEach(function (v) { v.style.display = 'none'; });
+    document.getElementById('view-' + view).style.display = 'flex';
+    // A prévia de etiquetas/ZPL só faz sentido durante o Registro de Embalagem
+    // (nas outras etapas essa parte já foi concluída) — some fora dali.
+    document.getElementById('previewSecao').style.display = (view === 'embalagem') ? 'block' : 'none';
+    if (view === 'notafiscal') renderPendentesNF();
+    if (view === 'historico') renderHistorico();
+    if (view !== 'bipagem') fecharCamera();
+  }
+
   document.querySelectorAll('.nav-item').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-      document.querySelectorAll('.view').forEach(function (v) { v.style.display = 'none'; });
-      document.getElementById('view-' + btn.dataset.view).style.display = 'flex';
-      if (btn.dataset.view === 'embalagem') renderTabelaEmbalagem();
-      if (btn.dataset.view === 'notafiscal') renderNotaFiscal();
-      if (btn.dataset.view === 'historico') renderHistorico();
-      if (btn.dataset.view !== 'bipagem') fecharCamera();
-    });
+    btn.addEventListener('click', function () { irParaView(btn.dataset.view); });
   });
 
   /* ---------------------------------------------------------------------
      CADASTRO (Registro de Embalagem)
      --------------------------------------------------------------------- */
-  function renderTabelaEmbalagem() {
-    const lista = filtrarPorCampos(ordenarPorData(getCadastros().filter(function (c) { return c.status === 'aguardando_nf'; })), 'emb');
-
-    const tbody = document.querySelector('#tblCadastros tbody');
-    if (!lista.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Nenhuma venda aguardando nota fiscal.</td></tr>';
-    } else {
-      tbody.innerHTML = lista.map(function (c) {
-        return '<tr>' +
-          '<td class="nome-cel">' + escapeHtml(c.transportadora) + '</td>' +
-          '<td>' + escapeHtml(c.pedido) + '</td>' +
-          '<td>' + escapeHtml(c.cliente) + '</td>' +
-          '<td class="tc">' + c.volumes + '</td>' +
-          '<td>' + escapeHtml(c.embalador) + '</td>' +
-          '<td><input type="text" class="campo-tabela campo-nf" data-id="' + c.id + '" placeholder="Preencher NF..." value="' + escapeHtml(c.notaFiscal || '') + '"></td>' +
-          '<td class="tc">' + fmtDataHora(c.criadoEm) + '</td>' +
-          '<td class="tc" style="white-space:nowrap">' +
-            '<button class="icon-btn" data-etiquetas="' + c.id + '" title="Gerar prévia e código ZPL">🏷️ Etiquetas</button> ' +
-            '<button class="icon-btn" data-editar="' + c.id + '" title="Editar">✏️</button>' +
-            '<button class="icon-btn" data-excluir="' + c.id + '" title="Excluir">🗑️</button>' +
-          '</td>' +
-        '</tr>';
-      }).join('');
-    }
-
-    tbody.querySelectorAll('.campo-nf').forEach(function (inp) {
-      inp.addEventListener('change', function () { salvarNotaFiscal(inp.dataset.id, inp.value); });
-    });
-    tbody.querySelectorAll('[data-etiquetas]').forEach(function (btn) {
-      btn.addEventListener('click', function () { gerarEtiquetas(btn.dataset.etiquetas); });
-    });
-    tbody.querySelectorAll('[data-editar]').forEach(function (btn) {
-      btn.addEventListener('click', function () { editarCadastro(btn.dataset.editar); });
-    });
-    tbody.querySelectorAll('[data-excluir]').forEach(function (btn) {
-      btn.addEventListener('click', function () { excluirCadastro(btn.dataset.excluir); });
-    });
-  }
-
   function limparForm() {
     document.getElementById('cTransportadora').value = '';
     document.getElementById('cPedido').value = '';
@@ -183,6 +147,7 @@
   function editarCadastro(id) {
     const c = getCadastros().find(function (x) { return x.id === id; });
     if (!c) return;
+    irParaView('embalagem');
     document.getElementById('cTransportadora').value = c.transportadora;
     document.getElementById('cPedido').value = c.pedido;
     document.getElementById('cCliente').value = c.cliente;
@@ -200,7 +165,7 @@
     if (!confirm('Excluir o cadastro do pedido "' + c.pedido + '" (' + c.cliente + ')? Essa ação não pode ser desfeita.')) return;
     const lista = getCadastros().filter(function (x) { return x.id !== id; });
     salvarCadastros(lista);
-    renderTabelaEmbalagem();
+    renderPendentesNF();
   }
 
   document.getElementById('btnSalvarCadastro').addEventListener('click', function () {
@@ -218,49 +183,54 @@
     if (!embalador) { alert('Preencha o nome do embalador.'); return; }
 
     const lista = getCadastros();
+    let registro;
     if (editId) {
-      const c = lista.find(function (x) { return x.id === editId; });
-      if (c) { c.transportadora = transportadora; c.pedido = pedido; c.cliente = cliente; c.volumes = volumes; c.embalador = embalador; }
+      registro = lista.find(function (x) { return x.id === editId; });
+      if (registro) { registro.transportadora = transportadora; registro.pedido = pedido; registro.cliente = cliente; registro.volumes = volumes; registro.embalador = embalador; }
     } else {
-      const novo = {
+      registro = {
         id: uid(), transportadora: transportadora, pedido: pedido, cliente: cliente, volumes: volumes, embalador: embalador,
         criadoEm: new Date().toISOString(), notaFiscal: '', status: 'aguardando_nf', volumesBipados: [], historico: []
       };
-      adicionarHistorico(novo, 'cadastro', 'Venda registrada (' + volumes + ' volume(s))');
-      lista.push(novo);
+      adicionarHistorico(registro, 'cadastro', 'Venda registrada (' + volumes + ' volume(s))');
+      lista.push(registro);
     }
     salvarCadastros(lista);
     limparForm();
-    renderTabelaEmbalagem();
+    // As etiquetas são impressas antes da nota fiscal chegar — gera a prévia
+    // na hora, pronta pra imprimir, sem precisar de nenhum passo extra.
+    gerarEtiquetas(registro.id);
   });
   document.getElementById('btnCancelarEdicaoCad').addEventListener('click', limparForm);
 
-  ['embFiltroTransportadora', 'embFiltroPedido', 'embFiltroCliente', 'embFiltroEmbalador'].forEach(function (id) {
-    document.getElementById(id).addEventListener('input', renderTabelaEmbalagem);
-  });
-
-  function salvarNotaFiscal(id, valor) {
+  function atualizarNotaFiscal(id, valor) {
     const nf = (valor || '').trim();
-    if (!nf) return; // campo vazio não muda nada — evita avançar status sem querer
+    if (!nf) { alert('A nota fiscal não pode ficar vazia.'); renderPendentesNF(); renderHistoricoNF(); return; }
     const lista = getCadastros();
     const c = lista.find(function (x) { return x.id === id; });
-    if (!c) return;
+    if (!c || c.notaFiscal === nf) return;
+    const anterior = c.notaFiscal;
     c.notaFiscal = nf;
-    c.status = 'aguardando_transportadora';
-    adicionarHistorico(c, 'nota_fiscal', 'Nota fiscal ' + nf + ' preenchida');
+    if (c.status === 'aguardando_nf') {
+      c.status = 'aguardando_transportadora';
+      adicionarHistorico(c, 'nota_fiscal', 'Nota fiscal ' + nf + ' preenchida');
+    } else {
+      adicionarHistorico(c, 'nota_fiscal_corrigida', 'NF alterada de "' + (anterior || '(vazia)') + '" para "' + nf + '"');
+    }
     salvarCadastros(lista);
-    renderTabelaEmbalagem();
+    renderPendentesNF();
+    renderHistoricoNF();
   }
 
   /* ---------------------------------------------------------------------
      PROCESSAMENTO DE NOTAS FISCAIS
      --------------------------------------------------------------------- */
-  function renderNotaFiscal() {
-    const lista = filtrarPorCampos(ordenarPorData(getCadastros().filter(function (c) { return c.status === 'aguardando_transportadora'; })), 'nf');
+  function renderPendentesNF() {
+    const lista = filtrarPorCampos(ordenarPorData(getCadastros().filter(function (c) { return c.status === 'aguardando_nf'; })), 'nf');
 
     const tbody = document.querySelector('#tblNotaFiscal tbody');
     if (!lista.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Nenhum pedido aguardando transportadora.</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Nenhuma venda aguardando nota fiscal.</td></tr>';
     } else {
       tbody.innerHTML = lista.map(function (c) {
         return '<tr>' +
@@ -269,33 +239,98 @@
           '<td>' + escapeHtml(c.cliente) + '</td>' +
           '<td class="tc">' + c.volumes + '</td>' +
           '<td>' + escapeHtml(c.embalador) + '</td>' +
-          '<td><input type="text" class="campo-tabela campo-nf-corrigir" data-id="' + c.id + '" value="' + escapeHtml(c.notaFiscal || '') + '"></td>' +
-          '<td class="tc">' + fmtDataHora(dataDoHistorico(c, 'nota_fiscal')) + '</td>' +
+          '<td><input type="text" class="campo-tabela campo-nf" data-id="' + c.id + '" placeholder="Preencher NF..." value="' + escapeHtml(c.notaFiscal || '') + '"></td>' +
+          '<td class="tc">' + fmtDataHora(c.criadoEm) + '</td>' +
+          '<td class="tc" style="white-space:nowrap">' +
+            '<button class="icon-btn" data-editar="' + c.id + '" title="Editar">✏️</button>' +
+            '<button class="icon-btn" data-excluir="' + c.id + '" title="Excluir">🗑️</button>' +
+          '</td>' +
         '</tr>';
       }).join('');
     }
 
-    tbody.querySelectorAll('.campo-nf-corrigir').forEach(function (inp) {
-      inp.addEventListener('change', function () { corrigirNotaFiscal(inp.dataset.id, inp.value); });
+    tbody.querySelectorAll('.campo-nf').forEach(function (inp) {
+      inp.addEventListener('change', function () { atualizarNotaFiscal(inp.dataset.id, inp.value); });
+    });
+    tbody.querySelectorAll('[data-editar]').forEach(function (btn) {
+      btn.addEventListener('click', function () { editarCadastro(btn.dataset.editar); });
+    });
+    tbody.querySelectorAll('[data-excluir]').forEach(function (btn) {
+      btn.addEventListener('click', function () { excluirCadastro(btn.dataset.excluir); });
     });
   }
 
-  function corrigirNotaFiscal(id, novoValor) {
-    const nf = (novoValor || '').trim();
-    if (!nf) { alert('A nota fiscal não pode ficar vazia.'); renderNotaFiscal(); return; }
-    const lista = getCadastros();
-    const c = lista.find(function (x) { return x.id === id; });
-    if (!c || c.notaFiscal === nf) return;
-    const anterior = c.notaFiscal;
-    c.notaFiscal = nf;
-    adicionarHistorico(c, 'nota_fiscal_corrigida', 'NF alterada de "' + anterior + '" para "' + nf + '"');
-    salvarCadastros(lista);
-    renderNotaFiscal();
-  }
-
   ['nfFiltroTransportadora', 'nfFiltroPedido', 'nfFiltroCliente', 'nfFiltroEmbalador'].forEach(function (id) {
-    document.getElementById(id).addEventListener('input', renderNotaFiscal);
+    document.getElementById(id).addEventListener('input', renderPendentesNF);
   });
+
+  /* ---------------------------------------------------------------------
+     HISTÓRICO DE NOTA FISCAL — busca geral, qualquer status
+     --------------------------------------------------------------------- */
+  const STATUS_LABEL = { aguardando_nf: 'Aguardando NF', aguardando_transportadora: 'Aguardando Transportadora', concluido: 'Concluído' };
+
+  document.getElementById('btnToggleHistoricoNF').addEventListener('click', function () {
+    const card = document.getElementById('historicoNFCard');
+    const abrir = card.style.display === 'none';
+    card.style.display = abrir ? 'block' : 'none';
+    if (abrir) {
+      document.getElementById('histNFBusca').value = '';
+      renderHistoricoNF();
+      document.getElementById('histNFBusca').focus();
+    }
+  });
+  document.getElementById('histNFBusca').addEventListener('input', renderHistoricoNF);
+
+  function renderHistoricoNF() {
+    const card = document.getElementById('historicoNFCard');
+    if (!card || card.style.display === 'none') return;
+    const termo = document.getElementById('histNFBusca').value.toLowerCase().trim();
+    let lista = ordenarPorData(getCadastros());
+    if (termo) {
+      lista = lista.filter(function (c) {
+        return c.transportadora.toLowerCase().indexOf(termo) !== -1 ||
+          c.pedido.toLowerCase().indexOf(termo) !== -1 ||
+          c.cliente.toLowerCase().indexOf(termo) !== -1 ||
+          (c.embalador || '').toLowerCase().indexOf(termo) !== -1 ||
+          (c.notaFiscal || '').toLowerCase().indexOf(termo) !== -1;
+      });
+    }
+
+    const tbody = document.querySelector('#tblHistoricoNF tbody');
+    if (!termo) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Digite algo acima pra buscar.</td></tr>';
+      return;
+    }
+    if (!lista.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Nenhum resultado encontrado.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = lista.map(function (c) {
+      const acao = c.status === 'concluido' ? '<button class="icon-btn" data-ver-historico-busca="' + c.id + '">🕒 Linha do tempo</button>' : '';
+      return '<tr>' +
+        '<td class="nome-cel">' + escapeHtml(c.transportadora) + '</td>' +
+        '<td>' + escapeHtml(c.pedido) + '</td>' +
+        '<td>' + escapeHtml(c.cliente) + '</td>' +
+        '<td class="tc">' + c.volumes + '</td>' +
+        '<td>' + escapeHtml(c.embalador) + '</td>' +
+        '<td><span class="status-badge status-' + c.status + '">' + STATUS_LABEL[c.status] + '</span></td>' +
+        '<td><input type="text" class="campo-tabela campo-nf-busca" data-id="' + c.id + '" value="' + escapeHtml(c.notaFiscal || '') + '"></td>' +
+        '<td class="tc">' + acao + '</td>' +
+      '</tr>';
+    }).join('');
+
+    tbody.querySelectorAll('.campo-nf-busca').forEach(function (inp) {
+      inp.addEventListener('change', function () { atualizarNotaFiscal(inp.dataset.id, inp.value); });
+    });
+    tbody.querySelectorAll('[data-ver-historico-busca]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        irParaView('historico');
+        renderHistorico();
+        verHistoricoTimeline(btn.dataset.verHistoricoBusca);
+      });
+    });
+  }
 
   /* ---------------------------------------------------------------------
      BIPAGEM DE SAÍDA
@@ -389,13 +424,16 @@
     salvarCadastros(lista);
 
     if (concluiu) {
-      msg.textContent = '✅ Volume ' + numero + '/' + c.volumes + ' bipado — pedido concluído!';
+      msg.textContent = '';
       pedidoAbertoId = null;
       document.getElementById('bipPedidoCard').style.display = 'none';
       fecharCamera();
+      alert('✅ CONCLUÍDO COM SUCESSO!');
     } else {
-      msg.textContent = '✅ Volume ' + numero + '/' + c.volumes + ' bipado.';
+      const faltam = c.volumes - c.volumesBipados.length;
+      msg.textContent = '';
       renderPedidoAberto();
+      alert('Concluído! Faltam ' + faltam + ' ' + (faltam === 1 ? 'embalagem' : 'embalagens') + '.');
     }
     document.getElementById('bipInput').focus();
   }
@@ -640,7 +678,7 @@
 
   document.getElementById('btnImprimirPreview').addEventListener('click', function () {
     if (!document.getElementById('printArea').children.length) {
-      alert('Clique em "🏷️ Etiquetas" numa linha da lista de Registro de Embalagem antes de imprimir.');
+      alert('Cadastre uma venda primeiro pra ter etiquetas pra imprimir.');
       return;
     }
     window.print();
@@ -648,7 +686,7 @@
 
   document.getElementById('btnCopiarZPL').addEventListener('click', function () {
     const campo = document.getElementById('zplOutput');
-    if (!campo.value) { alert('Clique em "🏷️ Etiquetas" numa linha da lista antes de copiar.'); return; }
+    if (!campo.value) { alert('Cadastre uma venda primeiro pra ter o código ZPL gerado.'); return; }
     campo.select();
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(campo.value).then(function () {
@@ -668,12 +706,10 @@
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
-  renderTabelaEmbalagem();
-
   carregarDoServidor().then(function () {
-    renderTabelaEmbalagem();
-    renderNotaFiscal();
+    renderPendentesNF();
     renderHistorico();
+    renderHistoricoNF();
   });
 
 })();
