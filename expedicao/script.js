@@ -116,7 +116,7 @@
           '<td class="tc">' + c.volumes + '</td>' +
           '<td class="tc">' + fmtDataHora(c.criadoEm) + '</td>' +
           '<td class="tc" style="white-space:nowrap">' +
-            '<button class="icon-btn" data-etiquetas="' + c.id + '" title="Gerar e imprimir etiquetas">🖨 Etiquetas</button> ' +
+            '<button class="icon-btn" data-etiquetas="' + c.id + '" title="Gerar prévia e código ZPL">🏷️ Gerar Etiquetas</button> ' +
             '<button class="icon-btn" data-editar="' + c.id + '" title="Editar">✏️</button>' +
             '<button class="icon-btn" data-excluir="' + c.id + '" title="Excluir">🗑️</button>' +
           '</td>' +
@@ -125,7 +125,7 @@
     }
 
     tbody.querySelectorAll('[data-etiquetas]').forEach(function (btn) {
-      btn.addEventListener('click', function () { imprimirEtiquetas(btn.dataset.etiquetas); });
+      btn.addEventListener('click', function () { gerarEtiquetas(btn.dataset.etiquetas); });
     });
     tbody.querySelectorAll('[data-editar]').forEach(function (btn) {
       btn.addEventListener('click', function () { editarCadastro(btn.dataset.editar); });
@@ -247,12 +247,90 @@
     document.getElementById('previewAviso').style.display = 'none';
   }
 
-  function imprimirEtiquetas(id) {
+  /* ---------------------------------------------------------------------
+     CÓDIGO ZEBRA (ZPL) — alternativa pra quando a impressão via driver do
+     Windows (Zebra Setup Utilities, etc.) sai girada ou fraca. Mandando o
+     ZPL puro direto pra impressora, ela interpreta nativamente, sem
+     depender de driver nenhum. Calculado pra 203dpi (8 dots/mm) — padrão
+     em modelos como ZD220/GC420; numa impressora de 300dpi os valores
+     abaixo precisariam dobrar.
+     --------------------------------------------------------------------- */
+  function sanitizarZPL(texto) {
+    return String(texto == null ? '' : texto).replace(/[\^~]/g, '');
+  }
+
+  function construirTextoQRZpl(c) {
+    return [
+      'EXPEDICAO BH CABINES',
+      'Transportadora: ' + c.transportadora,
+      'Pedido: ' + c.pedido,
+      'Cliente: ' + c.cliente,
+      'Volumes: ' + c.volumes,
+      'Cadastrado em: ' + fmtDataHora(c.criadoEm),
+      'ID: ' + c.id
+    ].join(' | ');
+  }
+
+  function construirEtiquetaZpl(c, numero, total) {
+    const transportadora = sanitizarZPL(c.transportadora).toUpperCase();
+    const pedido = sanitizarZPL(c.pedido);
+    const cliente = sanitizarZPL(c.cliente);
+    const qrTexto = sanitizarZPL(construirTextoQRZpl(c));
+    return [
+      '^XA',
+      '^CI28', // UTF-8, pra acentos saírem certos
+      '^PW800', // largura 100mm a 203dpi (8 dots/mm)
+      '^LL1200', // altura 150mm a 203dpi
+      '^LH0,0',
+      '^FO30,40^A0N,60,60^FB740,2,0,C^FD' + transportadora + '^FS',
+      '^FO30,170^GB740,4,4^FS', // linha separadora
+      '^FO30,200^A0N,50,50^FB740,1,0,C^FDPedido ' + pedido + '^FS',
+      '^FO30,260^A0N,35,35^FB740,1,0,C^FD' + cliente + '^FS',
+      '^FO280,340^BQN,2,7',
+      '^FDQA,' + qrTexto + '^FS',
+      '^FO30,1000^A0N,60,60^FB740,1,0,C^FDVolume ' + numero + '/' + total + '^FS',
+      '^XZ'
+    ].join('\n');
+  }
+
+  function construirZplCadastro(c) {
+    const total = Number(c.volumes) || 1;
+    const blocos = [];
+    for (let i = 1; i <= total; i++) blocos.push(construirEtiquetaZpl(c, i, total));
+    return blocos.join('\n\n');
+  }
+
+  function gerarEtiquetas(id) {
     const c = getCadastros().find(function (x) { return x.id === id; });
     if (!c) return;
     renderEtiquetas(c);
-    setTimeout(function () { window.print(); }, 80);
+    document.getElementById('zplOutput').value = construirZplCadastro(c);
   }
+
+  document.getElementById('btnImprimirPreview').addEventListener('click', function () {
+    if (!document.getElementById('printArea').children.length) {
+      alert('Clique em "🏷️ Gerar Etiquetas" numa linha da lista antes de imprimir.');
+      return;
+    }
+    window.print();
+  });
+
+  document.getElementById('btnCopiarZPL').addEventListener('click', function () {
+    const campo = document.getElementById('zplOutput');
+    if (!campo.value) { alert('Clique em "🏷️ Gerar Etiquetas" numa linha da lista antes de copiar.'); return; }
+    campo.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(campo.value).then(function () {
+        alert('Código ZPL copiado! Cole no Zebra Setup Utilities (ou no programa de envio) pra imprimir.');
+      }).catch(function () {
+        document.execCommand('copy');
+        alert('Código ZPL copiado! Cole no Zebra Setup Utilities (ou no programa de envio) pra imprimir.');
+      });
+    } else {
+      document.execCommand('copy');
+      alert('Código ZPL copiado! Cole no Zebra Setup Utilities (ou no programa de envio) pra imprimir.');
+    }
+  });
 
   /* ---------------------------------------------------------------------
      INICIALIZAÇÃO

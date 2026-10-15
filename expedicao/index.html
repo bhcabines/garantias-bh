@@ -67,9 +67,21 @@
 <div class="content">
   <div class="card preview-card">
     <h3 class="card-title no-print">Pré-visualização das Etiquetas</h3>
-    <p class="muted no-print" id="previewAviso">Clique em "🖨 Etiquetas" na lista acima pra ver a prévia aqui.</p>
+    <p class="muted no-print" id="previewAviso">Clique em "🏷️ Gerar Etiquetas" na lista acima pra ver a prévia aqui.</p>
     <div class="preview-scroll">
       <div id="printArea"></div>
+    </div>
+    <div class="btn-row-h no-print" style="margin-top:14px">
+      <button class="btn bo" id="btnImprimirPreview">🖨 Imprimir / Salvar PDF</button>
+    </div>
+  </div>
+
+  <div class="card no-print" style="margin-top:20px">
+    <h3 class="card-title">Código Zebra (ZPL)</h3>
+    <p class="muted" style="margin-bottom:10px">Cole esse código no Zebra Setup Utilities (ou outro programa de envio de ZPL) pra imprimir direto na impressora, sem passar pelo driver do Windows — evita etiqueta girada ou impressão fraca. Calculado pra impressora de 203dpi (padrão em modelos como ZD220/GC420); me avise se a sua for 300dpi.</p>
+    <textarea id="zplOutput" readonly rows="10" placeholder='Clique em "🏷️ Gerar Etiquetas" na lista acima pra gerar o código aqui.' style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Courier New',monospace;font-size:.75rem;resize:vertical;background:#fafafa"></textarea>
+    <div class="btn-row-h" style="margin-top:10px">
+      <button class="btn bgray" id="btnCopiarZPL">📋 Copiar Código ZPL</button>
     </div>
   </div>
 </div>
