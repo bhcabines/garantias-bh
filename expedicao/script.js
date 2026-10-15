@@ -106,7 +106,7 @@
     const tbody = document.querySelector('#tblCadastros tbody');
     if (!lista.length) {
       const msg = termoBusca ? 'Nenhum cadastro encontrado.' : 'Nenhuma venda cadastrada ainda.';
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">' + msg + '</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">' + msg + '</td></tr>';
     } else {
       tbody.innerHTML = lista.map(function (c) {
         return '<tr>' +
@@ -114,6 +114,7 @@
           '<td>' + escapeHtml(c.pedido) + '</td>' +
           '<td>' + escapeHtml(c.cliente) + '</td>' +
           '<td class="tc">' + c.volumes + '</td>' +
+          '<td>' + escapeHtml(c.embalador) + '</td>' +
           '<td class="tc">' + fmtDataHora(c.criadoEm) + '</td>' +
           '<td class="tc" style="white-space:nowrap">' +
             '<button class="icon-btn" data-etiquetas="' + c.id + '" title="Gerar prévia e código ZPL">🏷️ Gerar Etiquetas</button> ' +
@@ -140,6 +141,7 @@
     document.getElementById('cPedido').value = '';
     document.getElementById('cCliente').value = '';
     document.getElementById('cVolumes').value = '';
+    document.getElementById('cEmbalador').value = '';
     document.getElementById('cEditId').value = '';
     document.getElementById('tituloFormCad').textContent = 'Cadastrar Venda Aguardando NF';
     document.getElementById('btnCancelarEdicaoCad').style.display = 'none';
@@ -152,6 +154,7 @@
     document.getElementById('cPedido').value = c.pedido;
     document.getElementById('cCliente').value = c.cliente;
     document.getElementById('cVolumes').value = c.volumes;
+    document.getElementById('cEmbalador').value = c.embalador;
     document.getElementById('cEditId').value = c.id;
     document.getElementById('tituloFormCad').textContent = 'Editar Cadastro';
     document.getElementById('btnCancelarEdicaoCad').style.display = 'inline-flex';
@@ -172,19 +175,21 @@
     const pedido = document.getElementById('cPedido').value.trim();
     const cliente = document.getElementById('cCliente').value.trim();
     const volumes = parseInt(document.getElementById('cVolumes').value, 10);
+    const embalador = document.getElementById('cEmbalador').value.trim();
     const editId = document.getElementById('cEditId').value;
 
     if (!transportadora) { alert('Preencha a transportadora.'); return; }
     if (!pedido) { alert('Preencha o número do pedido.'); return; }
     if (!cliente) { alert('Preencha o nome do cliente.'); return; }
     if (!volumes || volumes < 1) { alert('Preencha a quantidade de volumes (mínimo 1).'); return; }
+    if (!embalador) { alert('Preencha o nome do embalador.'); return; }
 
     const lista = getCadastros();
     if (editId) {
       const c = lista.find(function (x) { return x.id === editId; });
-      if (c) { c.transportadora = transportadora; c.pedido = pedido; c.cliente = cliente; c.volumes = volumes; }
+      if (c) { c.transportadora = transportadora; c.pedido = pedido; c.cliente = cliente; c.volumes = volumes; c.embalador = embalador; }
     } else {
-      lista.push({ id: uid(), transportadora: transportadora, pedido: pedido, cliente: cliente, volumes: volumes, criadoEm: new Date().toISOString() });
+      lista.push({ id: uid(), transportadora: transportadora, pedido: pedido, cliente: cliente, volumes: volumes, embalador: embalador, criadoEm: new Date().toISOString() });
     }
     salvarCadastros(lista);
     limparForm();
@@ -202,26 +207,29 @@
      é o diálogo de impressão nativo do navegador — rápido, um clique, sem
      precisar salvar arquivo antes de imprimir.
      --------------------------------------------------------------------- */
-  function construirTextoQR(c) {
+  function construirTextoQR(c, impressoEm) {
     return [
       'EXPEDICAO BH CABINES',
       'Transportadora: ' + c.transportadora,
       'Pedido: ' + c.pedido,
       'Cliente: ' + c.cliente,
       'Volumes: ' + c.volumes,
+      'Embalador: ' + c.embalador,
       'Cadastrado em: ' + fmtDataHora(c.criadoEm),
+      'Impresso em: ' + fmtDataHora(impressoEm),
       'ID: ' + c.id
     ].join('\n');
   }
 
-  function montarEtiquetaHtml(c, numero, total) {
+  function montarEtiquetaHtml(c, numero, total, impressoEm) {
     const qrId = 'qr_' + c.id + '_' + numero;
     return (
       '<div class="etiqueta">' +
         '<div class="etiqueta-transportadora">' + escapeHtml(c.transportadora) + '</div>' +
-        '<div class="etiqueta-pedido">Pedido ' + escapeHtml(c.pedido) + '</div>' +
         '<div class="etiqueta-cliente">' + escapeHtml(c.cliente) + '</div>' +
-        '<div class="etiqueta-qr"><canvas id="' + qrId + '"></canvas></div>' +
+        '<div class="etiqueta-pedido">Pedido ' + escapeHtml(c.pedido) + '</div>' +
+        '<div class="etiqueta-qr-wrap"><div class="etiqueta-qr"><canvas id="' + qrId + '"></canvas></div></div>' +
+        '<div class="etiqueta-rodape">Embalador: <b>' + escapeHtml(c.embalador) + '</b><br>Impresso em: <b>' + fmtDataHora(impressoEm) + '</b></div>' +
         '<div class="etiqueta-volume">Volume ' + numero + '/' + total + '</div>' +
       '</div>'
     );
@@ -230,13 +238,16 @@
   function renderEtiquetas(c) {
     const printArea = document.getElementById('printArea');
     const total = Number(c.volumes) || 1;
+    // Capturado uma única vez, no momento de gerar — não vem de nenhum campo
+    // editável, pra não dar pra "voltar no tempo" a etiqueta depois.
+    const impressoEm = new Date();
 
     const numeros = [];
     for (let i = 1; i <= total; i++) numeros.push(i);
 
-    printArea.innerHTML = numeros.map(function (num) { return montarEtiquetaHtml(c, num, total); }).join('');
+    printArea.innerHTML = numeros.map(function (num) { return montarEtiquetaHtml(c, num, total, impressoEm); }).join('');
 
-    const textoQR = construirTextoQR(c);
+    const textoQR = construirTextoQR(c, impressoEm);
     numeros.forEach(function (num) {
       const canvas = document.getElementById('qr_' + c.id + '_' + num);
       if (canvas && window.QRious) {
@@ -245,6 +256,7 @@
     });
 
     document.getElementById('previewAviso').style.display = 'none';
+    return impressoEm;
   }
 
   /* ---------------------------------------------------------------------
@@ -259,23 +271,27 @@
     return String(texto == null ? '' : texto).replace(/[\^~]/g, '');
   }
 
-  function construirTextoQRZpl(c) {
+  function construirTextoQRZpl(c, impressoEm) {
     return [
       'EXPEDICAO BH CABINES',
       'Transportadora: ' + c.transportadora,
       'Pedido: ' + c.pedido,
       'Cliente: ' + c.cliente,
       'Volumes: ' + c.volumes,
+      'Embalador: ' + c.embalador,
       'Cadastrado em: ' + fmtDataHora(c.criadoEm),
+      'Impresso em: ' + fmtDataHora(impressoEm),
       'ID: ' + c.id
     ].join(' | ');
   }
 
-  function construirEtiquetaZpl(c, numero, total) {
+  function construirEtiquetaZpl(c, numero, total, impressoEm) {
     const transportadora = sanitizarZPL(c.transportadora).toUpperCase();
     const pedido = sanitizarZPL(c.pedido);
     const cliente = sanitizarZPL(c.cliente);
-    const qrTexto = sanitizarZPL(construirTextoQRZpl(c));
+    const embalador = sanitizarZPL(c.embalador);
+    const dataHora = sanitizarZPL(fmtDataHora(impressoEm));
+    const qrTexto = sanitizarZPL(construirTextoQRZpl(c, impressoEm));
     return [
       '^XA',
       '^CI28', // UTF-8, pra acentos saírem certos
@@ -284,27 +300,30 @@
       '^LH0,0',
       '^FO30,40^A0N,60,60^FB740,2,0,C^FD' + transportadora + '^FS',
       '^FO30,170^GB740,4,4^FS', // linha separadora
-      '^FO30,200^A0N,50,50^FB740,1,0,C^FDPedido ' + pedido + '^FS',
-      '^FO30,260^A0N,35,35^FB740,1,0,C^FD' + cliente + '^FS',
-      '^FO280,340^BQN,2,7',
+      '^FO30,210^GB740,85,3^FS', // caixa ao redor do cliente (destaque)
+      '^FO30,232^A0N,50,50^FB740,1,0,C^FD' + cliente + '^FS',
+      '^FO30,320^A0N,35,35^FB740,1,0,C^FDPedido ' + pedido + '^FS',
+      '^FO250,400^BQN,2,7',
       '^FDQA,' + qrTexto + '^FS',
+      '^FO30,720^A0N,30,30^FB740,1,0,C^FDEmbalador: ' + embalador + '^FS',
+      '^FO30,760^A0N,30,30^FB740,1,0,C^FDImpresso em: ' + dataHora + '^FS',
       '^FO30,1000^A0N,60,60^FB740,1,0,C^FDVolume ' + numero + '/' + total + '^FS',
       '^XZ'
     ].join('\n');
   }
 
-  function construirZplCadastro(c) {
+  function construirZplCadastro(c, impressoEm) {
     const total = Number(c.volumes) || 1;
     const blocos = [];
-    for (let i = 1; i <= total; i++) blocos.push(construirEtiquetaZpl(c, i, total));
+    for (let i = 1; i <= total; i++) blocos.push(construirEtiquetaZpl(c, i, total, impressoEm));
     return blocos.join('\n\n');
   }
 
   function gerarEtiquetas(id) {
     const c = getCadastros().find(function (x) { return x.id === id; });
     if (!c) return;
-    renderEtiquetas(c);
-    document.getElementById('zplOutput').value = construirZplCadastro(c);
+    const impressoEm = renderEtiquetas(c);
+    document.getElementById('zplOutput').value = construirZplCadastro(c, impressoEm);
   }
 
   document.getElementById('btnImprimirPreview').addEventListener('click', function () {

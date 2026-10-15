@@ -94,12 +94,14 @@ tbody tr:nth-child(even){background:#fafafa}
   color:#000;
   background:var(--white);
 }
-.etiqueta-transportadora{font-size:24pt;font-weight:800;text-transform:uppercase;letter-spacing:.3px;line-height:1.1;border-bottom:1.5px solid #000;padding-bottom:3mm;margin-bottom:3mm;width:100%}
-.etiqueta-pedido{font-size:18pt;font-weight:800;margin-bottom:2mm;width:100%}
-.etiqueta-cliente{font-size:12pt;font-weight:600;margin-bottom:4mm;width:100%}
-.etiqueta-qr{margin:3mm 0}
+.etiqueta-transportadora{font-size:24pt;font-weight:800;text-transform:uppercase;letter-spacing:.3px;line-height:1.1;border-bottom:1.5px solid #000;padding-bottom:3mm;margin-bottom:3.5mm;width:100%}
+.etiqueta-cliente{font-size:17pt;font-weight:800;line-height:1.2;border:1.6px solid #000;border-radius:1.5mm;padding:2.5mm 4mm;margin-bottom:3mm;width:100%}
+.etiqueta-pedido{font-size:13pt;font-weight:700;margin-bottom:2mm;width:100%}
+.etiqueta-qr-wrap{flex:1;display:flex;align-items:center;justify-content:center;width:100%}
 .etiqueta-qr canvas{width:38mm;height:38mm;display:block}
-.etiqueta-volume{font-size:22pt;font-weight:800;letter-spacing:.5px;margin-top:auto}
+.etiqueta-rodape{font-size:9pt;font-weight:600;line-height:1.5;width:100%;margin-bottom:2mm}
+.etiqueta-rodape b{font-weight:800}
+.etiqueta-volume{font-size:22pt;font-weight:800;letter-spacing:.5px}
 
 .empty-preview{padding:30px;text-align:center;color:#999;font-size:.85rem;width:100%}
 
