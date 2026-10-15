@@ -1,0 +1,17 @@
+{
+  "name": "BH Cabines — Controles Internos",
+  "short_name": "BH Cabines",
+  "description": "Painel de sistemas internos da BH Cabines — garantias, vendas, expedição e mais.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f5f4",
+  "theme_color": "#EA5B0C",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

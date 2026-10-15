@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BH Cabines — Controles Internos</title>
+
+<!-- PWA: instalável como app ("Adicionar à tela inicial") -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#EA5B0C">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BH Cabines">
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -769,6 +779,16 @@ carregarUsuarios().finally(() => {
     document.getElementById('loginNome').focus();
   }
 });
+</script>
+
+<script>
+  // Registra o service worker só pra habilitar "Adicionar à tela inicial" —
+  // ele não guarda cache agressivo de nada (ver sw.js).
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
 </script>
 
 </body>
