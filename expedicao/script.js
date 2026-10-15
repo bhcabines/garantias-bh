@@ -123,6 +123,7 @@
       if (btn.dataset.view === 'embalagem') renderTabelaEmbalagem();
       if (btn.dataset.view === 'notafiscal') renderNotaFiscal();
       if (btn.dataset.view === 'historico') renderHistorico();
+      if (btn.dataset.view !== 'bipagem') fecharCamera();
     });
   });
 
@@ -391,6 +392,7 @@
       msg.textContent = '✅ Volume ' + numero + '/' + c.volumes + ' bipado — pedido concluído!';
       pedidoAbertoId = null;
       document.getElementById('bipPedidoCard').style.display = 'none';
+      fecharCamera();
     } else {
       msg.textContent = '✅ Volume ' + numero + '/' + c.volumes + ' bipado.';
       renderPedidoAberto();
@@ -414,7 +416,76 @@
     document.getElementById('bipPedidoCard').style.display = 'none';
     document.getElementById('bipBuscaMensagem').textContent = '';
     document.getElementById('bipMensagem').textContent = '';
+    fecharCamera();
   });
+
+  /* ---------------------------------------------------------------------
+     LEITURA DE QR PELA CÂMERA (celular) — alternativa ao leitor USB/Bluetooth.
+     Lê o vídeo da câmera quadro a quadro com jsQR; ao decodificar um código,
+     manda pro mesmo processarBipagem() usado pelo leitor físico, então toda
+     a lógica de conferência/divergência é idêntica nos dois caminhos.
+     --------------------------------------------------------------------- */
+  let cameraStream = null;
+  let cameraRAF = null;
+  let cameraCanvas = null;
+  let cameraCtx = null;
+  let cameraUltimoTexto = null;
+  let cameraUltimoTempo = 0;
+
+  function abrirCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Esse navegador não dá acesso à câmera. Use o campo de texto com um leitor USB/Bluetooth.');
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (stream) {
+      cameraStream = stream;
+      cameraCanvas = document.createElement('canvas');
+      cameraCtx = cameraCanvas.getContext('2d', { willReadFrequently: true });
+      const video = document.getElementById('bipVideo');
+      video.srcObject = stream;
+      document.getElementById('bipCameraWrap').style.display = 'block';
+      cameraRAF = requestAnimationFrame(loopCamera);
+    }).catch(function (err) {
+      alert('Não consegui acessar a câmera: ' + err.message);
+    });
+  }
+
+  function fecharCamera() {
+    if (cameraRAF) cancelAnimationFrame(cameraRAF);
+    cameraRAF = null;
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(function (t) { t.stop(); });
+      cameraStream = null;
+    }
+    const wrap = document.getElementById('bipCameraWrap');
+    if (wrap) wrap.style.display = 'none';
+  }
+
+  function loopCamera() {
+    if (!cameraStream) return;
+    const video = document.getElementById('bipVideo');
+    if (video.readyState === video.HAVE_ENOUGH_DATA && window.jsQR) {
+      cameraCanvas.width = video.videoWidth;
+      cameraCanvas.height = video.videoHeight;
+      cameraCtx.drawImage(video, 0, 0, cameraCanvas.width, cameraCanvas.height);
+      const imageData = cameraCtx.getImageData(0, 0, cameraCanvas.width, cameraCanvas.height);
+      const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+      if (code && code.data) {
+        const agora = Date.now();
+        // evita processar o mesmo código repetidas vezes enquanto a câmera
+        // continua apontada pro mesmo volume por alguns frames seguidos
+        if (code.data !== cameraUltimoTexto || (agora - cameraUltimoTempo) > 2000) {
+          cameraUltimoTexto = code.data;
+          cameraUltimoTempo = agora;
+          processarBipagem(code.data);
+        }
+      }
+    }
+    cameraRAF = requestAnimationFrame(loopCamera);
+  }
+
+  document.getElementById('btnAbrirCamera').addEventListener('click', abrirCamera);
+  document.getElementById('btnFecharCamera').addEventListener('click', fecharCamera);
 
   /* ---------------------------------------------------------------------
      HISTÓRICO DE CONCLUSÃO

@@ -6,6 +6,16 @@
 <title>BH Cabines — Expedição</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+<!-- PWA: instalável como app ("Adicionar à tela inicial") -->
+<link rel="manifest" href="../manifest.json">
+<meta name="theme-color" content="#EA5B0C">
+<link rel="icon" href="../icons/icon-192.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BH Cabines">
 </head>
 <body>
 
@@ -122,7 +132,14 @@
         <div id="bipChecklist" class="bip-checklist" style="margin-bottom:16px"></div>
         <div class="field">
           <label>Bipar QR Code do volume</label>
-          <input type="text" id="bipInput" placeholder="Aponte o leitor aqui e bipe..." autocomplete="off">
+          <input type="text" id="bipInput" placeholder="Aponte o leitor (USB/Bluetooth) aqui e bipe..." autocomplete="off">
+        </div>
+        <div class="btn-row-h" style="margin-top:8px">
+          <button class="btn bo" type="button" id="btnAbrirCamera">📷 Usar Câmera do Celular</button>
+        </div>
+        <div id="bipCameraWrap" class="bip-camera-wrap" style="display:none">
+          <video id="bipVideo" playsinline autoplay muted></video>
+          <button class="btn bgray" type="button" id="btnFecharCamera" style="margin-top:8px">Fechar Câmera</button>
         </div>
         <p class="muted" id="bipMensagem" style="margin-top:8px"></p>
         <div class="btn-row-h" style="margin-top:12px">

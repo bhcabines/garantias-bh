@@ -53,6 +53,10 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 .bip-volume.ok{background:#dcfce7;border-color:#86efac;color:#15803d}
 .bip-volume.pendente{background:#fafafa;color:#aaa}
 
+/* ===== Câmera (leitura de QR pelo celular) ===== */
+.bip-camera-wrap{margin-top:12px}
+.bip-camera-wrap video{width:100%;max-width:420px;border-radius:12px;border:2px solid var(--border);background:#000;display:block}
+
 /* ===== Linha do tempo ===== */
 .timeline{display:flex;flex-direction:column;gap:0}
 .timeline-item{display:flex;gap:12px;padding:10px 0;border-left:2px solid var(--border);margin-left:6px;padding-left:18px;position:relative}
@@ -132,6 +136,22 @@ tbody tr:nth-child(even){background:#fafafa}
 .etiqueta-volume{font-size:22pt;font-weight:800;letter-spacing:.5px}
 
 .empty-preview{padding:30px;text-align:center;color:#999;font-size:.85rem;width:100%}
+
+/* ===== Celular (telas estreitas) =====
+   O menu lateral vira uma faixa horizontal com os botões lado a lado no
+   topo, em vez de coluna fixa — não cabe 230px de menu numa tela de 360px. */
+@media (max-width:860px){
+  .hdr-in img{height:32px}
+  .hdr-title small{display:none}
+  .layout{flex-direction:column}
+  .sidebar{width:100%;flex:none;border-right:none;border-bottom:2.5px solid #cfccc6;padding:12px 14px}
+  .sidebar-inner{flex-direction:row;flex-wrap:wrap;position:static;top:auto;padding-right:0;gap:8px}
+  .nav-item{flex:1 1 auto;justify-content:center;text-align:center;font-size:.72rem;padding:9px 6px}
+  .main-area{padding:18px 14px 50px}
+  .card{padding:16px}
+  .field-wide{grid-column:span 1}
+  .form-row{grid-template-columns:1fr}
+}
 
 /* ===== Impressão ===== */
 @media print{
