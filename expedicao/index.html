@@ -45,6 +45,7 @@
       <button class="nav-item" data-view="notafiscal">📄 Processamento de Notas Fiscais</button>
       <button class="nav-item" data-view="bipagem">📡 Bipagem de Saída</button>
       <button class="nav-item" data-view="historico">✅ Histórico de Conclusão</button>
+      <button class="nav-item" data-view="cadastrosaux">🚚 Transportadoras e Embaladores</button>
     </div>
   </aside>
 
@@ -57,17 +58,19 @@
         <h3 class="card-title" id="tituloFormCad">Cadastrar Venda Aguardando NF</h3>
         <p class="muted" style="margin-bottom:12px">Ao salvar, as etiquetas (uma por volume, cada uma com QR Code único) aparecem logo abaixo pra impressão — a nota fiscal é preenchida depois, em "Processamento de Notas Fiscais".</p>
         <div class="form-row">
-          <div class="field"><label>Transportadora *</label><input type="text" id="cTransportadora" placeholder="Nome da transportadora"></div>
+          <div class="field"><label>Transportadora *</label><input type="text" id="cTransportadora" list="dlTransportadoras" placeholder="Nome da transportadora"></div>
           <div class="field"><label>Número do Pedido *</label><input type="text" id="cPedido" placeholder="Ex.: 12345"></div>
           <div class="field field-wide"><label>Nome do Cliente *</label><input type="text" id="cCliente" placeholder="Nome completo do cliente"></div>
           <div class="field"><label>Quantidade de Volumes *</label><input type="number" id="cVolumes" min="1" step="1" placeholder="Ex.: 4"></div>
-          <div class="field"><label>Embalador *</label><input type="text" id="cEmbalador" placeholder="Nome de quem embalou"></div>
+          <div class="field"><label>Embalador *</label><input type="text" id="cEmbalador" list="dlEmbaladores" placeholder="Nome de quem embalou"></div>
         </div>
         <input type="hidden" id="cEditId">
         <div class="btn-row-h" style="margin-top:6px">
           <button class="btn bo" id="btnSalvarCadastro">Salvar Cadastro</button>
           <button class="btn bgray" id="btnCancelarEdicaoCad" style="display:none">Cancelar edição</button>
         </div>
+        <datalist id="dlTransportadoras"></datalist>
+        <datalist id="dlEmbaladores"></datalist>
       </div>
 
     </section>
@@ -171,6 +174,43 @@
       <div class="card" id="historicoDetalheCard" style="margin-top:20px;display:none">
         <h3 class="card-title">Linha do Tempo — <span id="historicoDetalheTitulo"></span></h3>
         <div id="historicoTimeline" class="timeline"></div>
+      </div>
+    </section>
+
+    <!-- ===================== TRANSPORTADORAS E EMBALADORES ===================== -->
+    <section class="view" id="view-cadastrosaux" style="display:none">
+      <div class="card">
+        <h3 class="card-title">Cadastrar Transportadora</h3>
+        <p class="muted" style="margin-bottom:12px">Esses nomes aparecem como sugestão ao digitar no campo "Transportadora" do Registro de Embalagem, pra padronizar e evitar nome duplicado escrito diferente.</p>
+        <div class="form-row">
+          <div class="field field-wide"><label>Nome da Transportadora *</label><input type="text" id="novaTransportadora" placeholder="Nome da transportadora"></div>
+        </div>
+        <div class="btn-row-h" style="margin-top:8px">
+          <button class="btn bo" id="btnSalvarTransportadora">Salvar Transportadora</button>
+        </div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table id="tblTransportadoras">
+            <thead><tr><th>Transportadora</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <h3 class="card-title">Cadastrar Embalador</h3>
+        <p class="muted" style="margin-bottom:12px">Esses nomes aparecem como sugestão ao digitar no campo "Embalador" do Registro de Embalagem.</p>
+        <div class="form-row">
+          <div class="field field-wide"><label>Nome do Embalador *</label><input type="text" id="novoEmbalador" placeholder="Nome do embalador"></div>
+        </div>
+        <div class="btn-row-h" style="margin-top:8px">
+          <button class="btn bo" id="btnSalvarEmbalador">Salvar Embalador</button>
+        </div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table id="tblEmbaladores">
+            <thead><tr><th>Embalador</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </section>
 

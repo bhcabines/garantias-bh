@@ -13,15 +13,35 @@
 
   /* ---------------------------------------------------------------------
      STORAGE (local + servidor)
+     Guarda { cadastros, transportadoras, embaladores } sob a mesma ação de
+     sempre — o backend só armazena o JSON cru, então não precisa mexer no
+     Apps Script pra isso. Dado antigo (só o array de cadastros) é migrado
+     automaticamente na leitura.
      --------------------------------------------------------------------- */
   const LS_KEY = 'expedicao_cadastros';
 
-  function getCadastros() {
-    try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { return []; }
+  function normalizarEstado(raw) {
+    if (Array.isArray(raw)) return { cadastros: raw, transportadoras: [], embaladores: [] }; // formato antigo
+    if (raw && typeof raw === 'object') {
+      return {
+        cadastros: Array.isArray(raw.cadastros) ? raw.cadastros : [],
+        transportadoras: Array.isArray(raw.transportadoras) ? raw.transportadoras : [],
+        embaladores: Array.isArray(raw.embaladores) ? raw.embaladores : []
+      };
+    }
+    return { cadastros: [], transportadoras: [], embaladores: [] };
   }
-  function saveCadastrosLocal(lista) {
-    localStorage.setItem(LS_KEY, JSON.stringify(lista || []));
+
+  function getEstado() {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
+    return normalizarEstado(raw);
   }
+  function saveEstadoLocal(estado) { localStorage.setItem(LS_KEY, JSON.stringify(estado)); }
+
+  function getCadastros() { return getEstado().cadastros; }
+  function getTransportadoras() { return getEstado().transportadoras; }
+  function getEmbaladores() { return getEstado().embaladores; }
 
   function setSyncIndicador(texto, esconderDepois) {
     const el = document.getElementById('syncIndicador');
@@ -31,30 +51,35 @@
     if (esconderDepois) setTimeout(function () { el.style.display = 'none'; }, esconderDepois);
   }
 
-  function pushCadastros(lista) {
+  function pushEstado(estado) {
     // Sem header de Content-Type de propósito — setar 'application/json' força
     // preflight CORS que o Apps Script não responde direito, e o envio falha
     // silenciosamente (mesmo problema já visto e corrigido nos outros módulos).
     return fetch(SYNC_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'saveExpedicao', data: lista })
+      body: JSON.stringify({ action: 'saveExpedicao', data: estado })
     }).then(function (r) { return r.json(); });
   }
 
-  function fetchCadastros() {
+  function fetchEstado() {
     return fetch(SYNC_URL + '?action=getExpedicao&t=' + Date.now()).then(function (r) { return r.json(); });
+  }
+
+  function temConteudo(estado) {
+    return estado.cadastros.length > 0 || estado.transportadoras.length > 0 || estado.embaladores.length > 0;
   }
 
   function carregarDoServidor() {
     setSyncIndicador('🔄 Sincronizando...');
-    return fetchCadastros().then(function (servidor) {
-      if (Array.isArray(servidor) && servidor.length > 0) {
-        saveCadastrosLocal(servidor);
+    return fetchEstado().then(function (servidor) {
+      const estadoServidor = normalizarEstado(servidor);
+      if (temConteudo(estadoServidor)) {
+        saveEstadoLocal(estadoServidor);
       } else {
-        // Servidor vazio mas já existe cadastro local: provável envio anterior
+        // Servidor vazio mas já existe algo local: provável envio anterior
         // falhou silenciosamente — reenvia em vez de apagar o que já existe aqui.
-        const local = getCadastros();
-        if (local.length > 0) pushCadastros(local).catch(function () {});
+        const local = getEstado();
+        if (temConteudo(local)) pushEstado(local).catch(function () {});
       }
       setSyncIndicador('✅ Sincronizado', 2000);
     }).catch(function () {
@@ -63,8 +88,22 @@
   }
 
   function salvarCadastros(lista) {
-    saveCadastrosLocal(lista);
-    pushCadastros(lista).catch(function () {});
+    const estado = getEstado();
+    estado.cadastros = lista;
+    saveEstadoLocal(estado);
+    pushEstado(estado).catch(function () {});
+  }
+  function salvarTransportadoras(lista) {
+    const estado = getEstado();
+    estado.transportadoras = lista;
+    saveEstadoLocal(estado);
+    pushEstado(estado).catch(function () {});
+  }
+  function salvarEmbaladores(lista) {
+    const estado = getEstado();
+    estado.embaladores = lista;
+    saveEstadoLocal(estado);
+    pushEstado(estado).catch(function () {});
   }
 
   /* ---------------------------------------------------------------------
@@ -112,6 +151,83 @@
   }
 
   /* ---------------------------------------------------------------------
+     TRANSPORTADORAS E EMBALADORES — cadastro auxiliar, só pra padronizar
+     nome (alimenta o <datalist> dos campos de Transportadora/Embalador em
+     todo o resto do app, pra sugerir nome enquanto a pessoa digita).
+     --------------------------------------------------------------------- */
+  function uidAux() { return 'aux_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }
+
+  function ordenarPorNomeAux(lista) {
+    return lista.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
+  }
+
+  function atualizarDatalist(datalistId, lista) {
+    const dl = document.getElementById(datalistId);
+    if (!dl) return;
+    dl.innerHTML = ordenarPorNomeAux(lista).map(function (x) { return '<option value="' + escapeHtml(x.nome) + '">'; }).join('');
+  }
+
+  function renderTransportadoras() {
+    const lista = ordenarPorNomeAux(getTransportadoras());
+    const tbody = document.querySelector('#tblTransportadoras tbody');
+    tbody.innerHTML = lista.length
+      ? lista.map(function (t) {
+          return '<tr><td class="nome-cel">' + escapeHtml(t.nome) + '</td><td class="tc"><button class="icon-btn" data-excluir-transp="' + t.id + '" title="Excluir">🗑️</button></td></tr>';
+        }).join('')
+      : '<tr class="empty-row"><td colspan="2">Nenhuma transportadora cadastrada ainda.</td></tr>';
+    tbody.querySelectorAll('[data-excluir-transp]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const t = getTransportadoras().find(function (x) { return x.id === btn.dataset.excluirTransp; });
+        if (!t || !confirm('Excluir "' + t.nome + '" da lista de sugestões de transportadora?')) return;
+        salvarTransportadoras(getTransportadoras().filter(function (x) { return x.id !== t.id; }));
+        renderTransportadoras();
+      });
+    });
+    atualizarDatalist('dlTransportadoras', lista);
+  }
+
+  function renderEmbaladores() {
+    const lista = ordenarPorNomeAux(getEmbaladores());
+    const tbody = document.querySelector('#tblEmbaladores tbody');
+    tbody.innerHTML = lista.length
+      ? lista.map(function (e) {
+          return '<tr><td class="nome-cel">' + escapeHtml(e.nome) + '</td><td class="tc"><button class="icon-btn" data-excluir-emb="' + e.id + '" title="Excluir">🗑️</button></td></tr>';
+        }).join('')
+      : '<tr class="empty-row"><td colspan="2">Nenhum embalador cadastrado ainda.</td></tr>';
+    tbody.querySelectorAll('[data-excluir-emb]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const e = getEmbaladores().find(function (x) { return x.id === btn.dataset.excluirEmb; });
+        if (!e || !confirm('Excluir "' + e.nome + '" da lista de sugestões de embalador?')) return;
+        salvarEmbaladores(getEmbaladores().filter(function (x) { return x.id !== e.id; }));
+        renderEmbaladores();
+      });
+    });
+    atualizarDatalist('dlEmbaladores', lista);
+  }
+
+  document.getElementById('btnSalvarTransportadora').addEventListener('click', function () {
+    const nome = document.getElementById('novaTransportadora').value.trim();
+    if (!nome) { alert('Preencha o nome da transportadora.'); return; }
+    const lista = getTransportadoras();
+    if (lista.find(function (x) { return x.nome.toLowerCase() === nome.toLowerCase(); })) { alert('Essa transportadora já está cadastrada.'); return; }
+    lista.push({ id: uidAux(), nome: nome });
+    salvarTransportadoras(lista);
+    document.getElementById('novaTransportadora').value = '';
+    renderTransportadoras();
+  });
+
+  document.getElementById('btnSalvarEmbalador').addEventListener('click', function () {
+    const nome = document.getElementById('novoEmbalador').value.trim();
+    if (!nome) { alert('Preencha o nome do embalador.'); return; }
+    const lista = getEmbaladores();
+    if (lista.find(function (x) { return x.nome.toLowerCase() === nome.toLowerCase(); })) { alert('Esse embalador já está cadastrado.'); return; }
+    lista.push({ id: uidAux(), nome: nome });
+    salvarEmbaladores(lista);
+    document.getElementById('novoEmbalador').value = '';
+    renderEmbaladores();
+  });
+
+  /* ---------------------------------------------------------------------
      NAVEGAÇÃO (mapa de ações na lateral)
      --------------------------------------------------------------------- */
   function irParaView(view) {
@@ -123,6 +239,7 @@
     document.getElementById('previewSecao').style.display = (view === 'embalagem') ? 'block' : 'none';
     if (view === 'notafiscal') renderPendentesNF();
     if (view === 'historico') renderHistorico();
+    if (view === 'cadastrosaux') { renderTransportadoras(); renderEmbaladores(); }
     if (view !== 'bipagem') fecharCamera();
   }
 
@@ -706,10 +823,15 @@
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
+  atualizarDatalist('dlTransportadoras', getTransportadoras());
+  atualizarDatalist('dlEmbaladores', getEmbaladores());
+
   carregarDoServidor().then(function () {
     renderPendentesNF();
     renderHistorico();
     renderHistoricoNF();
+    atualizarDatalist('dlTransportadoras', getTransportadoras());
+    atualizarDatalist('dlEmbaladores', getEmbaladores());
   });
 
 })();
