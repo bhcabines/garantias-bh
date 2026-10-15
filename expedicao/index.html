@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BH Cabines — Expedição</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+</head>
+<body>
+
+<header class="hdr no-print">
+  <div class="hdr-in">
+    <a href="../index.html" class="hdr-back" title="Voltar ao painel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <div class="hdr-title">
+      <h1>Expedição</h1>
+      <small>Vendas aguardando nota fiscal · Etiquetas com QR Code</small>
+    </div>
+    <div class="ml hdr-right">
+      <span id="syncIndicador" style="display:none;font-size:.72rem;font-weight:600;color:#666;padding:4px 10px;background:#f3f4f6;border-radius:20px"></span>
+      <span class="header-date" id="headerDate"></span>
+      <a href="../index.html" class="btn-menu">🏠 Menu</a>
+    </div>
+  </div>
+</header>
+
+<main class="content no-print">
+
+  <div class="card">
+    <h3 class="card-title" id="tituloFormCad">Cadastrar Venda Aguardando NF</h3>
+    <div class="form-row">
+      <div class="field"><label>Transportadora *</label><input type="text" id="cTransportadora" placeholder="Nome da transportadora"></div>
+      <div class="field"><label>Número do Pedido *</label><input type="text" id="cPedido" placeholder="Ex.: 12345"></div>
+      <div class="field field-wide"><label>Nome do Cliente *</label><input type="text" id="cCliente" placeholder="Nome completo do cliente"></div>
+      <div class="field"><label>Quantidade de Volumes *</label><input type="number" id="cVolumes" min="1" step="1" placeholder="Ex.: 4"></div>
+    </div>
+    <input type="hidden" id="cEditId">
+    <div class="btn-row-h" style="margin-top:6px">
+      <button class="btn bo" id="btnSalvarCadastro">Salvar Cadastro</button>
+      <button class="btn bgray" id="btnCancelarEdicaoCad" style="display:none">Cancelar edição</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <h3 class="card-title">Aguardando Nota Fiscal</h3>
+    <p class="muted" style="margin-bottom:12px">Cada cadastro gera 1 etiqueta por volume (ex.: 4 volumes = 4 etiquetas, numeradas 1/4 a 4/4), todas com o mesmo QR Code do pedido.</p>
+    <div class="field" style="max-width:320px;margin-bottom:12px">
+      <label>Localizar</label>
+      <input type="text" id="buscaCadastro" placeholder="Transportadora, pedido ou cliente...">
+    </div>
+    <div class="table-wrap">
+      <table id="tblCadastros">
+        <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th class="tc">Cadastrado em</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- FORA do bloco .no-print de propósito: na impressão, tudo com .no-print some e
+     só isto aqui fica visível (ver @media print no style.css). Em tela, o
+     .preview-card em volta dá a moldura de "card" igual ao resto da página. -->
+<div class="content">
+  <div class="card preview-card">
+    <h3 class="card-title no-print">Pré-visualização das Etiquetas</h3>
+    <p class="muted no-print" id="previewAviso">Clique em "🖨 Etiquetas" na lista acima pra ver a prévia aqui.</p>
+    <div class="preview-scroll">
+      <div id="printArea"></div>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
