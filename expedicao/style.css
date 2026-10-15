@@ -34,9 +34,13 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 /* ===== Layout ===== */
 .content{max-width:1100px;margin:0 auto;padding:28px 32px 60px}
 
-/* ===== Menu lateral (mapa de ações) ===== */
-.layout{display:flex;align-items:flex-start;max-width:1400px;margin:0 auto}
-.sidebar{width:230px;flex:0 0 230px;display:flex;flex-direction:column;gap:4px;padding:24px 16px;position:sticky;top:64px}
+/* ===== Menu lateral (mapa de ações) =====
+   .sidebar fica esticada (altura igual ao conteúdo principal) só pra a linha
+   divisória acompanhar o tamanho da página; quem realmente "gruda" ao rolar
+   é o .sidebar-inner (os botões), não a faixa inteira. */
+.layout{display:flex;max-width:1400px;margin:0 auto}
+.sidebar{width:230px;flex:0 0 230px;padding:24px 0 24px 16px;border-right:1.5px solid var(--border)}
+.sidebar-inner{display:flex;flex-direction:column;gap:4px;position:sticky;top:84px;padding-right:16px}
 .nav-item{display:flex;align-items:center;gap:8px;text-align:left;padding:10px 12px;border-radius:9px;border:none;background:none;cursor:pointer;font-size:.8rem;font-weight:600;color:var(--dark);transition:all .15s}
 .nav-item:hover{background:var(--orange-dim);color:var(--orange)}
 .nav-item.active{background:var(--orange);color:var(--white)}
