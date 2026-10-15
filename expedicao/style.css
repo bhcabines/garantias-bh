@@ -34,6 +34,29 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 /* ===== Layout ===== */
 .content{max-width:1100px;margin:0 auto;padding:28px 32px 60px}
 
+/* ===== Menu lateral (mapa de ações) ===== */
+.layout{display:flex;align-items:flex-start;max-width:1400px;margin:0 auto}
+.sidebar{width:230px;flex:0 0 230px;display:flex;flex-direction:column;gap:4px;padding:24px 16px;position:sticky;top:64px}
+.nav-item{display:flex;align-items:center;gap:8px;text-align:left;padding:10px 12px;border-radius:9px;border:none;background:none;cursor:pointer;font-size:.8rem;font-weight:600;color:var(--dark);transition:all .15s}
+.nav-item:hover{background:var(--orange-dim);color:var(--orange)}
+.nav-item.active{background:var(--orange);color:var(--white)}
+.main-area{flex:1;min-width:0;padding:24px 32px 60px 0}
+.view{display:flex;flex-direction:column}
+
+/* ===== Checklist de bipagem ===== */
+.bip-checklist{display:flex;flex-wrap:wrap;gap:8px}
+.bip-volume{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:1.5px solid var(--border);font-size:.8rem;font-weight:700}
+.bip-volume.ok{background:#dcfce7;border-color:#86efac;color:#15803d}
+.bip-volume.pendente{background:#fafafa;color:#aaa}
+
+/* ===== Linha do tempo ===== */
+.timeline{display:flex;flex-direction:column;gap:0}
+.timeline-item{display:flex;gap:12px;padding:10px 0;border-left:2px solid var(--border);margin-left:6px;padding-left:18px;position:relative}
+.timeline-item::before{content:'';position:absolute;left:-6px;top:14px;width:10px;height:10px;border-radius:50%;background:var(--orange)}
+.timeline-item:last-child{border-left-color:transparent}
+.timeline-quando{font-size:.72rem;color:#999;white-space:nowrap;min-width:130px}
+.timeline-acao{font-size:.85rem;font-weight:600}
+
 /* ===== Cards ===== */
 .card{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:20px 22px;box-shadow:0 2px 10px rgba(0,0,0,.03)}
 .card-title{font-size:.78rem;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
@@ -46,6 +69,7 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 label{font-size:.7rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px}
 input,select{padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;background:var(--white);color:var(--black);width:100%}
 input:focus,select:focus{outline:none;border-color:var(--orange)}
+.campo-tabela{padding:5px 7px;font-size:.8rem;min-width:110px}
 
 /* ===== Buttons ===== */
 .btn{padding:9px 16px;border-radius:8px;border:none;cursor:pointer;font-size:.8rem;font-weight:700;transition:all .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}

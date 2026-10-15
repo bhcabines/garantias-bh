@@ -1,10 +1,9 @@
 /* ============================================================================
    EXPEDIÇÃO — script.js
-   Cadastro de vendas concluídas aguardando nota fiscal, com geração de
-   etiquetas (1 por volume) contendo QR Code — mesmo QR em todas as etiquetas
-   de um cadastro, já que ele representa o pedido inteiro, não a etiqueta
-   individual. Primeira parte do módulo — campos do QR e fluxo serão
-   ampliados conforme o restante for desenhado.
+   Fluxo completo: Registro de Embalagem -> Processamento de Notas Fiscais ->
+   Bipagem de Saída -> Histórico de Conclusão. Cada etiqueta/volume tem um
+   QR Code ÚNICO (id do cadastro + número do volume), usado na bipagem pra
+   conferir exatamente quais volumes saíram e detectar divergência.
    Sincroniza pelo mesmo Apps Script compartilhado com os outros módulos —
    servidor sempre vence o cache local (ver quadro-funcionarios/script.js).
    ============================================================================ */
@@ -89,24 +88,53 @@
     return lista.slice().sort(function (a, b) { return new Date(b.criadoEm) - new Date(a.criadoEm); });
   }
 
+  function dataDoHistorico(c, acao) {
+    const h = (c.historico || []).find(function (x) { return x.acao === acao; });
+    return h ? h.em : c.criadoEm;
+  }
+
+  function adicionarHistorico(c, acao, detalhe) {
+    c.historico = c.historico || [];
+    c.historico.push({ acao: acao, em: new Date().toISOString(), detalhe: detalhe });
+  }
+
+  function filtrarPorCampos(lista, prefixo) {
+    const t = (document.getElementById(prefixo + 'FiltroTransportadora').value || '').toLowerCase().trim();
+    const p = (document.getElementById(prefixo + 'FiltroPedido').value || '').toLowerCase().trim();
+    const cl = (document.getElementById(prefixo + 'FiltroCliente').value || '').toLowerCase().trim();
+    const e = (document.getElementById(prefixo + 'FiltroEmbalador').value || '').toLowerCase().trim();
+    return lista.filter(function (c) {
+      return (!t || c.transportadora.toLowerCase().indexOf(t) !== -1) &&
+        (!p || c.pedido.toLowerCase().indexOf(p) !== -1) &&
+        (!cl || c.cliente.toLowerCase().indexOf(cl) !== -1) &&
+        (!e || (c.embalador || '').toLowerCase().indexOf(e) !== -1);
+    });
+  }
+
   /* ---------------------------------------------------------------------
-     CADASTRO (tabela + form)
+     NAVEGAÇÃO (mapa de ações na lateral)
      --------------------------------------------------------------------- */
-  function renderTabela() {
-    const termoBusca = document.getElementById('buscaCadastro').value.trim().toLowerCase();
-    let lista = ordenarPorData(getCadastros());
-    if (termoBusca) {
-      lista = lista.filter(function (c) {
-        return c.transportadora.toLowerCase().indexOf(termoBusca) !== -1 ||
-          c.pedido.toLowerCase().indexOf(termoBusca) !== -1 ||
-          c.cliente.toLowerCase().indexOf(termoBusca) !== -1;
-      });
-    }
+  document.querySelectorAll('.nav-item').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelectorAll('.view').forEach(function (v) { v.style.display = 'none'; });
+      document.getElementById('view-' + btn.dataset.view).style.display = 'flex';
+      if (btn.dataset.view === 'embalagem') renderTabelaEmbalagem();
+      if (btn.dataset.view === 'notafiscal') renderNotaFiscal();
+      if (btn.dataset.view === 'historico') renderHistorico();
+    });
+  });
+
+  /* ---------------------------------------------------------------------
+     CADASTRO (Registro de Embalagem)
+     --------------------------------------------------------------------- */
+  function renderTabelaEmbalagem() {
+    const lista = filtrarPorCampos(ordenarPorData(getCadastros().filter(function (c) { return c.status === 'aguardando_nf'; })), 'emb');
 
     const tbody = document.querySelector('#tblCadastros tbody');
     if (!lista.length) {
-      const msg = termoBusca ? 'Nenhum cadastro encontrado.' : 'Nenhuma venda cadastrada ainda.';
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">' + msg + '</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Nenhuma venda aguardando nota fiscal.</td></tr>';
     } else {
       tbody.innerHTML = lista.map(function (c) {
         return '<tr>' +
@@ -115,9 +143,10 @@
           '<td>' + escapeHtml(c.cliente) + '</td>' +
           '<td class="tc">' + c.volumes + '</td>' +
           '<td>' + escapeHtml(c.embalador) + '</td>' +
+          '<td><input type="text" class="campo-tabela campo-nf" data-id="' + c.id + '" placeholder="Preencher NF..." value="' + escapeHtml(c.notaFiscal || '') + '"></td>' +
           '<td class="tc">' + fmtDataHora(c.criadoEm) + '</td>' +
           '<td class="tc" style="white-space:nowrap">' +
-            '<button class="icon-btn" data-etiquetas="' + c.id + '" title="Gerar prévia e código ZPL">🏷️ Gerar Etiquetas</button> ' +
+            '<button class="icon-btn" data-etiquetas="' + c.id + '" title="Gerar prévia e código ZPL">🏷️ Etiquetas</button> ' +
             '<button class="icon-btn" data-editar="' + c.id + '" title="Editar">✏️</button>' +
             '<button class="icon-btn" data-excluir="' + c.id + '" title="Excluir">🗑️</button>' +
           '</td>' +
@@ -125,6 +154,9 @@
       }).join('');
     }
 
+    tbody.querySelectorAll('.campo-nf').forEach(function (inp) {
+      inp.addEventListener('change', function () { salvarNotaFiscal(inp.dataset.id, inp.value); });
+    });
     tbody.querySelectorAll('[data-etiquetas]').forEach(function (btn) {
       btn.addEventListener('click', function () { gerarEtiquetas(btn.dataset.etiquetas); });
     });
@@ -167,7 +199,7 @@
     if (!confirm('Excluir o cadastro do pedido "' + c.pedido + '" (' + c.cliente + ')? Essa ação não pode ser desfeita.')) return;
     const lista = getCadastros().filter(function (x) { return x.id !== id; });
     salvarCadastros(lista);
-    renderTabela();
+    renderTabelaEmbalagem();
   }
 
   document.getElementById('btnSalvarCadastro').addEventListener('click', function () {
@@ -189,17 +221,252 @@
       const c = lista.find(function (x) { return x.id === editId; });
       if (c) { c.transportadora = transportadora; c.pedido = pedido; c.cliente = cliente; c.volumes = volumes; c.embalador = embalador; }
     } else {
-      lista.push({ id: uid(), transportadora: transportadora, pedido: pedido, cliente: cliente, volumes: volumes, embalador: embalador, criadoEm: new Date().toISOString() });
+      const novo = {
+        id: uid(), transportadora: transportadora, pedido: pedido, cliente: cliente, volumes: volumes, embalador: embalador,
+        criadoEm: new Date().toISOString(), notaFiscal: '', status: 'aguardando_nf', volumesBipados: [], historico: []
+      };
+      adicionarHistorico(novo, 'cadastro', 'Venda registrada (' + volumes + ' volume(s))');
+      lista.push(novo);
     }
     salvarCadastros(lista);
     limparForm();
-    renderTabela();
+    renderTabelaEmbalagem();
   });
   document.getElementById('btnCancelarEdicaoCad').addEventListener('click', limparForm);
-  document.getElementById('buscaCadastro').addEventListener('input', renderTabela);
+
+  ['embFiltroTransportadora', 'embFiltroPedido', 'embFiltroCliente', 'embFiltroEmbalador'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', renderTabelaEmbalagem);
+  });
+
+  function salvarNotaFiscal(id, valor) {
+    const nf = (valor || '').trim();
+    if (!nf) return; // campo vazio não muda nada — evita avançar status sem querer
+    const lista = getCadastros();
+    const c = lista.find(function (x) { return x.id === id; });
+    if (!c) return;
+    c.notaFiscal = nf;
+    c.status = 'aguardando_transportadora';
+    adicionarHistorico(c, 'nota_fiscal', 'Nota fiscal ' + nf + ' preenchida');
+    salvarCadastros(lista);
+    renderTabelaEmbalagem();
+  }
 
   /* ---------------------------------------------------------------------
-     ETIQUETAS (1 por volume, todas com o mesmo QR Code do pedido)
+     PROCESSAMENTO DE NOTAS FISCAIS
+     --------------------------------------------------------------------- */
+  function renderNotaFiscal() {
+    const lista = filtrarPorCampos(ordenarPorData(getCadastros().filter(function (c) { return c.status === 'aguardando_transportadora'; })), 'nf');
+
+    const tbody = document.querySelector('#tblNotaFiscal tbody');
+    if (!lista.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Nenhum pedido aguardando transportadora.</td></tr>';
+    } else {
+      tbody.innerHTML = lista.map(function (c) {
+        return '<tr>' +
+          '<td class="nome-cel">' + escapeHtml(c.transportadora) + '</td>' +
+          '<td>' + escapeHtml(c.pedido) + '</td>' +
+          '<td>' + escapeHtml(c.cliente) + '</td>' +
+          '<td class="tc">' + c.volumes + '</td>' +
+          '<td>' + escapeHtml(c.embalador) + '</td>' +
+          '<td><input type="text" class="campo-tabela campo-nf-corrigir" data-id="' + c.id + '" value="' + escapeHtml(c.notaFiscal || '') + '"></td>' +
+          '<td class="tc">' + fmtDataHora(dataDoHistorico(c, 'nota_fiscal')) + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    tbody.querySelectorAll('.campo-nf-corrigir').forEach(function (inp) {
+      inp.addEventListener('change', function () { corrigirNotaFiscal(inp.dataset.id, inp.value); });
+    });
+  }
+
+  function corrigirNotaFiscal(id, novoValor) {
+    const nf = (novoValor || '').trim();
+    if (!nf) { alert('A nota fiscal não pode ficar vazia.'); renderNotaFiscal(); return; }
+    const lista = getCadastros();
+    const c = lista.find(function (x) { return x.id === id; });
+    if (!c || c.notaFiscal === nf) return;
+    const anterior = c.notaFiscal;
+    c.notaFiscal = nf;
+    adicionarHistorico(c, 'nota_fiscal_corrigida', 'NF alterada de "' + anterior + '" para "' + nf + '"');
+    salvarCadastros(lista);
+    renderNotaFiscal();
+  }
+
+  ['nfFiltroTransportadora', 'nfFiltroPedido', 'nfFiltroCliente', 'nfFiltroEmbalador'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', renderNotaFiscal);
+  });
+
+  /* ---------------------------------------------------------------------
+     BIPAGEM DE SAÍDA
+     --------------------------------------------------------------------- */
+  let pedidoAbertoId = null;
+
+  function abrirPedidoBipagem() {
+    const termo = document.getElementById('bipBusca').value.trim().toLowerCase();
+    const msg = document.getElementById('bipBuscaMensagem');
+    if (!termo) { msg.textContent = 'Digite a nota fiscal ou o número do pedido.'; return; }
+
+    const candidatos = getCadastros().filter(function (c) {
+      return c.status === 'aguardando_transportadora' &&
+        ((c.notaFiscal || '').toLowerCase() === termo || (c.pedido || '').toLowerCase() === termo);
+    });
+
+    if (!candidatos.length) {
+      const outro = getCadastros().find(function (c) {
+        return (c.notaFiscal || '').toLowerCase() === termo || (c.pedido || '').toLowerCase() === termo;
+      });
+      if (outro && outro.status === 'concluido') msg.textContent = 'Esse pedido já foi concluído.';
+      else if (outro && outro.status === 'aguardando_nf') msg.textContent = 'Esse pedido ainda não tem nota fiscal preenchida — vá em "Processamento de Notas Fiscais" primeiro.';
+      else msg.textContent = 'Nenhum pedido aguardando transportadora encontrado com essa busca.';
+      document.getElementById('bipPedidoCard').style.display = 'none';
+      pedidoAbertoId = null;
+      return;
+    }
+    if (candidatos.length > 1) { msg.textContent = 'Mais de um pedido bateu com essa busca — use um termo mais específico.'; return; }
+
+    pedidoAbertoId = candidatos[0].id;
+    msg.textContent = '';
+    document.getElementById('bipBusca').value = '';
+    renderPedidoAberto();
+    document.getElementById('bipInput').focus();
+  }
+
+  function renderPedidoAberto() {
+    const c = getCadastros().find(function (x) { return x.id === pedidoAbertoId; });
+    const card = document.getElementById('bipPedidoCard');
+    if (!c) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    const bipados = c.volumesBipados || [];
+    document.getElementById('bipResumo').innerHTML =
+      '<p style="font-size:.95rem"><b>' + escapeHtml(c.transportadora) + '</b> — Pedido ' + escapeHtml(c.pedido) + ' — ' + escapeHtml(c.cliente) + '</p>' +
+      '<p class="muted" style="margin-top:4px">NF ' + escapeHtml(c.notaFiscal) + ' · Embalador: ' + escapeHtml(c.embalador) + ' · <b>' + bipados.length + '/' + c.volumes + '</b> volumes bipados</p>';
+
+    const total = Number(c.volumes) || 1;
+    let html = '';
+    for (let i = 1; i <= total; i++) {
+      const ok = bipados.indexOf(i) !== -1;
+      html += '<div class="bip-volume ' + (ok ? 'ok' : 'pendente') + '">' + (ok ? '✅' : '⬜') + ' Volume ' + i + '/' + total + '</div>';
+    }
+    document.getElementById('bipChecklist').innerHTML = html;
+  }
+
+  function processarBipagem(textoLido) {
+    const texto = (textoLido || '').trim();
+    const msg = document.getElementById('bipMensagem');
+    if (!texto) return;
+    if (!pedidoAbertoId) { msg.textContent = '❌ Nenhum pedido aberto. Abra um pedido antes de bipar.'; return; }
+
+    const match = texto.match(/^(.+)_(\d+)$/);
+    if (!match) { msg.textContent = '❌ Código não reconhecido: "' + texto + '"'; return; }
+    const cadastroId = match[1];
+    const numero = parseInt(match[2], 10);
+
+    const lista = getCadastros();
+    const c = lista.find(function (x) { return x.id === pedidoAbertoId; });
+    if (!c) { msg.textContent = '❌ Pedido aberto não encontrado — tente abrir de novo.'; return; }
+
+    if (cadastroId !== c.id) { msg.textContent = '❌ Esse QR Code é de outro pedido, não do que está aberto aqui.'; return; }
+    if (!numero || numero < 1 || numero > c.volumes) { msg.textContent = '❌ Número de volume inválido nesse código.'; return; }
+
+    c.volumesBipados = c.volumesBipados || [];
+    if (c.volumesBipados.indexOf(numero) !== -1) {
+      msg.textContent = '⚠️ Volume ' + numero + '/' + c.volumes + ' já tinha sido bipado antes.';
+      return;
+    }
+
+    c.volumesBipados.push(numero);
+    adicionarHistorico(c, 'bipagem', 'Volume ' + numero + '/' + c.volumes + ' bipado na saída');
+
+    let concluiu = false;
+    if (c.volumesBipados.length === c.volumes) {
+      c.status = 'concluido';
+      adicionarHistorico(c, 'concluido', 'Todos os ' + c.volumes + ' volume(s) bipados — pedido concluído');
+      concluiu = true;
+    }
+
+    salvarCadastros(lista);
+
+    if (concluiu) {
+      msg.textContent = '✅ Volume ' + numero + '/' + c.volumes + ' bipado — pedido concluído!';
+      pedidoAbertoId = null;
+      document.getElementById('bipPedidoCard').style.display = 'none';
+    } else {
+      msg.textContent = '✅ Volume ' + numero + '/' + c.volumes + ' bipado.';
+      renderPedidoAberto();
+    }
+    document.getElementById('bipInput').focus();
+  }
+
+  document.getElementById('btnAbrirPedido').addEventListener('click', abrirPedidoBipagem);
+  document.getElementById('bipBusca').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); abrirPedidoBipagem(); }
+  });
+  document.getElementById('bipInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      processarBipagem(this.value);
+      this.value = '';
+    }
+  });
+  document.getElementById('btnFecharPedido').addEventListener('click', function () {
+    pedidoAbertoId = null;
+    document.getElementById('bipPedidoCard').style.display = 'none';
+    document.getElementById('bipBuscaMensagem').textContent = '';
+    document.getElementById('bipMensagem').textContent = '';
+  });
+
+  /* ---------------------------------------------------------------------
+     HISTÓRICO DE CONCLUSÃO
+     --------------------------------------------------------------------- */
+  function renderHistorico() {
+    const lista = filtrarPorCampos(
+      getCadastros().filter(function (c) { return c.status === 'concluido'; })
+        .sort(function (a, b) { return new Date(dataDoHistorico(b, 'concluido')) - new Date(dataDoHistorico(a, 'concluido')); }),
+      'hist'
+    );
+
+    const tbody = document.querySelector('#tblHistorico tbody');
+    if (!lista.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Nenhum pedido concluído ainda.</td></tr>';
+    } else {
+      tbody.innerHTML = lista.map(function (c) {
+        return '<tr>' +
+          '<td class="nome-cel">' + escapeHtml(c.transportadora) + '</td>' +
+          '<td>' + escapeHtml(c.pedido) + '</td>' +
+          '<td>' + escapeHtml(c.cliente) + '</td>' +
+          '<td class="tc">' + c.volumes + '</td>' +
+          '<td>' + escapeHtml(c.embalador) + '</td>' +
+          '<td>' + escapeHtml(c.notaFiscal) + '</td>' +
+          '<td class="tc">' + fmtDataHora(dataDoHistorico(c, 'concluido')) + '</td>' +
+          '<td class="tc"><button class="icon-btn" data-ver-historico="' + c.id + '">🕒 Ver linha do tempo</button></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    tbody.querySelectorAll('[data-ver-historico]').forEach(function (btn) {
+      btn.addEventListener('click', function () { verHistoricoTimeline(btn.dataset.verHistorico); });
+    });
+  }
+
+  function verHistoricoTimeline(id) {
+    const c = getCadastros().find(function (x) { return x.id === id; });
+    if (!c) return;
+    document.getElementById('historicoDetalheTitulo').textContent = 'Pedido ' + c.pedido + ' — ' + c.cliente;
+    const hist = (c.historico || []).slice().sort(function (a, b) { return new Date(a.em) - new Date(b.em); });
+    document.getElementById('historicoTimeline').innerHTML = hist.map(function (h) {
+      return '<div class="timeline-item"><div class="timeline-quando">' + fmtDataHora(h.em) + '</div><div class="timeline-acao">' + escapeHtml(h.detalhe || h.acao) + '</div></div>';
+    }).join('');
+    document.getElementById('historicoDetalheCard').style.display = 'block';
+    document.getElementById('historicoDetalheCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  ['histFiltroTransportadora', 'histFiltroPedido', 'histFiltroCliente', 'histFiltroEmbalador'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', renderHistorico);
+  });
+
+  /* ---------------------------------------------------------------------
+     ETIQUETAS (1 por volume — cada uma com QR Code ÚNICO pra conferência)
      Tamanho físico real: 10x15cm — uma etiqueta por página na impressão,
      pra bater com o rolo/folha de etiqueta (ex.: impressora Zebra) ou,
      se a pessoa escolher "Salvar como PDF" no diálogo de impressão, gerar
@@ -207,20 +474,6 @@
      é o diálogo de impressão nativo do navegador — rápido, um clique, sem
      precisar salvar arquivo antes de imprimir.
      --------------------------------------------------------------------- */
-  function construirTextoQR(c, impressoEm) {
-    return [
-      'EXPEDICAO BH CABINES',
-      'Transportadora: ' + c.transportadora,
-      'Pedido: ' + c.pedido,
-      'Cliente: ' + c.cliente,
-      'Volumes: ' + c.volumes,
-      'Embalador: ' + c.embalador,
-      'Cadastrado em: ' + fmtDataHora(c.criadoEm),
-      'Impresso em: ' + fmtDataHora(impressoEm),
-      'ID: ' + c.id
-    ].join('\n');
-  }
-
   function montarEtiquetaHtml(c, numero, total, impressoEm) {
     const qrId = 'qr_' + c.id + '_' + numero;
     return (
@@ -247,11 +500,13 @@
 
     printArea.innerHTML = numeros.map(function (num) { return montarEtiquetaHtml(c, num, total, impressoEm); }).join('');
 
-    const textoQR = construirTextoQR(c, impressoEm);
     numeros.forEach(function (num) {
       const canvas = document.getElementById('qr_' + c.id + '_' + num);
+      // QR único por etiqueta/volume: id do cadastro + número do volume —
+      // é isso que a Bipagem de Saída lê pra conferir volume por volume.
+      const qrTexto = c.id + '_' + num;
       if (canvas && window.QRious) {
-        new QRious({ element: canvas, value: textoQR, size: 300, level: 'M' });
+        new QRious({ element: canvas, value: qrTexto, size: 300, level: 'M' });
       }
     });
 
@@ -271,27 +526,13 @@
     return String(texto == null ? '' : texto).replace(/[\^~]/g, '');
   }
 
-  function construirTextoQRZpl(c, impressoEm) {
-    return [
-      'EXPEDICAO BH CABINES',
-      'Transportadora: ' + c.transportadora,
-      'Pedido: ' + c.pedido,
-      'Cliente: ' + c.cliente,
-      'Volumes: ' + c.volumes,
-      'Embalador: ' + c.embalador,
-      'Cadastrado em: ' + fmtDataHora(c.criadoEm),
-      'Impresso em: ' + fmtDataHora(impressoEm),
-      'ID: ' + c.id
-    ].join(' | ');
-  }
-
   function construirEtiquetaZpl(c, numero, total, impressoEm) {
     const transportadora = sanitizarZPL(c.transportadora).toUpperCase();
     const pedido = sanitizarZPL(c.pedido);
     const cliente = sanitizarZPL(c.cliente);
     const embalador = sanitizarZPL(c.embalador);
     const dataHora = sanitizarZPL(fmtDataHora(impressoEm));
-    const qrTexto = sanitizarZPL(construirTextoQRZpl(c, impressoEm));
+    const qrTexto = c.id + '_' + numero; // mesmo conteúdo único usado na versão HTML/PDF
     return [
       '^XA',
       '^CI28', // UTF-8, pra acentos saírem certos
@@ -328,7 +569,7 @@
 
   document.getElementById('btnImprimirPreview').addEventListener('click', function () {
     if (!document.getElementById('printArea').children.length) {
-      alert('Clique em "🏷️ Gerar Etiquetas" numa linha da lista antes de imprimir.');
+      alert('Clique em "🏷️ Etiquetas" numa linha da lista de Registro de Embalagem antes de imprimir.');
       return;
     }
     window.print();
@@ -336,7 +577,7 @@
 
   document.getElementById('btnCopiarZPL').addEventListener('click', function () {
     const campo = document.getElementById('zplOutput');
-    if (!campo.value) { alert('Clique em "🏷️ Gerar Etiquetas" numa linha da lista antes de copiar.'); return; }
+    if (!campo.value) { alert('Clique em "🏷️ Etiquetas" numa linha da lista antes de copiar.'); return; }
     campo.select();
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(campo.value).then(function () {
@@ -356,10 +597,12 @@
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
-  renderTabela();
+  renderTabelaEmbalagem();
 
   carregarDoServidor().then(function () {
-    renderTabela();
+    renderTabelaEmbalagem();
+    renderNotaFiscal();
+    renderHistorico();
   });
 
 })();

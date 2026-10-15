@@ -17,7 +17,7 @@
     <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
     <div class="hdr-title">
       <h1>Expedição</h1>
-      <small>Vendas aguardando nota fiscal · Etiquetas com QR Code</small>
+      <small>Registro, nota fiscal, bipagem de saída e histórico</small>
     </div>
     <div class="ml hdr-right">
       <span id="syncIndicador" style="display:none;font-size:.72rem;font-weight:600;color:#666;padding:4px 10px;background:#f3f4f6;border-radius:20px"></span>
@@ -27,40 +27,137 @@
   </div>
 </header>
 
-<main class="content no-print">
+<div class="layout no-print">
 
-  <div class="card">
-    <h3 class="card-title" id="tituloFormCad">Cadastrar Venda Aguardando NF</h3>
-    <div class="form-row">
-      <div class="field"><label>Transportadora *</label><input type="text" id="cTransportadora" placeholder="Nome da transportadora"></div>
-      <div class="field"><label>Número do Pedido *</label><input type="text" id="cPedido" placeholder="Ex.: 12345"></div>
-      <div class="field field-wide"><label>Nome do Cliente *</label><input type="text" id="cCliente" placeholder="Nome completo do cliente"></div>
-      <div class="field"><label>Quantidade de Volumes *</label><input type="number" id="cVolumes" min="1" step="1" placeholder="Ex.: 4"></div>
-      <div class="field"><label>Embalador *</label><input type="text" id="cEmbalador" placeholder="Nome de quem embalou"></div>
-    </div>
-    <input type="hidden" id="cEditId">
-    <div class="btn-row-h" style="margin-top:6px">
-      <button class="btn bo" id="btnSalvarCadastro">Salvar Cadastro</button>
-      <button class="btn bgray" id="btnCancelarEdicaoCad" style="display:none">Cancelar edição</button>
-    </div>
-  </div>
+  <aside class="sidebar">
+    <button class="nav-item active" data-view="embalagem">📦 Registro de Embalagem</button>
+    <button class="nav-item" data-view="notafiscal">📄 Processamento de Notas Fiscais</button>
+    <button class="nav-item" data-view="bipagem">📡 Bipagem de Saída</button>
+    <button class="nav-item" data-view="historico">✅ Histórico de Conclusão</button>
+  </aside>
 
-  <div class="card" style="margin-top:20px">
-    <h3 class="card-title">Aguardando Nota Fiscal</h3>
-    <p class="muted" style="margin-bottom:12px">Cada cadastro gera 1 etiqueta por volume (ex.: 4 volumes = 4 etiquetas, numeradas 1/4 a 4/4), todas com o mesmo QR Code do pedido.</p>
-    <div class="field" style="max-width:320px;margin-bottom:12px">
-      <label>Localizar</label>
-      <input type="text" id="buscaCadastro" placeholder="Transportadora, pedido ou cliente...">
-    </div>
-    <div class="table-wrap">
-      <table id="tblCadastros">
-        <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th>Embalador</th><th class="tc">Cadastrado em</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
+  <main class="main-area">
 
-</main>
+    <!-- ===================== REGISTRO DE EMBALAGEM ===================== -->
+    <section class="view" id="view-embalagem">
+
+      <div class="card">
+        <h3 class="card-title" id="tituloFormCad">Cadastrar Venda Aguardando NF</h3>
+        <div class="form-row">
+          <div class="field"><label>Transportadora *</label><input type="text" id="cTransportadora" placeholder="Nome da transportadora"></div>
+          <div class="field"><label>Número do Pedido *</label><input type="text" id="cPedido" placeholder="Ex.: 12345"></div>
+          <div class="field field-wide"><label>Nome do Cliente *</label><input type="text" id="cCliente" placeholder="Nome completo do cliente"></div>
+          <div class="field"><label>Quantidade de Volumes *</label><input type="number" id="cVolumes" min="1" step="1" placeholder="Ex.: 4"></div>
+          <div class="field"><label>Embalador *</label><input type="text" id="cEmbalador" placeholder="Nome de quem embalou"></div>
+        </div>
+        <input type="hidden" id="cEditId">
+        <div class="btn-row-h" style="margin-top:6px">
+          <button class="btn bo" id="btnSalvarCadastro">Salvar Cadastro</button>
+          <button class="btn bgray" id="btnCancelarEdicaoCad" style="display:none">Cancelar edição</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <h3 class="card-title">Aguardando Nota Fiscal</h3>
+        <p class="muted" style="margin-bottom:12px">Cada cadastro gera 1 etiqueta por volume (ex.: 4 volumes = 4 etiquetas, numeradas 1/4 a 4/4), cada uma com um QR Code <b>único</b> pra conferência na bipagem. Preencha a Nota Fiscal pra mandar o pedido pra próxima etapa.</p>
+
+        <div class="form-row">
+          <div class="field"><label>Transportadora</label><input type="text" id="embFiltroTransportadora" placeholder="Filtrar..."></div>
+          <div class="field"><label>Pedido</label><input type="text" id="embFiltroPedido" placeholder="Filtrar..."></div>
+          <div class="field"><label>Cliente</label><input type="text" id="embFiltroCliente" placeholder="Filtrar..."></div>
+          <div class="field"><label>Embalador</label><input type="text" id="embFiltroEmbalador" placeholder="Filtrar..."></div>
+        </div>
+
+        <div class="table-wrap" style="margin-top:12px">
+          <table id="tblCadastros">
+            <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th>Embalador</th><th>Nota Fiscal</th><th class="tc">Cadastrado em</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================== PROCESSAMENTO DE NOTAS FISCAIS ===================== -->
+    <section class="view" id="view-notafiscal" style="display:none">
+      <div class="card">
+        <h3 class="card-title">Processamento de Notas Fiscais</h3>
+        <p class="muted" style="margin-bottom:12px">Pedidos que já têm nota fiscal preenchida, aguardando a transportadora retirar. Pode corrigir o número da NF aqui se precisar.</p>
+
+        <div class="form-row">
+          <div class="field"><label>Transportadora</label><input type="text" id="nfFiltroTransportadora" placeholder="Filtrar..."></div>
+          <div class="field"><label>Pedido</label><input type="text" id="nfFiltroPedido" placeholder="Filtrar..."></div>
+          <div class="field"><label>Cliente</label><input type="text" id="nfFiltroCliente" placeholder="Filtrar..."></div>
+          <div class="field"><label>Embalador</label><input type="text" id="nfFiltroEmbalador" placeholder="Filtrar..."></div>
+        </div>
+
+        <div class="table-wrap" style="margin-top:12px">
+          <table id="tblNotaFiscal">
+            <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th>Embalador</th><th>Nota Fiscal</th><th class="tc">NF preenchida em</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== BIPAGEM DE SAÍDA ===================== -->
+    <section class="view" id="view-bipagem" style="display:none">
+      <div class="card">
+        <h3 class="card-title">Bipagem de Saída</h3>
+        <p class="muted" style="margin-bottom:12px">Digite (ou bipe com o leitor) a nota fiscal ou o número do pedido pra abrir, depois bipe o QR Code de cada volume. A quantidade bipada precisa bater com a quantidade de volumes cadastrada.</p>
+        <div class="form-row">
+          <div class="field field-wide"><label>Nota Fiscal ou Número do Pedido</label><input type="text" id="bipBusca" placeholder="Digite e pressione Enter, ou clique em Abrir..." autocomplete="off"></div>
+        </div>
+        <div class="btn-row-h" style="margin-top:8px">
+          <button class="btn bo" id="btnAbrirPedido">Abrir Pedido</button>
+        </div>
+        <p class="muted" id="bipBuscaMensagem" style="margin-top:8px"></p>
+      </div>
+
+      <div class="card" id="bipPedidoCard" style="margin-top:20px;display:none">
+        <h3 class="card-title">Pedido Aberto</h3>
+        <div id="bipResumo" style="margin-bottom:14px"></div>
+        <div id="bipChecklist" class="bip-checklist" style="margin-bottom:16px"></div>
+        <div class="field">
+          <label>Bipar QR Code do volume</label>
+          <input type="text" id="bipInput" placeholder="Aponte o leitor aqui e bipe..." autocomplete="off">
+        </div>
+        <p class="muted" id="bipMensagem" style="margin-top:8px"></p>
+        <div class="btn-row-h" style="margin-top:12px">
+          <button class="btn bgray" id="btnFecharPedido">Fechar Pedido</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== HISTÓRICO DE CONCLUSÃO ===================== -->
+    <section class="view" id="view-historico" style="display:none">
+      <div class="card">
+        <h3 class="card-title">Histórico de Conclusão</h3>
+        <p class="muted" style="margin-bottom:12px">Pedidos com nota fiscal e todos os volumes bipados. Clique em "Ver linha do tempo" pra ver todas as ações registradas.</p>
+
+        <div class="form-row">
+          <div class="field"><label>Transportadora</label><input type="text" id="histFiltroTransportadora" placeholder="Filtrar..."></div>
+          <div class="field"><label>Pedido</label><input type="text" id="histFiltroPedido" placeholder="Filtrar..."></div>
+          <div class="field"><label>Cliente</label><input type="text" id="histFiltroCliente" placeholder="Filtrar..."></div>
+          <div class="field"><label>Embalador</label><input type="text" id="histFiltroEmbalador" placeholder="Filtrar..."></div>
+        </div>
+
+        <div class="table-wrap" style="margin-top:12px">
+          <table id="tblHistorico">
+            <thead><tr><th>Transportadora</th><th>Pedido</th><th>Cliente</th><th class="tc">Volumes</th><th>Embalador</th><th>Nota Fiscal</th><th class="tc">Concluído em</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="historicoDetalheCard" style="margin-top:20px;display:none">
+        <h3 class="card-title">Linha do Tempo — <span id="historicoDetalheTitulo"></span></h3>
+        <div id="historicoTimeline" class="timeline"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
 
 <!-- FORA do bloco .no-print de propósito: na impressão, tudo com .no-print some e
      só isto aqui fica visível (ver @media print no style.css). Em tela, o
@@ -68,7 +165,7 @@
 <div class="content">
   <div class="card preview-card">
     <h3 class="card-title no-print">Pré-visualização das Etiquetas</h3>
-    <p class="muted no-print" id="previewAviso">Clique em "🏷️ Gerar Etiquetas" na lista acima pra ver a prévia aqui.</p>
+    <p class="muted no-print" id="previewAviso">Clique em "🏷️ Gerar Etiquetas" na lista de Registro de Embalagem pra ver a prévia aqui.</p>
     <div class="preview-scroll">
       <div id="printArea"></div>
     </div>
@@ -80,7 +177,7 @@
   <div class="card no-print" style="margin-top:20px">
     <h3 class="card-title">Código Zebra (ZPL)</h3>
     <p class="muted" style="margin-bottom:10px">Cole esse código no Zebra Setup Utilities (ou outro programa de envio de ZPL) pra imprimir direto na impressora, sem passar pelo driver do Windows — evita etiqueta girada ou impressão fraca. Calculado pra impressora de 203dpi (padrão em modelos como ZD220/GC420); me avise se a sua for 300dpi.</p>
-    <textarea id="zplOutput" readonly rows="10" placeholder='Clique em "🏷️ Gerar Etiquetas" na lista acima pra gerar o código aqui.' style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Courier New',monospace;font-size:.75rem;resize:vertical;background:#fafafa"></textarea>
+    <textarea id="zplOutput" readonly rows="10" placeholder='Clique em "🏷️ Gerar Etiquetas" na lista de Registro de Embalagem pra gerar o código aqui.' style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Courier New',monospace;font-size:.75rem;resize:vertical;background:#fafafa"></textarea>
     <div class="btn-row-h" style="margin-top:10px">
       <button class="btn bgray" id="btnCopiarZPL">📋 Copiar Código ZPL</button>
     </div>
