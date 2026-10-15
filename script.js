@@ -1,10 +1,11 @@
 /* ============================================================================
-   QUADRO DE FUNCIONÁRIOS — script.js
-   Cadastro de funcionários (nome + valor), seleção de quem entra no lote do
-   mês, e geração de recibos salariais pra impressão em folha A4 (5 por folha).
+   EXPEDIÇÃO — script.js
+   Fluxo completo: Registro de Embalagem -> Processamento de Notas Fiscais ->
+   Bipagem de Saída -> Histórico de Conclusão. Cada etiqueta/volume tem um
+   QR Code ÚNICO (id do cadastro + número do volume), usado na bipagem pra
+   conferir exatamente quais volumes saíram e detectar divergência.
    Sincroniza pelo mesmo Apps Script compartilhado com os outros módulos —
-   servidor sempre vence o cache local, mesmo padrão já usado em todo o
-   sistema (ver cockpit-comercial/js/main.js).
+   servidor sempre vence o cache local (ver quadro-funcionarios/script.js).
    ============================================================================ */
 (function () {
 
@@ -12,46 +13,14 @@
 
   /* ---------------------------------------------------------------------
      STORAGE (local + servidor)
-     O backend só guarda o JSON cru que mandamos (PropertiesService), então
-     em vez de sincronizar só o array de funcionários, guardamos um objeto
-     { funcionarios, templatePagamento, templateAdiantamento } sob a mesma
-     chave/ação de sempre — não precisa mexer de novo no Apps Script pra isso.
      --------------------------------------------------------------------- */
-  const LS_KEY = 'quadro_funcionarios';
-  const TEMPLATE_PAGAMENTO_PADRAO = 'Recebi da {EMPRESA} a importância supra de {VALOR_EXTENSO}, referente ao valor do pagamento da comissão e restante meu salário do mês de {MES_ANO}.';
-  const TEMPLATE_ADIANTAMENTO_PADRAO = 'Recebi da {EMPRESA} a importância supra de {VALOR_EXTENSO}, referente ao valor do adiantamento do meu salário referente ao mês de {MES_ANO}.';
+  const LS_KEY = 'expedicao_cadastros';
 
-  function normalizarEstado(raw) {
-    if (Array.isArray(raw)) return { funcionarios: raw, templatePagamento: TEMPLATE_PAGAMENTO_PADRAO, templateAdiantamento: TEMPLATE_ADIANTAMENTO_PADRAO }; // formato antigo (só array)
-    if (raw && typeof raw === 'object') {
-      // "template" é o campo antigo (um modelo só) — migra pra "templatePagamento" se existir.
-      const templatePagamento = (typeof raw.templatePagamento === 'string' && raw.templatePagamento.trim())
-        ? raw.templatePagamento
-        : ((typeof raw.template === 'string' && raw.template.trim()) ? raw.template : TEMPLATE_PAGAMENTO_PADRAO);
-      const templateAdiantamento = (typeof raw.templateAdiantamento === 'string' && raw.templateAdiantamento.trim())
-        ? raw.templateAdiantamento
-        : TEMPLATE_ADIANTAMENTO_PADRAO;
-      return {
-        funcionarios: Array.isArray(raw.funcionarios) ? raw.funcionarios : [],
-        templatePagamento: templatePagamento,
-        templateAdiantamento: templateAdiantamento
-      };
-    }
-    return { funcionarios: [], templatePagamento: TEMPLATE_PAGAMENTO_PADRAO, templateAdiantamento: TEMPLATE_ADIANTAMENTO_PADRAO };
+  function getCadastros() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { return []; }
   }
-
-  function getEstado() {
-    let raw = null;
-    try { raw = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
-    return normalizarEstado(raw);
-  }
-  function saveEstadoLocal(estado) {
-    localStorage.setItem(LS_KEY, JSON.stringify(estado));
-  }
-  function getFuncionarios() { return getEstado().funcionarios; }
-  function getTemplate(tipo) {
-    const estado = getEstado();
-    return tipo === 'adiantamento' ? estado.templateAdiantamento : estado.templatePagamento;
+  function saveCadastrosLocal(lista) {
+    localStorage.setItem(LS_KEY, JSON.stringify(lista || []));
   }
 
   function setSyncIndicador(texto, esconderDepois) {
@@ -62,37 +31,30 @@
     if (esconderDepois) setTimeout(function () { el.style.display = 'none'; }, esconderDepois);
   }
 
-  function pushEstado(estado) {
+  function pushCadastros(lista) {
     // Sem header de Content-Type de propósito — setar 'application/json' força
     // preflight CORS que o Apps Script não responde direito, e o envio falha
     // silenciosamente (mesmo problema já visto e corrigido nos outros módulos).
     return fetch(SYNC_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'saveQuadroFuncionarios', data: estado })
+      body: JSON.stringify({ action: 'saveExpedicao', data: lista })
     }).then(function (r) { return r.json(); });
   }
 
-  function fetchEstado() {
-    return fetch(SYNC_URL + '?action=getQuadroFuncionarios&t=' + Date.now()).then(function (r) { return r.json(); });
+  function fetchCadastros() {
+    return fetch(SYNC_URL + '?action=getExpedicao&t=' + Date.now()).then(function (r) { return r.json(); });
   }
 
   function carregarDoServidor() {
     setSyncIndicador('🔄 Sincronizando...');
-    return fetchEstado().then(function (servidor) {
-      const estadoServidor = normalizarEstado(servidor);
-      const servidorTemConteudo = estadoServidor.funcionarios.length > 0 ||
-        estadoServidor.templatePagamento !== TEMPLATE_PAGAMENTO_PADRAO ||
-        estadoServidor.templateAdiantamento !== TEMPLATE_ADIANTAMENTO_PADRAO;
-      if (servidorTemConteudo) {
-        saveEstadoLocal(estadoServidor);
+    return fetchCadastros().then(function (servidor) {
+      if (Array.isArray(servidor) && servidor.length > 0) {
+        saveCadastrosLocal(servidor);
       } else {
-        // Servidor vazio mas já existe cadastro/modelo local: provável envio
-        // anterior falhou silenciosamente — reenvia em vez de apagar o que já existe aqui.
-        const local = getEstado();
-        const localTemConteudo = local.funcionarios.length > 0 ||
-          local.templatePagamento !== TEMPLATE_PAGAMENTO_PADRAO ||
-          local.templateAdiantamento !== TEMPLATE_ADIANTAMENTO_PADRAO;
-        if (localTemConteudo) pushEstado(local).catch(function () {});
+        // Servidor vazio mas já existe cadastro local: provável envio anterior
+        // falhou silenciosamente — reenvia em vez de apagar o que já existe aqui.
+        const local = getCadastros();
+        if (local.length > 0) pushCadastros(local).catch(function () {});
       }
       setSyncIndicador('✅ Sincronizado', 2000);
     }).catch(function () {
@@ -100,66 +62,15 @@
     });
   }
 
-  function salvarEstado(estado) {
-    saveEstadoLocal(estado);
-    pushEstado(estado).catch(function () {});
-  }
-  function salvarFuncionarios(lista) {
-    const estado = getEstado();
-    estado.funcionarios = lista;
-    salvarEstado(estado);
-  }
-  function salvarTemplate(tipo, texto) {
-    const estado = getEstado();
-    if (tipo === 'adiantamento') estado.templateAdiantamento = texto;
-    else estado.templatePagamento = texto;
-    salvarEstado(estado);
+  function salvarCadastros(lista) {
+    saveCadastrosLocal(lista);
+    pushCadastros(lista).catch(function () {});
   }
 
   /* ---------------------------------------------------------------------
      UTILITÁRIOS
      --------------------------------------------------------------------- */
-  function uid() { return 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }
-  function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
-
-  function parseNumeroBR(v) {
-    if (typeof v === 'number') return v;
-    if (!v) return 0;
-    const limpo = String(v).trim().replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
-    const n = parseFloat(limpo);
-    return isNaN(n) ? 0 : n;
-  }
-  function fmt(v) { return num(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
-
-  function wireMascaraMoeda(input) {
-    input.addEventListener('focus', function () { input.select(); });
-    input.addEventListener('blur', function () { input.value = fmt(parseNumeroBR(input.value)); });
-  }
-
-  function zerarValoresDe(ids) {
-    const todos = getFuncionarios();
-    const idsSet = ids ? new Set(ids) : null;
-    todos.forEach(function (f) { if (!idsSet || idsSet.has(f.id)) f.valor = 0; });
-    salvarFuncionarios(todos);
-  }
-
-  function ordenarPorNome(lista) {
-    return lista.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
-  }
-
-  function classeEmpresa(valor) {
-    return valor === 'BHC PARTS' ? 'sel-empresa-bhc' : 'sel-empresa-bh';
-  }
-  function atualizarCorEmpresaForm() {
-    const sel = document.getElementById('fEmpresa');
-    sel.classList.remove('sel-empresa-bh', 'sel-empresa-bhc');
-    sel.classList.add(classeEmpresa(sel.value));
-  }
-
-  function fmtDataBR(iso) {
-    const p = String(iso || '').split('-');
-    return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : '';
-  }
+  function uid() { return 'e_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -167,713 +78,518 @@
     });
   }
 
-  /* ---------------------------------------------------------------------
-     NÚMERO POR EXTENSO (pt-BR) — "Seis mil seiscentos e oitenta e nove reais"
-     --------------------------------------------------------------------- */
-  const UNIDADES = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove'];
-  const DEZ_A_DEZENOVE = ['dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
-  const DEZENAS = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
-  const CENTENAS = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
-  const MESES_EXTENSO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-
-  // Converte 0-999 em palavras (sem "reais"/escala) — ex.: 689 -> "seiscentos e oitenta e nove".
-  function grupoPorExtenso(n) {
-    if (n === 0) return '';
-    if (n === 100) return 'cem';
-    const c = Math.floor(n / 100), resto = n % 100;
-    const partes = [];
-    if (c > 0) partes.push(CENTENAS[c]);
-    if (resto > 0) {
-      if (resto < 10) partes.push(UNIDADES[resto]);
-      else if (resto < 20) partes.push(DEZ_A_DEZENOVE[resto - 10]);
-      else {
-        const d = Math.floor(resto / 10), u = resto % 10;
-        partes.push(u > 0 ? (DEZENAS[d] + ' e ' + UNIDADES[u]) : DEZENAS[d]);
-      }
-    }
-    return partes.join(' e ');
+  function fmtDataHora(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
 
-  // Número inteiro -> extenso completo (mil/milhões), com o "e" de ligação na
-  // posição certa: só entra "e" antes do último grupo se ele for < 100 ou for uma
-  // centena redonda (100/200/.../900) — regra padrão do português pra extenso.
-  function numeroPorExtenso(n) {
-    n = Math.floor(n);
-    if (n === 0) return 'zero';
-    const milhoes = Math.floor(n / 1000000);
-    const milhares = Math.floor((n % 1000000) / 1000);
-    const unidades = n % 1000;
-
-    const partesEscala = [];
-    if (milhoes > 0) partesEscala.push(milhoes === 1 ? 'um milhão' : grupoPorExtenso(milhoes) + ' milhões');
-    if (milhares > 0) partesEscala.push(milhares === 1 ? 'mil' : grupoPorExtenso(milhares) + ' mil');
-
-    let texto = partesEscala.join(' e ');
-    if (unidades > 0) {
-      const textoUnidades = grupoPorExtenso(unidades);
-      if (texto) {
-        const useE = unidades < 100 || unidades % 100 === 0;
-        texto += (useE ? ' e ' : ' ') + textoUnidades;
-      } else {
-        texto = textoUnidades;
-      }
-    }
-    return texto;
+  function ordenarPorData(lista) {
+    return lista.slice().sort(function (a, b) { return new Date(b.criadoEm) - new Date(a.criadoEm); });
   }
 
-  // Valor em R$ -> frase completa, já com "reais"/"real" e centavos se houver,
-  // e a primeira letra maiúscula (como no modelo: "Seis mil seiscentos...").
-  function valorPorExtenso(valor) {
-    valor = Math.round(num(valor) * 100) / 100;
-    const inteiro = Math.floor(valor + 1e-9);
-    const centavos = Math.round((valor - inteiro) * 100);
-    const partes = [];
-    if (inteiro > 0) partes.push(numeroPorExtenso(inteiro) + ' ' + (inteiro === 1 ? 'real' : 'reais'));
-    if (centavos > 0) partes.push(numeroPorExtenso(centavos) + ' ' + (centavos === 1 ? 'centavo' : 'centavos'));
-    const texto = partes.length ? partes.join(' e ') : 'zero reais';
-    return texto.charAt(0).toUpperCase() + texto.slice(1);
+  function dataDoHistorico(c, acao) {
+    const h = (c.historico || []).find(function (x) { return x.acao === acao; });
+    return h ? h.em : c.criadoEm;
   }
 
-  // Regra combinada: se a data do recibo é ANTES do dia 10 do mês, o salário
-  // referido é do mês ANTERIOR (ex.: 05/10/2026 -> setembro de 2026). A partir
-  // do dia 10 em diante, é o mesmo mês da data (ex.: 15/10/2026 -> outubro de 2026).
-  function mesReferenciaDoRecibo(dataISO) {
-    const partes = String(dataISO || '').split('-').map(Number);
-    const y = partes[0], m = partes[1], d = partes[2];
-    if (!y || !m || !d) return { mes: '', ano: '' };
-    let mesRef = d < 10 ? m - 1 : m;
-    let anoRef = y;
-    if (mesRef < 1) { mesRef = 12; anoRef -= 1; }
-    return { mes: MESES_EXTENSO[mesRef - 1], ano: anoRef };
+  function adicionarHistorico(c, acao, detalhe) {
+    c.historico = c.historico || [];
+    c.historico.push({ acao: acao, em: new Date().toISOString(), detalhe: detalhe });
   }
 
-  function renderizarTemplate(template, dados) {
-    return template
-      .replace(/\{EMPRESA\}/g, dados.empresa)
-      .replace(/\{VALOR_EXTENSO\}/g, dados.valorExtenso)
-      .replace(/\{MES_ANO\}/g, dados.mesAno);
+  function filtrarPorCampos(lista, prefixo) {
+    const t = (document.getElementById(prefixo + 'FiltroTransportadora').value || '').toLowerCase().trim();
+    const p = (document.getElementById(prefixo + 'FiltroPedido').value || '').toLowerCase().trim();
+    const cl = (document.getElementById(prefixo + 'FiltroCliente').value || '').toLowerCase().trim();
+    const e = (document.getElementById(prefixo + 'FiltroEmbalador').value || '').toLowerCase().trim();
+    return lista.filter(function (c) {
+      return (!t || c.transportadora.toLowerCase().indexOf(t) !== -1) &&
+        (!p || c.pedido.toLowerCase().indexOf(p) !== -1) &&
+        (!cl || c.cliente.toLowerCase().indexOf(cl) !== -1) &&
+        (!e || (c.embalador || '').toLowerCase().indexOf(e) !== -1);
+    });
   }
 
   /* ---------------------------------------------------------------------
-     CADASTRO DE FUNCIONÁRIOS (tabela + form)
+     NAVEGAÇÃO (mapa de ações na lateral)
      --------------------------------------------------------------------- */
-  function renderTabela() {
-    const termoBusca = document.getElementById('buscaFuncionario').value.trim().toLowerCase();
-    let lista = ordenarPorNome(getFuncionarios());
-    if (termoBusca) lista = lista.filter(function (f) { return f.nome.toLowerCase().includes(termoBusca); });
+  document.querySelectorAll('.nav-item').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelectorAll('.view').forEach(function (v) { v.style.display = 'none'; });
+      document.getElementById('view-' + btn.dataset.view).style.display = 'flex';
+      if (btn.dataset.view === 'embalagem') renderTabelaEmbalagem();
+      if (btn.dataset.view === 'notafiscal') renderNotaFiscal();
+      if (btn.dataset.view === 'historico') renderHistorico();
+    });
+  });
 
-    const tbody = document.querySelector('#tblFuncionarios tbody');
+  /* ---------------------------------------------------------------------
+     CADASTRO (Registro de Embalagem)
+     --------------------------------------------------------------------- */
+  function renderTabelaEmbalagem() {
+    const lista = filtrarPorCampos(ordenarPorData(getCadastros().filter(function (c) { return c.status === 'aguardando_nf'; })), 'emb');
+
+    const tbody = document.querySelector('#tblCadastros tbody');
     if (!lista.length) {
-      const msg = termoBusca ? 'Nenhum funcionário encontrado.' : 'Nenhum funcionário cadastrado ainda.';
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">' + msg + '</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Nenhuma venda aguardando nota fiscal.</td></tr>';
     } else {
-      tbody.innerHTML = lista.map(function (f) {
-        const empresa = f.empresa || 'BH CABINES';
+      tbody.innerHTML = lista.map(function (c) {
         return '<tr>' +
-          '<td class="tc"><input type="checkbox" class="chk-incluir" data-id="' + f.id + '" ' + (f.incluir ? 'checked' : '') + '></td>' +
-          '<td class="nome-cel">' + escapeHtml(f.nome) + '</td>' +
-          '<td><select class="campo-empresa-tabela ' + classeEmpresa(empresa) + '" data-id="' + f.id + '">' +
-            '<option value="BH CABINES"' + (empresa === 'BH CABINES' ? ' selected' : '') + '>BH Cabines</option>' +
-            '<option value="BHC PARTS"' + (empresa === 'BHC PARTS' ? ' selected' : '') + '>BHC Parts</option>' +
-          '</select></td>' +
-          '<td><input type="text" inputmode="decimal" class="campo-valor-tabela campo-valor-editavel" data-id="' + f.id + '" value="' + fmt(f.valor) + '" ' + (f.incluir ? '' : 'disabled') + '></td>' +
+          '<td class="nome-cel">' + escapeHtml(c.transportadora) + '</td>' +
+          '<td>' + escapeHtml(c.pedido) + '</td>' +
+          '<td>' + escapeHtml(c.cliente) + '</td>' +
+          '<td class="tc">' + c.volumes + '</td>' +
+          '<td>' + escapeHtml(c.embalador) + '</td>' +
+          '<td><input type="text" class="campo-tabela campo-nf" data-id="' + c.id + '" placeholder="Preencher NF..." value="' + escapeHtml(c.notaFiscal || '') + '"></td>' +
+          '<td class="tc">' + fmtDataHora(c.criadoEm) + '</td>' +
           '<td class="tc" style="white-space:nowrap">' +
-            '<button class="icon-btn" data-editar="' + f.id + '" title="Editar">✏️</button>' +
-            '<button class="icon-btn" data-excluir="' + f.id + '" title="Excluir">🗑️</button>' +
+            '<button class="icon-btn" data-etiquetas="' + c.id + '" title="Gerar prévia e código ZPL">🏷️ Etiquetas</button> ' +
+            '<button class="icon-btn" data-editar="' + c.id + '" title="Editar">✏️</button>' +
+            '<button class="icon-btn" data-excluir="' + c.id + '" title="Excluir">🗑️</button>' +
           '</td>' +
         '</tr>';
       }).join('');
     }
 
-    tbody.querySelectorAll('.chk-incluir').forEach(function (chk) {
-      chk.addEventListener('change', function () {
-        const lista2 = getFuncionarios();
-        const f = lista2.find(function (x) { return x.id === chk.dataset.id; });
-        if (f) { f.incluir = chk.checked; salvarFuncionarios(lista2); renderTabela(); }
-      });
+    tbody.querySelectorAll('.campo-nf').forEach(function (inp) {
+      inp.addEventListener('change', function () { salvarNotaFiscal(inp.dataset.id, inp.value); });
     });
-    tbody.querySelectorAll('.campo-valor-editavel').forEach(function (inp) {
-      wireMascaraMoeda(inp);
-      inp.addEventListener('change', function () {
-        const lista2 = getFuncionarios();
-        const f = lista2.find(function (x) { return x.id === inp.dataset.id; });
-        if (f) { f.valor = parseNumeroBR(inp.value); inp.value = fmt(f.valor); salvarFuncionarios(lista2); atualizarResumoEPreview(); }
-      });
-    });
-    tbody.querySelectorAll('.campo-empresa-tabela').forEach(function (sel) {
-      sel.addEventListener('change', function () {
-        const lista2 = getFuncionarios();
-        const f = lista2.find(function (x) { return x.id === sel.dataset.id; });
-        if (f) { f.empresa = sel.value; salvarFuncionarios(lista2); atualizarResumoEPreview(); }
-        sel.classList.remove('sel-empresa-bh', 'sel-empresa-bhc');
-        sel.classList.add(classeEmpresa(sel.value));
-      });
+    tbody.querySelectorAll('[data-etiquetas]').forEach(function (btn) {
+      btn.addEventListener('click', function () { gerarEtiquetas(btn.dataset.etiquetas); });
     });
     tbody.querySelectorAll('[data-editar]').forEach(function (btn) {
-      btn.addEventListener('click', function () { editarFuncionario(btn.dataset.editar); });
+      btn.addEventListener('click', function () { editarCadastro(btn.dataset.editar); });
     });
     tbody.querySelectorAll('[data-excluir]').forEach(function (btn) {
-      btn.addEventListener('click', function () { excluirFuncionario(btn.dataset.excluir); });
+      btn.addEventListener('click', function () { excluirCadastro(btn.dataset.excluir); });
     });
-
-    atualizarResumoEPreview();
   }
 
-  function limparFormFuncionario() {
-    document.getElementById('fNome').value = '';
-    document.getElementById('fEmpresa').value = 'BH CABINES';
-    document.getElementById('fEditId').value = '';
-    document.getElementById('tituloFormFunc').textContent = 'Cadastrar Funcionário';
-    document.getElementById('btnCancelarEdicaoFunc').style.display = 'none';
-    atualizarCorEmpresaForm();
+  function limparForm() {
+    document.getElementById('cTransportadora').value = '';
+    document.getElementById('cPedido').value = '';
+    document.getElementById('cCliente').value = '';
+    document.getElementById('cVolumes').value = '';
+    document.getElementById('cEmbalador').value = '';
+    document.getElementById('cEditId').value = '';
+    document.getElementById('tituloFormCad').textContent = 'Cadastrar Venda Aguardando NF';
+    document.getElementById('btnCancelarEdicaoCad').style.display = 'none';
   }
 
-  function editarFuncionario(id) {
-    const f = getFuncionarios().find(function (x) { return x.id === id; });
-    if (!f) return;
-    document.getElementById('fNome').value = f.nome;
-    document.getElementById('fEmpresa').value = f.empresa || 'BH CABINES';
-    document.getElementById('fEditId').value = f.id;
-    document.getElementById('tituloFormFunc').textContent = 'Editar Funcionário';
-    document.getElementById('btnCancelarEdicaoFunc').style.display = 'inline-flex';
-    document.getElementById('fNome').focus();
-    atualizarCorEmpresaForm();
+  function editarCadastro(id) {
+    const c = getCadastros().find(function (x) { return x.id === id; });
+    if (!c) return;
+    document.getElementById('cTransportadora').value = c.transportadora;
+    document.getElementById('cPedido').value = c.pedido;
+    document.getElementById('cCliente').value = c.cliente;
+    document.getElementById('cVolumes').value = c.volumes;
+    document.getElementById('cEmbalador').value = c.embalador;
+    document.getElementById('cEditId').value = c.id;
+    document.getElementById('tituloFormCad').textContent = 'Editar Cadastro';
+    document.getElementById('btnCancelarEdicaoCad').style.display = 'inline-flex';
+    document.getElementById('cTransportadora').focus();
   }
 
-  function excluirFuncionario(id) {
-    const f = getFuncionarios().find(function (x) { return x.id === id; });
-    if (!f) return;
-    if (!confirm('Excluir o funcionário "' + f.nome + '"? Essa ação não pode ser desfeita.')) return;
-    const lista = getFuncionarios().filter(function (x) { return x.id !== id; });
-    salvarFuncionarios(lista);
-    renderTabela();
+  function excluirCadastro(id) {
+    const c = getCadastros().find(function (x) { return x.id === id; });
+    if (!c) return;
+    if (!confirm('Excluir o cadastro do pedido "' + c.pedido + '" (' + c.cliente + ')? Essa ação não pode ser desfeita.')) return;
+    const lista = getCadastros().filter(function (x) { return x.id !== id; });
+    salvarCadastros(lista);
+    renderTabelaEmbalagem();
   }
 
-  document.getElementById('btnZerarValores').addEventListener('click', function () {
-    const todos = getFuncionarios();
-    if (!todos.length) { alert('Nenhum funcionário cadastrado.'); return; }
-    if (!confirm('Zerar o valor deste mês de TODOS os funcionários cadastrados? Essa ação não pode ser desfeita.')) return;
-    zerarValoresDe();
-    renderTabela();
-  });
+  document.getElementById('btnSalvarCadastro').addEventListener('click', function () {
+    const transportadora = document.getElementById('cTransportadora').value.trim();
+    const pedido = document.getElementById('cPedido').value.trim();
+    const cliente = document.getElementById('cCliente').value.trim();
+    const volumes = parseInt(document.getElementById('cVolumes').value, 10);
+    const embalador = document.getElementById('cEmbalador').value.trim();
+    const editId = document.getElementById('cEditId').value;
 
-  document.getElementById('btnSalvarFunc').addEventListener('click', function () {
-    const nome = document.getElementById('fNome').value.trim();
-    const empresa = document.getElementById('fEmpresa').value;
-    const editId = document.getElementById('fEditId').value;
-    if (!nome) { alert('Preencha o nome do funcionário.'); return; }
+    if (!transportadora) { alert('Preencha a transportadora.'); return; }
+    if (!pedido) { alert('Preencha o número do pedido.'); return; }
+    if (!cliente) { alert('Preencha o nome do cliente.'); return; }
+    if (!volumes || volumes < 1) { alert('Preencha a quantidade de volumes (mínimo 1).'); return; }
+    if (!embalador) { alert('Preencha o nome do embalador.'); return; }
 
-    const lista = getFuncionarios();
+    const lista = getCadastros();
     if (editId) {
-      const f = lista.find(function (x) { return x.id === editId; });
-      if (f) { f.nome = nome; f.empresa = empresa; }
+      const c = lista.find(function (x) { return x.id === editId; });
+      if (c) { c.transportadora = transportadora; c.pedido = pedido; c.cliente = cliente; c.volumes = volumes; c.embalador = embalador; }
     } else {
-      const duplicado = lista.find(function (x) { return x.nome.trim().toLowerCase() === nome.toLowerCase(); });
-      if (duplicado) { alert('Já existe um funcionário cadastrado com esse nome.'); return; }
-      lista.push({ id: uid(), nome: nome, empresa: empresa, valor: 0, incluir: true });
+      const novo = {
+        id: uid(), transportadora: transportadora, pedido: pedido, cliente: cliente, volumes: volumes, embalador: embalador,
+        criadoEm: new Date().toISOString(), notaFiscal: '', status: 'aguardando_nf', volumesBipados: [], historico: []
+      };
+      adicionarHistorico(novo, 'cadastro', 'Venda registrada (' + volumes + ' volume(s))');
+      lista.push(novo);
     }
-    salvarFuncionarios(lista);
-    limparFormFuncionario();
-    renderTabela();
+    salvarCadastros(lista);
+    limparForm();
+    renderTabelaEmbalagem();
   });
-  document.getElementById('btnCancelarEdicaoFunc').addEventListener('click', limparFormFuncionario);
+  document.getElementById('btnCancelarEdicaoCad').addEventListener('click', limparForm);
+
+  ['embFiltroTransportadora', 'embFiltroPedido', 'embFiltroCliente', 'embFiltroEmbalador'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', renderTabelaEmbalagem);
+  });
+
+  function salvarNotaFiscal(id, valor) {
+    const nf = (valor || '').trim();
+    if (!nf) return; // campo vazio não muda nada — evita avançar status sem querer
+    const lista = getCadastros();
+    const c = lista.find(function (x) { return x.id === id; });
+    if (!c) return;
+    c.notaFiscal = nf;
+    c.status = 'aguardando_transportadora';
+    adicionarHistorico(c, 'nota_fiscal', 'Nota fiscal ' + nf + ' preenchida');
+    salvarCadastros(lista);
+    renderTabelaEmbalagem();
+  }
 
   /* ---------------------------------------------------------------------
-     IMPORTAR PLANILHA DE PAGAMENTO (.xlsx)
-     A planilha tem dois blocos de funcionários empilhados na mesma aba —
-     o 1º bloco é sempre BH Cabines, o 2º sempre BHC Parts (confirmado com
-     o usuário). Coluna G = "Vale dia 20" > "Dinheiro" (adiantamento);
-     coluna O = "Total a receber" > "Dinheiro" (pagamento).
+     PROCESSAMENTO DE NOTAS FISCAIS
      --------------------------------------------------------------------- */
-  const IMPORT_COL_ADIANTAMENTO = 6;  // G
-  const IMPORT_COL_PAGAMENTO = 14;    // O
-  const IMPORT_EMPRESAS_POR_BLOCO = ['BH CABINES', 'BHC PARTS'];
-  const IMPORT_MOTIVO_LABEL = {
-    'ambiguo': 'Nome ambíguo (bate com mais de um cadastrado)',
-    'nao-encontrado': 'Não encontrado no cadastro',
-    'suspeito': 'Nome com aparência de erro na planilha',
-    'conflito': 'Bateu com o mesmo cadastrado de outra linha da planilha'
-  };
+  function renderNotaFiscal() {
+    const lista = filtrarPorCampos(ordenarPorData(getCadastros().filter(function (c) { return c.status === 'aguardando_transportadora'; })), 'nf');
 
-  let importEstado = null;
-
-  function normalizarNomeBusca(s) {
-    return String(s || '')
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .trim().toUpperCase().replace(/\s+/g, ' ');
-  }
-
-  function dividirBlocosPlanilha(linhas) {
-    const blocos = [];
-    let i = 0;
-    while (i < linhas.length) {
-      const row = linhas[i] || [];
-      if (normalizarNomeBusca(row[0]) === 'NOME') {
-        const inicio = i + 2; // pula a linha "Nome" e a sublinha "Dinheiro/Depositado/Total"
-        let fim = inicio;
-        while (fim < linhas.length) {
-          const colA = normalizarNomeBusca((linhas[fim] || [])[0]);
-          if (colA === 'TOTAL' || colA.indexOf('TOTAL PAGO') === 0) break;
-          fim++;
-        }
-        blocos.push(linhas.slice(inicio, fim));
-        i = fim + 1;
-      } else {
-        i++;
-      }
-    }
-    return blocos;
-  }
-
-  function nomeSuspeito(nome) {
-    return /[+=:]/.test(nome) || /\d/.test(nome);
-  }
-
-  // Só os cadastrados que têm alguma palavra em comum com o nome da planilha
-  // (ex.: "Felipe" bate com "Josemar Felipe de Souza") — evita mostrar a lista
-  // inteira de funcionários da empresa quando ninguém bate de verdade.
-  function candidatosPlausiveis(nomePlanilha, empresa) {
-    const palavrasAlvo = normalizarNomeBusca(nomePlanilha).split(' ').filter(Boolean);
-    return getFuncionarios()
-      .filter(function (f) {
-        if ((f.empresa || 'BH CABINES') !== empresa) return false;
-        const palavrasCand = normalizarNomeBusca(f.nome).split(' ');
-        return palavrasAlvo.some(function (p) { return palavrasCand.indexOf(p) !== -1; });
-      })
-      .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
-  }
-
-  function encontrarCandidatoPlanilha(nomePlanilha, empresa) {
-    const alvo = normalizarNomeBusca(nomePlanilha);
-    const cands = getFuncionarios().filter(function (f) { return (f.empresa || 'BH CABINES') === empresa; });
-    const exato = cands.find(function (f) { return normalizarNomeBusca(f.nome) === alvo; });
-    if (exato) return { tipo: 'auto', candidato: exato };
-    const soltos = cands.filter(function (f) {
-      const fn = normalizarNomeBusca(f.nome);
-      return fn.indexOf(alvo + ' ') === 0 || alvo.indexOf(fn + ' ') === 0 || fn.split(' ')[0] === alvo.split(' ')[0];
-    }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
-    if (soltos.length === 1) return { tipo: 'auto', candidato: soltos[0] };
-    if (soltos.length > 1) return { tipo: 'ambiguo', candidatos: soltos };
-    return { tipo: 'nao-encontrado', candidatos: candidatosPlausiveis(nomePlanilha, empresa) };
-  }
-
-  function processarPlanilha(linhas, tipo) {
-    const blocos = dividirBlocosPlanilha(linhas);
-    const colIndex = tipo === 'adiantamento' ? IMPORT_COL_ADIANTAMENTO : IMPORT_COL_PAGAMENTO;
-    const candidatosAuto = []; // { nomePlanilha, empresa, valor, candidato }
-    const pendentes = [];
-    const empresasEnvolvidas = [];
-
-    blocos.forEach(function (bloco, idxBloco) {
-      const empresa = IMPORT_EMPRESAS_POR_BLOCO[idxBloco];
-      if (!empresa) return;
-      empresasEnvolvidas.push(empresa);
-      bloco.forEach(function (row) {
-        const nomePlanilha = String((row && row[0]) || '').trim();
-        if (!nomePlanilha) return;
-        const valor = Number(row[colIndex]) || 0;
-        // Sem valor a pagar nessa linha: não vale a pena perguntar nada sobre
-        // ela (ambígua, não encontrada, nome suspeito — tanto faz), simplesmente
-        // não há o que aplicar. Só os matches automáticos seguem adiante mesmo
-        // com valor zero, porque aí é só zerar quem já está cadastrado mesmo.
-        if (nomeSuspeito(nomePlanilha)) {
-          if (valor > 0) {
-            pendentes.push({
-              nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: 'suspeito',
-              candidatos: candidatosPlausiveis(nomePlanilha, empresa)
-            });
-          }
-          return;
-        }
-        const r = encontrarCandidatoPlanilha(nomePlanilha, empresa);
-        if (r.tipo === 'auto') {
-          candidatosAuto.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, candidato: r.candidato });
-        } else if (valor > 0) {
-          pendentes.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: r.tipo, candidatos: r.candidatos });
-        }
-      });
-    });
-
-    // Duas linhas da planilha não podem "ganhar" o mesmo cadastrado (ex.:
-    // "Gabriel" e "Gabriel Gonçalves" batendo só com "Gabriel Carvalho" por
-    // nome solto) — nesse caso nenhuma das duas entra automático, vão as
-    // duas pra resolução manual, pra uma pessoa de verdade escolher. Conflitos
-    // só contam entre linhas que realmente têm valor a pagar — a com valor
-    // zerado nem entra na contagem.
-    const candidatosComValor = candidatosAuto.filter(function (c) { return c.valor > 0; });
-    const contagemPorId = {};
-    candidatosComValor.forEach(function (c) { contagemPorId[c.candidato.id] = (contagemPorId[c.candidato.id] || 0) + 1; });
-
-    // "encontrados" junta todo mundo que apareceu na planilha com nome batendo
-    // de forma única (com ou sem valor) — usado só pra NÃO perguntar "foi
-    // desligado?" de quem foi encontrado e só está zerado este mês.
-    const autoMatches = [];
-    const encontrados = [];
-    candidatosAuto.forEach(function (c) {
-      if (c.valor <= 0) { encontrados.push(c.candidato.id); return; }
-      if (contagemPorId[c.candidato.id] > 1) {
-        pendentes.push({
-          nomePlanilha: c.nomePlanilha, empresa: c.empresa, valor: c.valor, motivo: 'conflito',
-          candidatos: candidatosPlausiveis(c.nomePlanilha, c.empresa)
-        });
-      } else {
-        autoMatches.push({ funcionarioId: c.candidato.id, valor: c.valor });
-        encontrados.push(c.candidato.id);
-      }
-    });
-
-    return { autoMatches: autoMatches, pendentes: pendentes, empresasEnvolvidas: empresasEnvolvidas, encontrados: encontrados };
-  }
-
-  function renderPendentesImport() {
-    const lista = document.getElementById('listaPendentes');
-    lista.innerHTML = importEstado.pendentes.map(function (p, idx) {
-      // candidatos já vem ordenado alfabeticamente e filtrado por palavra em
-      // comum com o nome da planilha (ver candidatosPlausiveis).
-      const opcoesExistentes = p.candidatos.map(function (f) {
-        return '<option value="' + f.id + '" data-nome="' + escapeHtml(normalizarNomeBusca(f.nome)) + '">' + escapeHtml(f.nome) + '</option>';
+    const tbody = document.querySelector('#tblNotaFiscal tbody');
+    if (!lista.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Nenhum pedido aguardando transportadora.</td></tr>';
+    } else {
+      tbody.innerHTML = lista.map(function (c) {
+        return '<tr>' +
+          '<td class="nome-cel">' + escapeHtml(c.transportadora) + '</td>' +
+          '<td>' + escapeHtml(c.pedido) + '</td>' +
+          '<td>' + escapeHtml(c.cliente) + '</td>' +
+          '<td class="tc">' + c.volumes + '</td>' +
+          '<td>' + escapeHtml(c.embalador) + '</td>' +
+          '<td><input type="text" class="campo-tabela campo-nf-corrigir" data-id="' + c.id + '" value="' + escapeHtml(c.notaFiscal || '') + '"></td>' +
+          '<td class="tc">' + fmtDataHora(dataDoHistorico(c, 'nota_fiscal')) + '</td>' +
+        '</tr>';
       }).join('');
-      return (
-        '<div class="import-item">' +
-          '<div class="import-item-topo">' +
-            '<div><b>"' + escapeHtml(p.nomePlanilha) + '"</b> <span class="muted">(' + (p.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ') — ' + fmt(p.valor) + '</span></div>' +
-            '<div class="import-item-motivo">' + IMPORT_MOTIVO_LABEL[p.motivo] + '</div>' +
-          '</div>' +
-          '<input type="text" class="input-filtro-import" data-idx="' + idx + '" placeholder="Pesquisar nome na lista abaixo..." style="margin-bottom:6px">' +
-          '<select class="sel-resolucao-import" data-idx="' + idx + '">' +
-            '<option value="">— Selecione —</option>' +
-            opcoesExistentes +
-            '<option value="__novo__">➕ Cadastrar como novo funcionário</option>' +
-            '<option value="__ignorar__">🚫 Ignorar esta linha</option>' +
-          '</select>' +
-          '<div class="import-item-novo-nome" data-idx="' + idx + '" style="display:none">' +
-            '<input type="text" class="input-novo-nome-import" data-idx="' + idx + '" value="' + escapeHtml(p.nomePlanilha) + '">' +
-          '</div>' +
-        '</div>'
-      );
-    }).join('');
+    }
 
-    lista.querySelectorAll('.sel-resolucao-import').forEach(function (sel) {
-      sel.addEventListener('change', function () {
-        const idx = sel.dataset.idx;
-        const campoNovo = lista.querySelector('.import-item-novo-nome[data-idx="' + idx + '"]');
-        campoNovo.style.display = (sel.value === '__novo__') ? 'block' : 'none';
-      });
-    });
-
-    lista.querySelectorAll('.input-filtro-import').forEach(function (inp) {
-      inp.addEventListener('input', function () {
-        const idx = inp.dataset.idx;
-        const termo = normalizarNomeBusca(inp.value);
-        const sel = lista.querySelector('.sel-resolucao-import[data-idx="' + idx + '"]');
-        Array.prototype.forEach.call(sel.options, function (opt) {
-          if (!opt.dataset.nome) return; // "— Selecione —" / "Cadastrar novo" / "Ignorar" ficam sempre visíveis
-          opt.style.display = opt.dataset.nome.indexOf(termo) !== -1 ? '' : 'none';
-        });
-      });
+    tbody.querySelectorAll('.campo-nf-corrigir').forEach(function (inp) {
+      inp.addEventListener('change', function () { corrigirNotaFiscal(inp.dataset.id, inp.value); });
     });
   }
 
-  function renderAusentesImport(idsEnvolvidos) {
-    const lista = document.getElementById('listaAusentes');
-    const ausentes = getFuncionarios().filter(function (f) {
-      return importEstado.empresasEnvolvidas.indexOf(f.empresa || 'BH CABINES') !== -1 && idsEnvolvidos.indexOf(f.id) === -1;
-    });
-    if (!ausentes.length) {
-      document.getElementById('blocoAusentes').style.display = 'none';
-      return ausentes;
-    }
-    lista.innerHTML = ausentes.map(function (f) {
-      return (
-        '<div class="import-ausente-item">' +
-          '<input type="checkbox" class="chk-desligado-import" data-id="' + f.id + '">' +
-          '<span>' + escapeHtml(f.nome) + ' <span class="muted">(' + (f.empresa === 'BHC PARTS' ? 'BHC Parts' : 'BH Cabines') + ')</span></span>' +
-        '</div>'
-      );
-    }).join('');
-    document.getElementById('blocoAusentes').style.display = 'block';
-    return ausentes;
+  function corrigirNotaFiscal(id, novoValor) {
+    const nf = (novoValor || '').trim();
+    if (!nf) { alert('A nota fiscal não pode ficar vazia.'); renderNotaFiscal(); return; }
+    const lista = getCadastros();
+    const c = lista.find(function (x) { return x.id === id; });
+    if (!c || c.notaFiscal === nf) return;
+    const anterior = c.notaFiscal;
+    c.notaFiscal = nf;
+    adicionarHistorico(c, 'nota_fiscal_corrigida', 'NF alterada de "' + anterior + '" para "' + nf + '"');
+    salvarCadastros(lista);
+    renderNotaFiscal();
   }
 
-  function resetarTelaImportacao() {
-    importEstado = null;
-    document.getElementById('importResultado').style.display = 'none';
-    document.getElementById('blocoPendentes').style.display = 'none';
-    document.getElementById('blocoAusentes').style.display = 'none';
-    document.getElementById('importArquivo').value = '';
-    document.getElementById('importTipo').value = '';
-  }
-
-  function aplicarResolucaoImportacao() {
-    const idsEnvolvidos = importEstado.encontrados.slice();
-    const valoresPorId = {};
-    importEstado.autoMatches.forEach(function (m) { valoresPorId[m.funcionarioId] = m.valor; });
-
-    if (importEstado.pendentes.length) {
-      const selects = document.querySelectorAll('.sel-resolucao-import');
-      for (let i = 0; i < selects.length; i++) {
-        if (!selects[i].value) { alert('Resolva todas as linhas pendentes antes de continuar.'); return; }
-      }
-
-      const lista = getFuncionarios();
-      let mudouCadastro = false;
-
-      importEstado.pendentes.forEach(function (p, idx) {
-        const sel = document.querySelector('.sel-resolucao-import[data-idx="' + idx + '"]');
-        const valorSel = sel.value;
-        if (valorSel === '__ignorar__') return;
-        if (valorSel === '__novo__') {
-          const inputNome = document.querySelector('.input-novo-nome-import[data-idx="' + idx + '"]');
-          const novoNome = (inputNome.value || '').trim();
-          if (!novoNome) return;
-          const novo = { id: uid(), nome: novoNome, empresa: p.empresa, valor: p.valor, incluir: p.valor > 0 };
-          lista.push(novo);
-          idsEnvolvidos.push(novo.id);
-          valoresPorId[novo.id] = p.valor;
-          mudouCadastro = true;
-        } else {
-          idsEnvolvidos.push(valorSel);
-          valoresPorId[valorSel] = p.valor;
-        }
-      });
-
-      if (mudouCadastro) salvarFuncionarios(lista);
-    }
-
-    const todos = getFuncionarios();
-    Object.keys(valoresPorId).forEach(function (id) {
-      const f = todos.find(function (x) { return x.id === id; });
-      if (f) { f.valor = valoresPorId[id]; f.incluir = valoresPorId[id] > 0; }
-    });
-    salvarFuncionarios(todos);
-    renderTabela();
-
-    document.getElementById('blocoPendentes').style.display = 'none';
-    const ausentes = renderAusentesImport(idsEnvolvidos);
-    if (!ausentes.length) {
-      alert('Importação concluída! ' + idsEnvolvidos.length + ' funcionário(s) atualizado(s).');
-      resetarTelaImportacao();
-    }
-  }
-
-  document.getElementById('btnProcessarPlanilha').addEventListener('click', function () {
-    const arquivo = document.getElementById('importArquivo').files[0];
-    const tipo = document.getElementById('importTipo').value;
-    if (!arquivo) { alert('Selecione o arquivo .xlsx.'); return; }
-    if (!tipo) { alert('Selecione o Tipo de Valor a Importar.'); return; }
-
-    const leitor = new FileReader();
-    leitor.onload = function (e) {
-      let linhas;
-      try {
-        const dados = new Uint8Array(e.target.result);
-        const wb = XLSX.read(dados, { type: 'array' });
-        const nomeAba = wb.SheetNames.find(function (n) { return n.trim().toLowerCase().indexOf('pagamento') === 0; }) || wb.SheetNames[0];
-        linhas = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, defval: '' });
-      } catch (err) {
-        alert('Não consegui ler esse arquivo. Confirme se é um .xlsx válido.');
-        return;
-      }
-
-      importEstado = processarPlanilha(linhas, tipo);
-
-      document.getElementById('importResultado').style.display = 'block';
-      const totalLinhas = importEstado.autoMatches.length + importEstado.pendentes.length;
-      document.getElementById('importResumo').textContent =
-        totalLinhas + ' funcionário(s) encontrado(s) na planilha — ' + importEstado.autoMatches.length + ' reconhecido(s) automaticamente, ' + importEstado.pendentes.length + ' precisam de atenção.';
-
-      if (importEstado.pendentes.length) {
-        document.getElementById('blocoPendentes').style.display = 'block';
-        renderPendentesImport();
-      } else {
-        document.getElementById('blocoPendentes').style.display = 'none';
-        aplicarResolucaoImportacao();
-      }
-    };
-    leitor.onerror = function () { alert('Erro ao ler o arquivo.'); };
-    leitor.readAsArrayBuffer(arquivo);
-  });
-
-  document.getElementById('btnCancelarImportacao').addEventListener('click', function () {
-    if (!confirm('Cancelar esta importação? Nada será alterado.')) return;
-    resetarTelaImportacao();
-  });
-
-  document.getElementById('btnConfirmarResolucao').addEventListener('click', aplicarResolucaoImportacao);
-
-  document.getElementById('btnFinalizarImportacao').addEventListener('click', function () {
-    const checks = document.querySelectorAll('.chk-desligado-import:checked');
-    if (checks.length) {
-      const nomes = [];
-      let lista = getFuncionarios();
-      checks.forEach(function (chk) {
-        const f = lista.find(function (x) { return x.id === chk.dataset.id; });
-        if (f) nomes.push(f.nome);
-      });
-      if (!confirm('Excluir do cadastro os seguintes funcionários desligados?\n\n' + nomes.map(function (n) { return '- ' + n; }).join('\n'))) return;
-      const idsExcluir = Array.prototype.map.call(checks, function (chk) { return chk.dataset.id; });
-      lista = lista.filter(function (f) { return idsExcluir.indexOf(f.id) === -1; });
-      salvarFuncionarios(lista);
-      renderTabela();
-    }
-    alert('Importação concluída!');
-    resetarTelaImportacao();
+  ['nfFiltroTransportadora', 'nfFiltroPedido', 'nfFiltroCliente', 'nfFiltroEmbalador'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', renderNotaFiscal);
   });
 
   /* ---------------------------------------------------------------------
-     GERAÇÃO DOS RECIBOS (pré-visualização = o que vai pra impressão)
+     BIPAGEM DE SAÍDA
      --------------------------------------------------------------------- */
-  function atualizarResumoLote() {
-    const incluidos = getFuncionarios().filter(function (f) { return f.incluir; });
-    const el = document.getElementById('resumoLote');
-    if (!el) return;
-    if (!incluidos.length) {
-      el.textContent = 'Nenhum funcionário marcado pra entrar no lote.';
-    } else {
-      const total = incluidos.reduce(function (s, f) { return s + num(f.valor); }, 0);
-      el.textContent = incluidos.length + ' funcionário(s) no lote · total: ' + fmt(total) + ' · ' + Math.ceil(incluidos.length / 5) + ' folha(s) A4';
+  let pedidoAbertoId = null;
+
+  function abrirPedidoBipagem() {
+    const termo = document.getElementById('bipBusca').value.trim().toLowerCase();
+    const msg = document.getElementById('bipBuscaMensagem');
+    if (!termo) { msg.textContent = 'Digite a nota fiscal ou o número do pedido.'; return; }
+
+    const candidatos = getCadastros().filter(function (c) {
+      return c.status === 'aguardando_transportadora' &&
+        ((c.notaFiscal || '').toLowerCase() === termo || (c.pedido || '').toLowerCase() === termo);
+    });
+
+    if (!candidatos.length) {
+      const outro = getCadastros().find(function (c) {
+        return (c.notaFiscal || '').toLowerCase() === termo || (c.pedido || '').toLowerCase() === termo;
+      });
+      if (outro && outro.status === 'concluido') msg.textContent = 'Esse pedido já foi concluído.';
+      else if (outro && outro.status === 'aguardando_nf') msg.textContent = 'Esse pedido ainda não tem nota fiscal preenchida — vá em "Processamento de Notas Fiscais" primeiro.';
+      else msg.textContent = 'Nenhum pedido aguardando transportadora encontrado com essa busca.';
+      document.getElementById('bipPedidoCard').style.display = 'none';
+      pedidoAbertoId = null;
+      return;
     }
+    if (candidatos.length > 1) { msg.textContent = 'Mais de um pedido bateu com essa busca — use um termo mais específico.'; return; }
+
+    pedidoAbertoId = candidatos[0].id;
+    msg.textContent = '';
+    document.getElementById('bipBusca').value = '';
+    renderPedidoAberto();
+    document.getElementById('bipInput').focus();
   }
 
-  function montarTiraHtml(f, dataISO, local, template) {
-    const dataBR = fmtDataBR(dataISO);
-    const ref = mesReferenciaDoRecibo(dataISO);
-    const nome = escapeHtml(String(f.nome || '').toUpperCase());
-    const empresa = escapeHtml(f.empresa || 'BH CABINES');
-    const corpoTexto = renderizarTemplate(escapeHtml(template), {
-      empresa: empresa,
-      valorExtenso: escapeHtml(valorPorExtenso(f.valor)),
-      mesAno: escapeHtml(ref.mes + ' de ' + ref.ano)
-    }).replace(/\n/g, '<br>');
+  function renderPedidoAberto() {
+    const c = getCadastros().find(function (x) { return x.id === pedidoAbertoId; });
+    const card = document.getElementById('bipPedidoCard');
+    if (!c) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    const bipados = c.volumesBipados || [];
+    document.getElementById('bipResumo').innerHTML =
+      '<p style="font-size:.95rem"><b>' + escapeHtml(c.transportadora) + '</b> — Pedido ' + escapeHtml(c.pedido) + ' — ' + escapeHtml(c.cliente) + '</p>' +
+      '<p class="muted" style="margin-top:4px">NF ' + escapeHtml(c.notaFiscal) + ' · Embalador: ' + escapeHtml(c.embalador) + ' · <b>' + bipados.length + '/' + c.volumes + '</b> volumes bipados</p>';
+
+    const total = Number(c.volumes) || 1;
+    let html = '';
+    for (let i = 1; i <= total; i++) {
+      const ok = bipados.indexOf(i) !== -1;
+      html += '<div class="bip-volume ' + (ok ? 'ok' : 'pendente') + '">' + (ok ? '✅' : '⬜') + ' Volume ' + i + '/' + total + '</div>';
+    }
+    document.getElementById('bipChecklist').innerHTML = html;
+  }
+
+  function processarBipagem(textoLido) {
+    const texto = (textoLido || '').trim();
+    const msg = document.getElementById('bipMensagem');
+    if (!texto) return;
+    if (!pedidoAbertoId) { msg.textContent = '❌ Nenhum pedido aberto. Abra um pedido antes de bipar.'; return; }
+
+    const match = texto.match(/^(.+)_(\d+)$/);
+    if (!match) { msg.textContent = '❌ Código não reconhecido: "' + texto + '"'; return; }
+    const cadastroId = match[1];
+    const numero = parseInt(match[2], 10);
+
+    const lista = getCadastros();
+    const c = lista.find(function (x) { return x.id === pedidoAbertoId; });
+    if (!c) { msg.textContent = '❌ Pedido aberto não encontrado — tente abrir de novo.'; return; }
+
+    if (cadastroId !== c.id) { msg.textContent = '❌ Esse QR Code é de outro pedido, não do que está aberto aqui.'; return; }
+    if (!numero || numero < 1 || numero > c.volumes) { msg.textContent = '❌ Número de volume inválido nesse código.'; return; }
+
+    c.volumesBipados = c.volumesBipados || [];
+    if (c.volumesBipados.indexOf(numero) !== -1) {
+      msg.textContent = '⚠️ Volume ' + numero + '/' + c.volumes + ' já tinha sido bipado antes.';
+      return;
+    }
+
+    c.volumesBipados.push(numero);
+    adicionarHistorico(c, 'bipagem', 'Volume ' + numero + '/' + c.volumes + ' bipado na saída');
+
+    let concluiu = false;
+    if (c.volumesBipados.length === c.volumes) {
+      c.status = 'concluido';
+      adicionarHistorico(c, 'concluido', 'Todos os ' + c.volumes + ' volume(s) bipados — pedido concluído');
+      concluiu = true;
+    }
+
+    salvarCadastros(lista);
+
+    if (concluiu) {
+      msg.textContent = '✅ Volume ' + numero + '/' + c.volumes + ' bipado — pedido concluído!';
+      pedidoAbertoId = null;
+      document.getElementById('bipPedidoCard').style.display = 'none';
+    } else {
+      msg.textContent = '✅ Volume ' + numero + '/' + c.volumes + ' bipado.';
+      renderPedidoAberto();
+    }
+    document.getElementById('bipInput').focus();
+  }
+
+  document.getElementById('btnAbrirPedido').addEventListener('click', abrirPedidoBipagem);
+  document.getElementById('bipBusca').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); abrirPedidoBipagem(); }
+  });
+  document.getElementById('bipInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      processarBipagem(this.value);
+      this.value = '';
+    }
+  });
+  document.getElementById('btnFecharPedido').addEventListener('click', function () {
+    pedidoAbertoId = null;
+    document.getElementById('bipPedidoCard').style.display = 'none';
+    document.getElementById('bipBuscaMensagem').textContent = '';
+    document.getElementById('bipMensagem').textContent = '';
+  });
+
+  /* ---------------------------------------------------------------------
+     HISTÓRICO DE CONCLUSÃO
+     --------------------------------------------------------------------- */
+  function renderHistorico() {
+    const lista = filtrarPorCampos(
+      getCadastros().filter(function (c) { return c.status === 'concluido'; })
+        .sort(function (a, b) { return new Date(dataDoHistorico(b, 'concluido')) - new Date(dataDoHistorico(a, 'concluido')); }),
+      'hist'
+    );
+
+    const tbody = document.querySelector('#tblHistorico tbody');
+    if (!lista.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Nenhum pedido concluído ainda.</td></tr>';
+    } else {
+      tbody.innerHTML = lista.map(function (c) {
+        return '<tr>' +
+          '<td class="nome-cel">' + escapeHtml(c.transportadora) + '</td>' +
+          '<td>' + escapeHtml(c.pedido) + '</td>' +
+          '<td>' + escapeHtml(c.cliente) + '</td>' +
+          '<td class="tc">' + c.volumes + '</td>' +
+          '<td>' + escapeHtml(c.embalador) + '</td>' +
+          '<td>' + escapeHtml(c.notaFiscal) + '</td>' +
+          '<td class="tc">' + fmtDataHora(dataDoHistorico(c, 'concluido')) + '</td>' +
+          '<td class="tc"><button class="icon-btn" data-ver-historico="' + c.id + '">🕒 Ver linha do tempo</button></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    tbody.querySelectorAll('[data-ver-historico]').forEach(function (btn) {
+      btn.addEventListener('click', function () { verHistoricoTimeline(btn.dataset.verHistorico); });
+    });
+  }
+
+  function verHistoricoTimeline(id) {
+    const c = getCadastros().find(function (x) { return x.id === id; });
+    if (!c) return;
+    document.getElementById('historicoDetalheTitulo').textContent = 'Pedido ' + c.pedido + ' — ' + c.cliente;
+    const hist = (c.historico || []).slice().sort(function (a, b) { return new Date(a.em) - new Date(b.em); });
+    document.getElementById('historicoTimeline').innerHTML = hist.map(function (h) {
+      return '<div class="timeline-item"><div class="timeline-quando">' + fmtDataHora(h.em) + '</div><div class="timeline-acao">' + escapeHtml(h.detalhe || h.acao) + '</div></div>';
+    }).join('');
+    document.getElementById('historicoDetalheCard').style.display = 'block';
+    document.getElementById('historicoDetalheCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  ['histFiltroTransportadora', 'histFiltroPedido', 'histFiltroCliente', 'histFiltroEmbalador'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', renderHistorico);
+  });
+
+  /* ---------------------------------------------------------------------
+     ETIQUETAS (1 por volume — cada uma com QR Code ÚNICO pra conferência)
+     Tamanho físico real: 10x15cm — uma etiqueta por página na impressão,
+     pra bater com o rolo/folha de etiqueta (ex.: impressora Zebra) ou,
+     se a pessoa escolher "Salvar como PDF" no diálogo de impressão, gerar
+     um PDF com páginas nesse mesmo tamanho. Não depende de instalar nada:
+     é o diálogo de impressão nativo do navegador — rápido, um clique, sem
+     precisar salvar arquivo antes de imprimir.
+     --------------------------------------------------------------------- */
+  function montarEtiquetaHtml(c, numero, total, impressoEm) {
+    const qrId = 'qr_' + c.id + '_' + numero;
     return (
-      '<div class="recibo-tira">' +
-        '<div class="recibo-cabecalho">' +
-          '<span class="recibo-titulo">RECIBO SALARIAL.</span>' +
-          '<span class="recibo-valor">' + fmt(f.valor) + '</span>' +
-        '</div>' +
-        '<div class="recibo-corpo">' +
-          corpoTexto +
-          '<br><br>' +
-          escapeHtml(local) + ', <b>' + dataBR + '</b>&nbsp;&nbsp;&nbsp;<b>' + nome + '.</b>' +
-        '</div>' +
-        '<div class="recibo-rodape">' +
-          '<div class="recibo-assinatura-linha"></div>' +
-          '<div class="recibo-assinatura-nome">' + nome + '</div>' +
-          '<div class="recibo-assinatura-label">Nome e Assinatura do Empregado</div>' +
-        '</div>' +
+      '<div class="etiqueta">' +
+        '<div class="etiqueta-transportadora">' + escapeHtml(c.transportadora) + '</div>' +
+        '<div class="etiqueta-cliente">' + escapeHtml(c.cliente) + '</div>' +
+        '<div class="etiqueta-pedido">Pedido ' + escapeHtml(c.pedido) + '</div>' +
+        '<div class="etiqueta-qr-wrap"><div class="etiqueta-qr"><canvas id="' + qrId + '"></canvas></div></div>' +
+        '<div class="etiqueta-rodape">Embalador: <b>' + escapeHtml(c.embalador) + '</b><br>Impresso em: <b>' + fmtDataHora(impressoEm) + '</b></div>' +
+        '<div class="etiqueta-volume">Volume ' + numero + '/' + total + '</div>' +
       '</div>'
     );
   }
 
-  // listaOverride: usado só na hora de IMPRIMIR, quando alguns funcionários
-  // zerados são excluídos do lote final sem mexer na prévia normal da tela.
-  function renderPreview(listaOverride) {
-    const incluidos = listaOverride || ordenarPorNome(getFuncionarios().filter(function (f) { return f.incluir; }));
+  function renderEtiquetas(c) {
     const printArea = document.getElementById('printArea');
-    const dataISO = document.getElementById('dataRecibo').value;
-    const local = document.getElementById('localRecibo').value.trim() || 'Belo Horizonte';
-    const tipo = document.getElementById('tipoRecibo').value;
+    const total = Number(c.volumes) || 1;
+    // Capturado uma única vez, no momento de gerar — não vem de nenhum campo
+    // editável, pra não dar pra "voltar no tempo" a etiqueta depois.
+    const impressoEm = new Date();
 
-    if (!incluidos.length) {
-      printArea.innerHTML = '<div class="empty-preview">Marque ao menos um funcionário na tabela acima pra ver a prévia dos recibos aqui.</div>';
-      return;
-    }
-    if (!dataISO) {
-      printArea.innerHTML = '<div class="empty-preview">Preencha a data pra ver a prévia dos recibos aqui.</div>';
-      return;
-    }
-    if (!tipo) {
-      printArea.innerHTML = '<div class="empty-preview">Selecione o Tipo de Recibo (Pagamento ou Adiantamento) pra ver a prévia aqui.</div>';
-      return;
-    }
-    const template = getTemplate(tipo);
+    const numeros = [];
+    for (let i = 1; i <= total; i++) numeros.push(i);
 
-    const paginas = [];
-    for (let i = 0; i < incluidos.length; i += 5) paginas.push(incluidos.slice(i, i + 5));
+    printArea.innerHTML = numeros.map(function (num) { return montarEtiquetaHtml(c, num, total, impressoEm); }).join('');
 
-    printArea.innerHTML = paginas.map(function (pagina) {
-      return '<div class="recibo-pagina">' + pagina.map(function (f) { return montarTiraHtml(f, dataISO, local, template); }).join('') + '</div>';
-    }).join('');
-  }
-
-  function atualizarResumoEPreview() {
-    atualizarResumoLote();
-    renderPreview();
-  }
-
-  // Mostra só o bloco do modelo (Pagamento/Adiantamento) que bate com o Tipo de
-  // Recibo escolhido — nada de automático, a pessoa escolhe e o resto do
-  // formulário continua vazio até isso acontecer (evita gerar recibo errado
-  // por causa de um valor que ficou selecionado de uma vez anterior).
-  function mostrarBlocoTemplateDoTipo() {
-    const tipo = document.getElementById('tipoRecibo').value;
-    document.getElementById('blocoTemplateVazio').style.display = tipo ? 'none' : 'block';
-    document.getElementById('blocoTemplatePagamento').style.display = (tipo === 'pagamento') ? 'flex' : 'none';
-    document.getElementById('blocoTemplateAdiantamento').style.display = (tipo === 'adiantamento') ? 'flex' : 'none';
-  }
-
-  document.getElementById('dataRecibo').addEventListener('input', renderPreview);
-  document.getElementById('localRecibo').addEventListener('input', renderPreview);
-  document.getElementById('tipoRecibo').addEventListener('change', function () {
-    mostrarBlocoTemplateDoTipo();
-    renderPreview();
-  });
-
-  document.getElementById('templateCorpoPagamento').addEventListener('input', function () {
-    salvarTemplate('pagamento', this.value);
-    renderPreview();
-  });
-  document.getElementById('btnRestaurarTemplatePagamento').addEventListener('click', function () {
-    if (!confirm('Restaurar o modelo padrão de Pagamento? Isso substitui o texto atual.')) return;
-    document.getElementById('templateCorpoPagamento').value = TEMPLATE_PAGAMENTO_PADRAO;
-    salvarTemplate('pagamento', TEMPLATE_PAGAMENTO_PADRAO);
-    renderPreview();
-  });
-
-  document.getElementById('templateCorpoAdiantamento').addEventListener('input', function () {
-    salvarTemplate('adiantamento', this.value);
-    renderPreview();
-  });
-  document.getElementById('btnRestaurarTemplateAdiantamento').addEventListener('click', function () {
-    if (!confirm('Restaurar o modelo padrão de Adiantamento? Isso substitui o texto atual.')) return;
-    document.getElementById('templateCorpoAdiantamento').value = TEMPLATE_ADIANTAMENTO_PADRAO;
-    salvarTemplate('adiantamento', TEMPLATE_ADIANTAMENTO_PADRAO);
-    renderPreview();
-  });
-
-  document.getElementById('btnGerarRecibos').addEventListener('click', function () {
-    const incluidos = ordenarPorNome(getFuncionarios().filter(function (f) { return f.incluir; }));
-    const dataISO = document.getElementById('dataRecibo').value;
-    const tipo = document.getElementById('tipoRecibo').value;
-    if (!incluidos.length) { alert('Marque ao menos um funcionário pra incluir no lote.'); return; }
-    if (!dataISO) { alert('Preencha a data dos recibos.'); return; }
-    if (!tipo) { alert('Selecione o Tipo de Recibo (Pagamento ou Adiantamento).'); return; }
-
-    const zerados = incluidos.filter(function (f) { return !(num(f.valor) > 0); });
-    let listaFinal = incluidos;
-
-    if (zerados.length) {
-      const nomesZerados = zerados.map(function (f) { return '- ' + f.nome; }).join('\n');
-      const confirmou = confirm(
-        'Os funcionários abaixo estão com o valor deste mês zerado:\n\n' + nomesZerados +
-        '\n\nClique em OK para gerar os recibos SEM essas pessoas, ou em Cancelar para preencher os valores antes.'
-      );
-      if (!confirmou) {
-        alert('Preencha o valor deste mês antes de gerar o recibo para:\n\n' + nomesZerados);
-        return;
+    numeros.forEach(function (num) {
+      const canvas = document.getElementById('qr_' + c.id + '_' + num);
+      // QR único por etiqueta/volume: id do cadastro + número do volume —
+      // é isso que a Bipagem de Saída lê pra conferir volume por volume.
+      const qrTexto = c.id + '_' + num;
+      if (canvas && window.QRious) {
+        new QRious({ element: canvas, value: qrTexto, size: 300, level: 'M' });
       }
-      listaFinal = incluidos.filter(function (f) { return num(f.valor) > 0; });
-      if (!listaFinal.length) { alert('Nenhum funcionário com valor preenchido pra gerar recibo.'); return; }
-    }
+    });
 
-    renderPreview(listaFinal);
-    setTimeout(function () {
-      window.print();
-      // Zera o valor de quem recebeu recibo nesta leva, pra não sobrar valor do
-      // mês anterior pronto pra ser usado sem querer no próximo arquivo gerado.
-      zerarValoresDe(listaFinal.map(function (f) { return f.id; }));
-      renderTabela(); // re-renderiza a tabela (valores zerados) e a prévia junto
-    }, 50);
+    document.getElementById('previewAviso').style.display = 'none';
+    return impressoEm;
+  }
+
+  /* ---------------------------------------------------------------------
+     CÓDIGO ZEBRA (ZPL) — alternativa pra quando a impressão via driver do
+     Windows (Zebra Setup Utilities, etc.) sai girada ou fraca. Mandando o
+     ZPL puro direto pra impressora, ela interpreta nativamente, sem
+     depender de driver nenhum. Calculado pra 203dpi (8 dots/mm) — padrão
+     em modelos como ZD220/GC420; numa impressora de 300dpi os valores
+     abaixo precisariam dobrar.
+     --------------------------------------------------------------------- */
+  function sanitizarZPL(texto) {
+    return String(texto == null ? '' : texto).replace(/[\^~]/g, '');
+  }
+
+  function construirEtiquetaZpl(c, numero, total, impressoEm) {
+    const transportadora = sanitizarZPL(c.transportadora).toUpperCase();
+    const pedido = sanitizarZPL(c.pedido);
+    const cliente = sanitizarZPL(c.cliente);
+    const embalador = sanitizarZPL(c.embalador);
+    const dataHora = sanitizarZPL(fmtDataHora(impressoEm));
+    const qrTexto = c.id + '_' + numero; // mesmo conteúdo único usado na versão HTML/PDF
+    return [
+      '^XA',
+      '^CI28', // UTF-8, pra acentos saírem certos
+      '^PW800', // largura 100mm a 203dpi (8 dots/mm)
+      '^LL1200', // altura 150mm a 203dpi
+      '^LH0,0',
+      '^FO30,40^A0N,60,60^FB740,2,0,C^FD' + transportadora + '^FS',
+      '^FO30,170^GB740,4,4^FS', // linha separadora
+      '^FO30,210^GB740,85,3^FS', // caixa ao redor do cliente (destaque)
+      '^FO30,232^A0N,50,50^FB740,1,0,C^FD' + cliente + '^FS',
+      '^FO30,320^A0N,35,35^FB740,1,0,C^FDPedido ' + pedido + '^FS',
+      '^FO250,400^BQN,2,7',
+      '^FDQA,' + qrTexto + '^FS',
+      '^FO30,720^A0N,30,30^FB740,1,0,C^FDEmbalador: ' + embalador + '^FS',
+      '^FO30,760^A0N,30,30^FB740,1,0,C^FDImpresso em: ' + dataHora + '^FS',
+      '^FO30,1000^A0N,60,60^FB740,1,0,C^FDVolume ' + numero + '/' + total + '^FS',
+      '^XZ'
+    ].join('\n');
+  }
+
+  function construirZplCadastro(c, impressoEm) {
+    const total = Number(c.volumes) || 1;
+    const blocos = [];
+    for (let i = 1; i <= total; i++) blocos.push(construirEtiquetaZpl(c, i, total, impressoEm));
+    return blocos.join('\n\n');
+  }
+
+  function gerarEtiquetas(id) {
+    const c = getCadastros().find(function (x) { return x.id === id; });
+    if (!c) return;
+    const impressoEm = renderEtiquetas(c);
+    document.getElementById('zplOutput').value = construirZplCadastro(c, impressoEm);
+  }
+
+  document.getElementById('btnImprimirPreview').addEventListener('click', function () {
+    if (!document.getElementById('printArea').children.length) {
+      alert('Clique em "🏷️ Etiquetas" numa linha da lista de Registro de Embalagem antes de imprimir.');
+      return;
+    }
+    window.print();
+  });
+
+  document.getElementById('btnCopiarZPL').addEventListener('click', function () {
+    const campo = document.getElementById('zplOutput');
+    if (!campo.value) { alert('Clique em "🏷️ Etiquetas" numa linha da lista antes de copiar.'); return; }
+    campo.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(campo.value).then(function () {
+        alert('Código ZPL copiado! Cole no Zebra Setup Utilities (ou no programa de envio) pra imprimir.');
+      }).catch(function () {
+        document.execCommand('copy');
+        alert('Código ZPL copiado! Cole no Zebra Setup Utilities (ou no programa de envio) pra imprimir.');
+      });
+    } else {
+      document.execCommand('copy');
+      alert('Código ZPL copiado! Cole no Zebra Setup Utilities (ou no programa de envio) pra imprimir.');
+    }
   });
 
   /* ---------------------------------------------------------------------
@@ -881,35 +597,12 @@
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
-  // Data e Tipo de Recibo ficam vazios de propósito — a pessoa escolhe toda vez,
-  // pra não gerar recibo errado por causa de um valor que ficou de uma vez anterior.
-  // O navegador às vezes restaura valor de formulário sozinho ao recarregar a
-  // página (sem disparar 'change'), então forçamos a limpeza de novo no 'pageshow'
-  // (dispara depois dessa restauração, inclusive quando a página volta do cache
-  // de navegação) pra garantir que nunca fique nada preenchido/selecionado sozinho.
-  function resetarCamposGeracao() {
-    document.getElementById('dataRecibo').value = '';
-    document.getElementById('tipoRecibo').value = '';
-    mostrarBlocoTemplateDoTipo();
-  }
-  resetarCamposGeracao();
-  window.addEventListener('pageshow', resetarCamposGeracao);
-
-  document.getElementById('buscaFuncionario').addEventListener('input', renderTabela);
-  document.getElementById('fEmpresa').addEventListener('change', atualizarCorEmpresaForm);
-  atualizarCorEmpresaForm();
-
-  function preencherTemplatesNoForm() {
-    document.getElementById('templateCorpoPagamento').value = getTemplate('pagamento');
-    document.getElementById('templateCorpoAdiantamento').value = getTemplate('adiantamento');
-  }
-
-  preencherTemplatesNoForm();
-  renderTabela();
+  renderTabelaEmbalagem();
 
   carregarDoServidor().then(function () {
-    preencherTemplatesNoForm();
-    renderTabela();
+    renderTabelaEmbalagem();
+    renderNotaFiscal();
+    renderHistorico();
   });
 
 })();
