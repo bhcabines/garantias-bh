@@ -75,12 +75,16 @@ tbody tr:nth-child(even){background:#fafafa}
 .preview-card{margin-top:0}
 .preview-scroll{overflow-x:auto}
 
-.etiqueta-pagina{display:grid;grid-template-columns:repeat(2,1fr);gap:4mm;width:194mm;margin:0 auto 6mm;background:var(--white)}
+/* Etiqueta no tamanho físico real (10x15cm, padrão de impressora de
+   etiqueta/Zebra) — uma por página na impressão, pra bater exatamente com
+   o rolo/folha da impressora. Em tela, várias lado a lado só pra conferir. */
+#printArea{display:flex;flex-wrap:wrap;gap:8mm;justify-content:center;padding:8mm 0}
 .etiqueta{
+  width:100mm;
+  height:150mm;
+  box-sizing:border-box;
   border:1.6px solid #000;
-  border-radius:2mm;
-  padding:4mm;
-  min-height:90mm;
+  padding:5mm;
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -88,15 +92,16 @@ tbody tr:nth-child(even){background:#fafafa}
   text-align:center;
   font-family:Arial,Helvetica,sans-serif;
   color:#000;
+  background:var(--white);
 }
-.etiqueta-transportadora{font-size:16pt;font-weight:800;text-transform:uppercase;letter-spacing:.3px;line-height:1.15;border-bottom:1.2px solid #000;padding-bottom:2.5mm;margin-bottom:2.5mm;width:100%}
-.etiqueta-pedido-cliente{font-size:10.5pt;font-weight:600;line-height:1.35;width:100%}
-.etiqueta-pedido-cliente b{font-weight:800}
+.etiqueta-transportadora{font-size:24pt;font-weight:800;text-transform:uppercase;letter-spacing:.3px;line-height:1.1;border-bottom:1.5px solid #000;padding-bottom:3mm;margin-bottom:3mm;width:100%}
+.etiqueta-pedido{font-size:18pt;font-weight:800;margin-bottom:2mm;width:100%}
+.etiqueta-cliente{font-size:12pt;font-weight:600;margin-bottom:4mm;width:100%}
 .etiqueta-qr{margin:3mm 0}
-.etiqueta-qr canvas{width:30mm;height:30mm;display:block}
+.etiqueta-qr canvas{width:38mm;height:38mm;display:block}
 .etiqueta-volume{font-size:22pt;font-weight:800;letter-spacing:.5px;margin-top:auto}
 
-.empty-preview{padding:30px;text-align:center;color:#999;font-size:.85rem}
+.empty-preview{padding:30px;text-align:center;color:#999;font-size:.85rem;width:100%}
 
 /* ===== Impressão ===== */
 @media print{
@@ -105,7 +110,8 @@ tbody tr:nth-child(even){background:#fafafa}
   .content{max-width:none;margin:0;padding:0}
   .preview-card{border:none;box-shadow:none;padding:0;border-radius:0}
   .preview-scroll{overflow:visible}
-  .etiqueta-pagina{width:auto;margin:0;page-break-after:always}
-  .etiqueta-pagina:last-child{page-break-after:auto}
-  @page{size:A4;margin:8mm}
+  #printArea{display:block;padding:0}
+  .etiqueta{page-break-after:always}
+  .etiqueta:last-child{page-break-after:auto}
+  @page{size:100mm 150mm;margin:0}
 }

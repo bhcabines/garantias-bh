@@ -195,9 +195,13 @@
 
   /* ---------------------------------------------------------------------
      ETIQUETAS (1 por volume, todas com o mesmo QR Code do pedido)
+     Tamanho físico real: 10x15cm — uma etiqueta por página na impressão,
+     pra bater com o rolo/folha de etiqueta (ex.: impressora Zebra) ou,
+     se a pessoa escolher "Salvar como PDF" no diálogo de impressão, gerar
+     um PDF com páginas nesse mesmo tamanho. Não depende de instalar nada:
+     é o diálogo de impressão nativo do navegador — rápido, um clique, sem
+     precisar salvar arquivo antes de imprimir.
      --------------------------------------------------------------------- */
-  const ETIQUETAS_POR_PAGINA = 6; // 2 colunas x 3 linhas em A4
-
   function construirTextoQR(c) {
     return [
       'EXPEDICAO BH CABINES',
@@ -215,7 +219,8 @@
     return (
       '<div class="etiqueta">' +
         '<div class="etiqueta-transportadora">' + escapeHtml(c.transportadora) + '</div>' +
-        '<div class="etiqueta-pedido-cliente">Pedido <b>' + escapeHtml(c.pedido) + '</b><br>Cliente: <b>' + escapeHtml(c.cliente) + '</b></div>' +
+        '<div class="etiqueta-pedido">Pedido ' + escapeHtml(c.pedido) + '</div>' +
+        '<div class="etiqueta-cliente">' + escapeHtml(c.cliente) + '</div>' +
         '<div class="etiqueta-qr"><canvas id="' + qrId + '"></canvas></div>' +
         '<div class="etiqueta-volume">Volume ' + numero + '/' + total + '</div>' +
       '</div>'
@@ -228,12 +233,8 @@
 
     const numeros = [];
     for (let i = 1; i <= total; i++) numeros.push(i);
-    const paginas = [];
-    for (let i = 0; i < numeros.length; i += ETIQUETAS_POR_PAGINA) paginas.push(numeros.slice(i, i + ETIQUETAS_POR_PAGINA));
 
-    printArea.innerHTML = paginas.map(function (pagina) {
-      return '<div class="etiqueta-pagina">' + pagina.map(function (num) { return montarEtiquetaHtml(c, num, total); }).join('') + '</div>';
-    }).join('');
+    printArea.innerHTML = numeros.map(function (num) { return montarEtiquetaHtml(c, num, total); }).join('');
 
     const textoQR = construirTextoQR(c);
     numeros.forEach(function (num) {
