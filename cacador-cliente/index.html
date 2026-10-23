@@ -53,13 +53,13 @@
 
       <div class="card">
         <h3 class="card-title">O que você procura</h3>
-        <div class="form-row">
+        <div class="field">
+          <label>Tipos de cliente <span class="label-dica">marque um ou mais</span></label>
+          <div class="tipos-opcoes" id="tiposOpcoes"></div>
+        </div>
+        <div class="form-row" style="margin-top:14px">
           <div class="field">
-            <label>Tipo de cliente</label>
-            <select id="fCategoria"></select>
-          </div>
-          <div class="field" id="campoTermoLivre" style="display:none">
-            <label>Termo de busca</label>
+            <label>Outro tipo (opcional)</label>
             <input type="text" id="fTermoLivre" placeholder="Ex.: borracharia de caminhão">
           </div>
           <div class="field">
@@ -67,19 +67,21 @@
             <select id="fEstado"><option value="">Carregando...</option></select>
           </div>
           <div class="field">
-            <label>Cidade</label>
+            <label>Cidades (opcional)</label>
             <input type="text" id="fCidade" list="dlCidades" placeholder="Escolha o estado primeiro" autocomplete="off" disabled>
             <datalist id="dlCidades"></datalist>
           </div>
           <div class="field">
-            <label>Bairro (opcional)</label>
-            <input type="text" id="fBairro" placeholder="Ex.: Cidade Industrial">
+            <label>Bairros (opcional)</label>
+            <input type="text" id="fBairro" placeholder="Digite e aperte Enter">
           </div>
         </div>
+        <div class="chips" id="chipsRegiao"></div>
+        <p class="busca-resumo" id="buscaResumo"></p>
         <div class="btn-row-h" style="margin-top:12px">
           <button class="btn bo" id="btnBuscar">🔍 Buscar empresas</button>
         </div>
-        <p class="muted" id="buscaStatus" style="margin-top:10px">Clique num estado no mapa (ou escolha acima), depois na cidade, e busque.</p>
+        <p class="muted" id="buscaStatus" style="margin-top:10px">Clique num estado no mapa (ou escolha acima). Depois clique nas cidades que quiser incluir.</p>
       </div>
 
       <div class="card card-mapa" style="margin-top:20px">
@@ -93,9 +95,19 @@
       <div class="card" id="resultadosCard" style="margin-top:20px;display:none">
         <div class="resultados-topo">
           <h3 class="card-title" style="margin-bottom:0">Empresas encontradas <span class="muted" id="resultadosContagem"></span></h3>
-          <div class="field resultados-filtro">
-            <label>Filtrar por bairro</label>
-            <select id="fFiltroBairro"><option value="">Todos os bairros</option></select>
+          <div class="resultados-filtros">
+            <div class="field resultados-filtro">
+              <label>Tipo</label>
+              <select id="fFiltroTipo"><option value="">Todos os tipos</option></select>
+            </div>
+            <div class="field resultados-filtro">
+              <label>Cidade</label>
+              <select id="fFiltroCidade"><option value="">Todas as cidades</option></select>
+            </div>
+            <div class="field resultados-filtro">
+              <label>Bairro</label>
+              <select id="fFiltroBairro"><option value="">Todos os bairros</option></select>
+            </div>
           </div>
         </div>
         <div id="listaResultados" class="lista-resultados"></div>

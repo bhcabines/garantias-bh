@@ -12,16 +12,22 @@
   const SYNC_URL = 'https://script.google.com/macros/s/AKfycbwDQZ4dAfEJ9eZs0CV4ceRvj6Pe_QNTaVuuZwT6285JWhcmlL-mpYR_YK7A6ikVkS27/exec';
   const IBGE = 'https://servicodados.ibge.gov.br/api';
 
+  // "pista": palavras (sem acento) que, no nome da empresa ou na categoria do
+  // Google, indicam o tipo. Serve pra separar o resultado de uma busca que
+  // juntou vários tipos numa só. "pistaFraca" só vale se nem o nome nem o
+  // Google disseram nada: "Apail Diesel" é loja de autopeças, não oficina.
   const CATEGORIAS = {
-    transportadora: { nome: 'Transportadora', termo: 'transportadora' },
-    oficina: { nome: 'Oficina de caminhão', termo: 'oficina mecânica de caminhão' },
-    lanternagem: { nome: 'Lanternagem e pintura de caminhão', termo: 'lanternagem e pintura de caminhão' },
-    autopecas: { nome: 'Autopeças linha pesada', termo: 'autopeças linha pesada' },
-    associacao: { nome: 'Associação de caminhoneiros', termo: 'associação de caminhoneiros' },
-    frota: { nome: 'Empresa com frota (logística/distribuição)', termo: 'empresa de logística e distribuição' },
-    locadora: { nome: 'Locadora de caminhões', termo: 'locadora de caminhões' },
-    livre: { nome: 'Busca livre (digitar termo)', termo: '' }
+    transportadora: { nome: 'Transportadora', termo: 'transportadora', pista: /transport|cargas|frete|mudanca/, pistaFraca: /expresso|rodoviari/ },
+    oficina: { nome: 'Oficina de caminhão', termo: 'oficina mecânica de caminhão', pista: /oficina|mecanic|retifica/, pistaFraca: /diesel|molas|cambio|freio|suspensao/ },
+    lanternagem: { nome: 'Lanternagem e pintura de caminhão', termo: 'lanternagem e pintura de caminhão', pista: /lantern|funilar|pintura|lataria|chapeac/ },
+    autopecas: { nome: 'Autopeças linha pesada', termo: 'autopeças linha pesada', pista: /pecas|autopec|rolamento/ },
+    associacao: { nome: 'Associação de caminhoneiros', termo: 'associação de caminhoneiros', pista: /associa|sindica|cooperativ|cootra/ },
+    frota: { nome: 'Empresa com frota (logística/distribuição)', termo: 'empresa de logística e distribuição', pista: /logistic|distribui|atacad/ },
+    locadora: { nome: 'Locadora de caminhões', termo: 'locadora de caminhões', pista: /locadora|locacao|aluguel|rental/ }
   };
+  // Quando o nome bate com mais de um tipo, vale o primeiro desta lista:
+  // "Diesel Peças" é autopeças, "Transportes e Logística" é transportadora.
+  const PRIORIDADE_PISTA = ['lanternagem', 'autopecas', 'locadora', 'associacao', 'transportadora', 'frota', 'oficina'];
 
   const STATUS = {
     novo: 'Novo',
@@ -164,14 +170,18 @@
   let camadaEstados = null;
   let camadaMunicipios = null;
   let ufSelecionada = null;      // { id, sigla, nome }
-  let cidadeSelecionada = null;  // { id, nome }
+  let cidadesSelecionadas = [];  // [{ id, nome }] — vazio = estado inteiro
+  let bairrosSelecionados = [];  // ['Cidade Industrial', ...]
   const municipiosCache = {};    // sigla -> { lista: [{id,nome}], geo: GeoJSON }
   const camadaMarcadores = L.layerGroup().addTo(mapa);
 
   function atualizarTrilha() {
     let txt = '🇧🇷 Brasil';
     if (ufSelecionada) txt += ' › ' + ufSelecionada.nome;
-    if (cidadeSelecionada) txt += ' › ' + cidadeSelecionada.nome;
+    if (cidadesSelecionadas.length) {
+      const nomes = cidadesSelecionadas.map(function (c) { return c.nome; });
+      txt += ' › ' + nomes.slice(0, 3).join(', ') + (nomes.length > 3 ? ' +' + (nomes.length - 3) : '');
+    }
     document.getElementById('mapaTrilha').textContent = txt;
     document.getElementById('btnVoltarBrasil').style.display = ufSelecionada ? 'inline-flex' : 'none';
   }
@@ -234,13 +244,14 @@
     const uf = estadosIBGE.find(function (e) { return e.sigla === sigla; });
     if (!uf) return;
     ufSelecionada = uf;
-    cidadeSelecionada = null;
+    cidadesSelecionadas = []; // cidade é sempre de um estado só
     document.getElementById('fEstado').value = sigla;
     const inputCidade = document.getElementById('fCidade');
     inputCidade.value = '';
     inputCidade.disabled = true;
     inputCidade.placeholder = 'Carregando cidades...';
     atualizarTrilha();
+    renderChips();
 
     camadaEstados.eachLayer(function (l) {
       const u = ufPorCodigo[String(l.feature.properties.codarea)];
@@ -261,9 +272,9 @@
         onEachFeature: function (feature, layer) {
           const id = String(feature.properties.codarea);
           layer.bindTooltip(nomePorId[id] || '', { sticky: true });
-          layer.on('mouseover', function () { if (!cidadeSelecionada || String(cidadeSelecionada.id) !== id) layer.setStyle({ fillOpacity: 0.18 }); });
-          layer.on('mouseout', function () { if (!cidadeSelecionada || String(cidadeSelecionada.id) !== id) layer.setStyle(ESTILO_MUN); });
-          layer.on('click', function () { selecionarCidade(id); });
+          layer.on('mouseover', function () { if (!cidadeEstaSelecionada(id)) layer.setStyle({ fillOpacity: 0.18 }); });
+          layer.on('mouseout', function () { if (!cidadeEstaSelecionada(id)) layer.setStyle(ESTILO_MUN); });
+          layer.on('click', function () { alternarCidade(id); });
         }
       }).addTo(mapa);
 
@@ -272,7 +283,7 @@
       }).join('');
       inputCidade.disabled = false;
       inputCidade.placeholder = 'Digite ou clique no mapa';
-      document.getElementById('buscaStatus').textContent = 'Agora clique na cidade no mapa (ou digite o nome) e busque.';
+      document.getElementById('buscaStatus').textContent = 'Clique nas cidades que quiser incluir (ou digite o nome). Sem cidade, a busca vale pro estado inteiro.';
     }).catch(function () {
       inputCidade.placeholder = 'Erro ao carregar cidades';
       document.getElementById('buscaStatus').textContent = '⚠️ Não consegui carregar as cidades desse estado. Tente de novo.';
@@ -286,27 +297,58 @@
     return alvo;
   }
 
-  function selecionarCidade(id) {
+  function cidadeEstaSelecionada(id) {
+    return cidadesSelecionadas.some(function (c) { return String(c.id) === String(id); });
+  }
+
+  function pintarCidades() {
+    if (!camadaMunicipios) return;
+    camadaMunicipios.eachLayer(function (l) {
+      const sel = cidadeEstaSelecionada(l.feature.properties.codarea);
+      l.setStyle(sel ? ESTILO_MUN_SEL : ESTILO_MUN);
+      if (sel) l.bringToFront();
+    });
+  }
+
+  // Clique no mapa marca/desmarca sem mexer no zoom, pra dar pra ir
+  // clicando nas vizinhas.
+  function alternarCidade(id) {
     if (!ufSelecionada) return;
     const dados = municipiosCache[ufSelecionada.sigla];
     const mun = dados && dados.lista.find(function (m) { return String(m.id) === String(id); });
     if (!mun) return;
-    cidadeSelecionada = mun;
-    document.getElementById('fCidade').value = mun.nome;
-    atualizarTrilha();
-    if (camadaMunicipios) camadaMunicipios.eachLayer(function (l) { l.setStyle(ESTILO_MUN); });
-    const camada = camadaDaCidade(id);
-    if (camada) {
-      camada.setStyle(ESTILO_MUN_SEL);
-      camada.bringToFront();
-      mapa.fitBounds(camada.getBounds(), { padding: [20, 20] });
+    if (cidadeEstaSelecionada(id)) {
+      cidadesSelecionadas = cidadesSelecionadas.filter(function (c) { return String(c.id) !== String(id); });
+    } else {
+      cidadesSelecionadas.push(mun);
     }
-    document.getElementById('buscaStatus').textContent = 'Cidade selecionada: ' + mun.nome + ' - ' + ufSelecionada.sigla + '. Escolha o tipo de cliente e clique em Buscar.';
+    pintarCidades();
+    atualizarTrilha();
+    renderChips();
+  }
+
+  // Retângulo que cobre todas as cidades marcadas (ou o estado, se nenhuma).
+  // Copia os limites: o getBounds() do Leaflet devolve o objeto interno da
+  // camada, e o extend() mexeria nele.
+  function limitesDaRegiao() {
+    let limites = null;
+    cidadesSelecionadas.forEach(function (c) {
+      const camada = camadaDaCidade(c.id);
+      if (!camada) return;
+      const b = camada.getBounds();
+      if (limites) limites.extend(b);
+      else limites = L.latLngBounds(b.getSouthWest(), b.getNorthEast());
+    });
+    if (!limites && ufSelecionada) {
+      const camadaUF = camadaDoEstado(ufSelecionada.sigla);
+      if (camadaUF) limites = camadaUF.getBounds();
+    }
+    return limites;
   }
 
   function voltarBrasil() {
     ufSelecionada = null;
-    cidadeSelecionada = null;
+    cidadesSelecionadas = [];
     if (camadaMunicipios) { mapa.removeLayer(camadaMunicipios); camadaMunicipios = null; }
     if (camadaEstados) camadaEstados.eachLayer(function (l) { l.setStyle(ESTILO_UF); });
     document.getElementById('fEstado').value = '';
@@ -316,18 +358,69 @@
     inputCidade.placeholder = 'Escolha o estado primeiro';
     mapa.setView([-14.5, -52], 4);
     atualizarTrilha();
+    renderChips();
   }
 
   document.getElementById('fEstado').addEventListener('change', function () {
     if (this.value) selecionarEstado(this.value); else voltarBrasil();
   });
-  document.getElementById('fCidade').addEventListener('change', function () {
-    if (!ufSelecionada) return;
+
+  // Cidade digitada: entra na lista e o mapa mostra todas as marcadas.
+  function adicionarCidadeDigitada() {
+    const input = document.getElementById('fCidade');
+    if (!ufSelecionada || !input.value.trim()) return;
     const dados = municipiosCache[ufSelecionada.sigla];
-    const alvo = normalizar(this.value);
+    const alvo = normalizar(input.value);
     const mun = dados && dados.lista.find(function (m) { return normalizar(m.nome) === alvo; });
-    if (mun) selecionarCidade(mun.id);
+    if (!mun) {
+      document.getElementById('buscaStatus').textContent = '⚠️ Não achei "' + input.value.trim() + '" em ' + ufSelecionada.nome + '. Escolha um nome da lista.';
+      return;
+    }
+    if (!cidadeEstaSelecionada(mun.id)) alternarCidade(mun.id);
+    input.value = '';
+    const limites = limitesDaRegiao();
+    if (limites) mapa.fitBounds(limites, { padding: [20, 20] });
+  }
+  document.getElementById('fCidade').addEventListener('change', adicionarCidadeDigitada);
+  document.getElementById('fCidade').addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); adicionarCidadeDigitada(); }
   });
+
+  // Bairro não tem contorno no IBGE: vai só como texto na busca.
+  // Aceita vários de uma vez separados por vírgula.
+  function adicionarBairrosDigitados() {
+    const input = document.getElementById('fBairro');
+    input.value.split(/[,;]/).forEach(function (b) {
+      const nome = b.trim();
+      if (nome && !bairrosSelecionados.some(function (x) { return normalizar(x) === normalizar(nome); })) bairrosSelecionados.push(nome);
+    });
+    input.value = '';
+    renderChips();
+  }
+  document.getElementById('fBairro').addEventListener('change', adicionarBairrosDigitados);
+  document.getElementById('fBairro').addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); adicionarBairrosDigitados(); }
+  });
+
+  function renderChips() {
+    const el = document.getElementById('chipsRegiao');
+    el.innerHTML = cidadesSelecionadas.map(function (c) {
+      return '<span class="chip">📍 ' + escapeHtml(c.nome) + '<button type="button" data-tirar-cidade="' + escapeHtml(String(c.id)) + '" title="Tirar da busca">×</button></span>';
+    }).join('') + bairrosSelecionados.map(function (b, i) {
+      return '<span class="chip">🏘️ ' + escapeHtml(b) + '<button type="button" data-tirar-bairro="' + i + '" title="Tirar da busca">×</button></span>';
+    }).join('');
+    atualizarResumo();
+  }
+  document.getElementById('chipsRegiao').addEventListener('click', function (ev) {
+    const btn = ev.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.tirarCidade) alternarCidade(btn.dataset.tirarCidade);
+    if (btn.dataset.tirarBairro) {
+      bairrosSelecionados.splice(Number(btn.dataset.tirarBairro), 1);
+      renderChips();
+    }
+  });
+
   document.getElementById('btnVoltarBrasil').addEventListener('click', voltarBrasil);
 
   /* ---------------------------------------------------------------------
@@ -337,24 +430,82 @@
   let ultimaBusca = null;       // parâmetros, pra "carregar mais" usar os mesmos
   let proximaPagina = '';
 
-  const selCategoria = document.getElementById('fCategoria');
-  selCategoria.innerHTML = Object.keys(CATEGORIAS).map(function (k) {
-    return '<option value="' + k + '">' + escapeHtml(CATEGORIAS[k].nome) + '</option>';
+  const tiposOpcoes = document.getElementById('tiposOpcoes');
+  tiposOpcoes.innerHTML = Object.keys(CATEGORIAS).map(function (k, i) {
+    return '<label class="tipo-chip"><input type="checkbox" value="' + k + '"' + (i === 0 ? ' checked' : '') + '> ' + escapeHtml(CATEGORIAS[k].nome) + '</label>';
   }).join('');
-  selCategoria.addEventListener('change', function () {
-    document.getElementById('campoTermoLivre').style.display = this.value === 'livre' ? 'flex' : 'none';
-  });
+  tiposOpcoes.addEventListener('change', atualizarResumo);
+  document.getElementById('fTermoLivre').addEventListener('input', atualizarResumo);
+
+  function categoriasMarcadas() {
+    return Array.from(tiposOpcoes.querySelectorAll('input:checked')).map(function (i) { return i.value; });
+  }
+
+  // "a", "a ou b", "a, b ou c"
+  function juntarComOu(lista) {
+    if (lista.length <= 1) return lista.join('');
+    return lista.slice(0, -1).join(', ') + ' ou ' + lista[lista.length - 1];
+  }
+
+  // Tudo vira UMA busca no Google (decisão pra economizar a cota grátis):
+  // "transportadora ou oficina mecânica de caminhão em Contagem ou Betim, MG".
+  // Ela traz no máximo 20 por vez, misturadas; o "Carregar mais" traz as próximas.
+  function textoDaBusca() {
+    const termos = categoriasMarcadas().map(function (k) { return CATEGORIAS[k].termo; });
+    const livre = document.getElementById('fTermoLivre').value.trim();
+    if (livre) termos.push(livre);
+    if (!termos.length || !ufSelecionada) return '';
+    let onde = '';
+    if (bairrosSelecionados.length) onde += (bairrosSelecionados.length === 1 ? 'no bairro ' : 'nos bairros ') + juntarComOu(bairrosSelecionados) + ', ';
+    if (cidadesSelecionadas.length) onde += 'em ' + juntarComOu(cidadesSelecionadas.map(function (c) { return c.nome; })) + ', ' + ufSelecionada.sigla;
+    else onde += 'em ' + ufSelecionada.nome;
+    return juntarComOu(termos) + ' ' + onde;
+  }
+
+  function atualizarResumo() {
+    const el = document.getElementById('buscaResumo');
+    const q = textoDaBusca();
+    if (!q) { el.innerHTML = ''; return; }
+    const qtdTipos = categoriasMarcadas().length + (document.getElementById('fTermoLivre').value.trim() ? 1 : 0);
+    let html = 'Vai buscar: <b>' + escapeHtml(q) + '</b><br>Usa 1 busca da cota e traz até 20 empresas.';
+    if (qtdTipos > 1 || cidadesSelecionadas.length > 1 || bairrosSelecionados.length > 1) {
+      html += ' <span class="aviso">Como junta tudo, vêm poucas de cada. Se faltar algum tipo, use "Carregar mais" ou busque ele separado.</span>';
+    }
+    el.innerHTML = html;
+  }
 
   function componente(place, tipo, curto) {
     const c = (place.addressComponents || []).find(function (x) { return (x.types || []).indexOf(tipo) !== -1; });
     return c ? (curto ? c.shortText : c.longText) || '' : '';
   }
 
-  function normalizarPlace(p, categoria) {
+  // Busca de um tipo só: a empresa é desse tipo. Busca que juntou vários:
+  // descobre pelo nome, depois pela categoria que o Google deu, e por último
+  // pelas pistas fracas do nome. Sem pista nenhuma fica em branco (aparece
+  // como "Outros", com a categoria do Google do lado).
+  function deduzirCategoria(nome, tipoGoogle, busca) {
+    if (busca.categorias.length === 1 && !busca.temLivre) return busca.categorias[0];
+    const nomeN = normalizar(nome);
+    const tipoN = normalizar(tipoGoogle);
+    const tentativas = [
+      function (k) { return CATEGORIAS[k].pista.test(nomeN); },
+      function (k) { return CATEGORIAS[k].pista.test(tipoN); },
+      function (k) { return !!CATEGORIAS[k].pistaFraca && CATEGORIAS[k].pistaFraca.test(nomeN); }
+    ];
+    for (let i = 0; i < tentativas.length; i++) {
+      const achou = PRIORIDADE_PISTA.find(tentativas[i]);
+      if (achou) return achou;
+    }
+    return '';
+  }
+
+  function normalizarPlace(p, busca) {
+    const nome = (p.displayName && p.displayName.text) || '(sem nome)';
+    const tipoGoogle = (p.primaryTypeDisplayName && p.primaryTypeDisplayName.text) || '';
     return {
       id: p.id,
-      nome: (p.displayName && p.displayName.text) || '(sem nome)',
-      tipoGoogle: (p.primaryTypeDisplayName && p.primaryTypeDisplayName.text) || '',
+      nome: nome,
+      tipoGoogle: tipoGoogle,
       endereco: p.formattedAddress || '',
       bairro: componente(p, 'sublocality_level_1') || componente(p, 'sublocality') || componente(p, 'neighborhood'),
       cidade: componente(p, 'administrative_area_level_2'),
@@ -367,33 +518,25 @@
       lat: p.location ? p.location.latitude : null,
       lng: p.location ? p.location.longitude : null,
       fechado: p.businessStatus === 'CLOSED_PERMANENTLY',
-      categoria: categoria
+      categoria: deduzirCategoria(nome, tipoGoogle, busca)
     };
   }
 
   function montarBusca() {
-    const categoria = selCategoria.value;
-    const termo = categoria === 'livre' ? document.getElementById('fTermoLivre').value.trim() : CATEGORIAS[categoria].termo;
-    if (!termo) { alert('Digite o termo de busca.'); return null; }
+    // Texto digitado sem Enter também vale.
+    if (document.getElementById('fBairro').value.trim()) adicionarBairrosDigitados();
+    const categorias = categoriasMarcadas();
+    const temLivre = !!document.getElementById('fTermoLivre').value.trim();
+    if (!categorias.length && !temLivre) { alert('Marque pelo menos um tipo de cliente (ou escreva outro tipo).'); return null; }
     if (!ufSelecionada) { alert('Escolha pelo menos o estado (no mapa ou na lista).'); return null; }
 
-    const bairro = document.getElementById('fBairro').value.trim();
-    let onde;
-    let camada;
-    if (cidadeSelecionada) {
-      onde = cidadeSelecionada.nome + ', ' + ufSelecionada.sigla;
-      camada = camadaDaCidade(cidadeSelecionada.id);
-    } else {
-      onde = ufSelecionada.nome;
-      camada = camadaDoEstado(ufSelecionada.sigla);
-    }
-    let q = termo + ' em ' + (bairro ? 'bairro ' + bairro + ', ' : '') + onde;
-
-    const busca = { categoria: categoria, q: q };
-    // Restringe ao retângulo da cidade (ou do estado): o Google só devolve
-    // empresas dentro dessa área, em vez de "parecidas" do país inteiro.
-    if (camada) {
-      const b = camada.getBounds();
+    const busca = { categorias: categorias, temLivre: temLivre, q: textoDaBusca() };
+    // Restringe ao retângulo que cobre as cidades (ou o estado): o Google só
+    // devolve empresas dentro dessa área, em vez de "parecidas" do país inteiro.
+    // Com cidades distantes o retângulo pega as do meio também — o filtro de
+    // cidade nos resultados separa.
+    const b = limitesDaRegiao();
+    if (b) {
       busca.s = b.getSouth().toFixed(5);
       busca.w = b.getWest().toFixed(5);
       busca.n = b.getNorth().toFixed(5);
@@ -429,7 +572,7 @@
         status.textContent = '⚠️ ' + (r.erro || 'Erro na busca.');
         return;
       }
-      const novos = (r.places || []).map(function (p) { return normalizarPlace(p, busca.categoria); });
+      const novos = (r.places || []).map(function (p) { return normalizarPlace(p, busca); });
       if (continuar) {
         const ids = {};
         resultados.forEach(function (x) { ids[x.id] = true; });
@@ -437,7 +580,7 @@
       } else {
         resultados = novos;
         ultimaBusca = busca;
-        document.getElementById('fFiltroBairro').value = '';
+        FILTROS_RESULTADO.forEach(function (f) { document.getElementById(f.id).value = ''; });
       }
       proximaPagina = r.nextPageToken || '';
       let msg = resultados.length + ' empresa(s) encontrada(s).';
@@ -455,7 +598,35 @@
 
   document.getElementById('btnBuscar').addEventListener('click', function () { executarBusca(false); });
   document.getElementById('btnCarregarMais').addEventListener('click', function () { executarBusca(true); });
-  document.getElementById('fFiltroBairro').addEventListener('change', renderResultados);
+
+  function nomeDoTipo(r) { return (CATEGORIAS[r.categoria] || {}).nome || 'Outros'; }
+
+  // Cada filtro só oferece o que existe nos resultados que passam pelos
+  // filtros anteriores (ex.: escolheu Contagem, só aparecem bairros de Contagem).
+  const FILTROS_RESULTADO = [
+    { id: 'fFiltroTipo', todos: 'Todos os tipos', valor: nomeDoTipo },
+    { id: 'fFiltroCidade', todos: 'Todas as cidades', valor: function (r) { return r.cidade; } },
+    { id: 'fFiltroBairro', todos: 'Todos os bairros', valor: function (r) { return r.bairro; } }
+  ];
+  FILTROS_RESULTADO.forEach(function (f) { document.getElementById(f.id).addEventListener('change', renderResultados); });
+
+  function aplicarFiltrosResultado() {
+    let lista = resultados;
+    FILTROS_RESULTADO.forEach(function (f) {
+      const sel = document.getElementById(f.id);
+      const atual = sel.value;
+      const contagem = {};
+      lista.forEach(function (r) { const v = f.valor(r); if (v) contagem[v] = (contagem[v] || 0) + 1; });
+      const opcoes = Object.keys(contagem).sort(function (a, b) { return a.localeCompare(b, 'pt-BR'); });
+      const valido = opcoes.indexOf(atual) !== -1 ? atual : '';
+      sel.innerHTML = '<option value="">' + f.todos + '</option>' + opcoes.map(function (v) {
+        return '<option value="' + escapeHtml(v) + '"' + (v === valido ? ' selected' : '') + '>' + escapeHtml(v) + ' (' + contagem[v] + ')</option>';
+      }).join('');
+      sel.value = valido;
+      if (valido) lista = lista.filter(function (r) { return f.valor(r) === valido; });
+    });
+    return lista;
+  }
 
   function idsNaCarteira() {
     const ids = {};
@@ -467,16 +638,7 @@
     const card = document.getElementById('resultadosCard');
     card.style.display = 'block';
 
-    // Lista de bairros a partir do endereço das empresas encontradas.
-    const selBairro = document.getElementById('fFiltroBairro');
-    const bairroAtual = selBairro.value;
-    const bairros = {};
-    resultados.forEach(function (r) { if (r.bairro) bairros[r.bairro] = (bairros[r.bairro] || 0) + 1; });
-    selBairro.innerHTML = '<option value="">Todos os bairros</option>' + Object.keys(bairros).sort(function (a, b) { return a.localeCompare(b, 'pt-BR'); }).map(function (b) {
-      return '<option value="' + escapeHtml(b) + '"' + (b === bairroAtual ? ' selected' : '') + '>' + escapeHtml(b) + ' (' + bairros[b] + ')</option>';
-    }).join('');
-
-    const lista = bairroAtual ? resultados.filter(function (r) { return r.bairro === bairroAtual; }) : resultados;
+    const lista = aplicarFiltrosResultado();
     document.getElementById('resultadosContagem').textContent = '(' + lista.length + ')';
     document.getElementById('btnCarregarMais').style.display = proximaPagina ? 'inline-flex' : 'none';
 
@@ -487,13 +649,14 @@
     } else {
       el.innerHTML = lista.map(function (r) {
         const wa = linkWhatsapp(r.telefone);
+        const tipo = [r.categoria ? nomeDoTipo(r) : '', r.tipoGoogle].filter(Boolean).join(' · ');
         const linhas = [];
         if (r.endereco) linhas.push('📍 ' + escapeHtml(r.endereco));
         if (r.telefone) linhas.push('📞 <a href="' + linkTelefone(r.telefone) + '">' + escapeHtml(r.telefone) + '</a>' + (wa ? ' · <a href="' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : ''));
         if (r.site) linhas.push('🌐 <a href="' + escapeHtml(r.site) + '" target="_blank" rel="noopener">' + escapeHtml(encurtarSite(r.site)) + '</a>');
         return '<div class="res-item' + (r.fechado ? ' fechado' : '') + '" data-id="' + escapeHtml(r.id) + '">' +
           '<div class="res-nome">' + escapeHtml(r.nome) + '</div>' +
-          (r.tipoGoogle ? '<div class="res-tipo">' + escapeHtml(r.tipoGoogle) + '</div>' : '') +
+          (tipo ? '<div class="res-tipo">' + escapeHtml(tipo) + '</div>' : '') +
           (r.fechado ? '<div class="selo-fechado">Fechado permanentemente</div>' : '') +
           (r.nota !== null ? '<div class="res-nota">⭐ ' + r.nota.toFixed(1) + ' <span class="muted">(' + r.avaliacoes + ' avaliações)</span></div>' : '') +
           linhas.map(function (l) { return '<div class="res-linha">' + l + '</div>'; }).join('') +
