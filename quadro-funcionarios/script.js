@@ -22,7 +22,7 @@
   const TEMPLATE_ADIANTAMENTO_PADRAO = 'Recebi da {EMPRESA} a importância supra de {VALOR_EXTENSO}, referente ao valor do adiantamento do meu salário referente ao mês de {MES_ANO}.';
 
   function normalizarEstado(raw) {
-    if (Array.isArray(raw)) return { funcionarios: raw, templatePagamento: TEMPLATE_PAGAMENTO_PADRAO, templateAdiantamento: TEMPLATE_ADIANTAMENTO_PADRAO }; // formato antigo (só array)
+    if (Array.isArray(raw)) return { funcionarios: raw, templatePagamento: TEMPLATE_PAGAMENTO_PADRAO, templateAdiantamento: TEMPLATE_ADIANTAMENTO_PADRAO, ordemImportacao: [] }; // formato antigo (só array)
     if (raw && typeof raw === 'object') {
       // "template" é o campo antigo (um modelo só) — migra pra "templatePagamento" se existir.
       const templatePagamento = (typeof raw.templatePagamento === 'string' && raw.templatePagamento.trim())
@@ -34,10 +34,11 @@
       return {
         funcionarios: Array.isArray(raw.funcionarios) ? raw.funcionarios : [],
         templatePagamento: templatePagamento,
-        templateAdiantamento: templateAdiantamento
+        templateAdiantamento: templateAdiantamento,
+        ordemImportacao: Array.isArray(raw.ordemImportacao) ? raw.ordemImportacao : []
       };
     }
-    return { funcionarios: [], templatePagamento: TEMPLATE_PAGAMENTO_PADRAO, templateAdiantamento: TEMPLATE_ADIANTAMENTO_PADRAO };
+    return { funcionarios: [], templatePagamento: TEMPLATE_PAGAMENTO_PADRAO, templateAdiantamento: TEMPLATE_ADIANTAMENTO_PADRAO, ordemImportacao: [] };
   }
 
   function getEstado() {
@@ -115,6 +116,11 @@
     else estado.templatePagamento = texto;
     salvarEstado(estado);
   }
+  function salvarOrdemImportacao(ordemIds) {
+    const estado = getEstado();
+    estado.ordemImportacao = ordemIds;
+    salvarEstado(estado);
+  }
 
   /* ---------------------------------------------------------------------
      UTILITÁRIOS
@@ -145,6 +151,21 @@
 
   function ordenarPorNome(lista) {
     return lista.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }); });
+  }
+
+  // Usado só na prévia/impressão dos recibos — segue a ordem de quem apareceu
+  // na última planilha importada (pra facilitar conferir contra ela), com
+  // quem não veio de importação (cadastro manual) entrando depois, em ordem
+  // alfabética. A tabela de cadastro continua sempre em ordem alfabética.
+  function ordenarParaRecibos(lista) {
+    const ordem = getEstado().ordemImportacao;
+    if (!ordem || !ordem.length) return ordenarPorNome(lista);
+    const posicao = {};
+    ordem.forEach(function (id, i) { posicao[id] = i; });
+    const comOrdem = lista.filter(function (f) { return posicao.hasOwnProperty(f.id); })
+      .sort(function (a, b) { return posicao[a.id] - posicao[b.id]; });
+    const semOrdem = ordenarPorNome(lista.filter(function (f) { return !posicao.hasOwnProperty(f.id); }));
+    return comOrdem.concat(semOrdem);
   }
 
   function classeEmpresa(valor) {
@@ -460,9 +481,10 @@
   function processarPlanilha(linhas, tipo) {
     const blocos = dividirBlocosPlanilha(linhas);
     const colIndex = tipo === 'adiantamento' ? IMPORT_COL_ADIANTAMENTO : IMPORT_COL_PAGAMENTO;
-    const candidatosAuto = []; // { nomePlanilha, empresa, valor, candidato }
+    const candidatosAuto = []; // { nomePlanilha, empresa, valor, candidato, ordem }
     const pendentes = [];
     const empresasEnvolvidas = [];
+    let ordemCounter = 0; // posição da linha na planilha, pra depois ordenar os recibos igual ela
 
     blocos.forEach(function (bloco, idxBloco) {
       const empresa = IMPORT_EMPRESAS_POR_BLOCO[idxBloco];
@@ -472,6 +494,7 @@
         const nomePlanilha = String((row && row[0]) || '').trim();
         if (!nomePlanilha) return;
         const valor = Number(row[colIndex]) || 0;
+        const ordem = ordemCounter++;
         // Sem valor a pagar nessa linha: não vale a pena perguntar nada sobre
         // ela (ambígua, não encontrada, nome suspeito — tanto faz), simplesmente
         // não há o que aplicar. Só os matches automáticos seguem adiante mesmo
@@ -479,7 +502,7 @@
         if (nomeSuspeito(nomePlanilha)) {
           if (valor > 0) {
             pendentes.push({
-              nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: 'suspeito',
+              nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: 'suspeito', ordem: ordem,
               candidatos: candidatosPlausiveis(nomePlanilha, empresa)
             });
           }
@@ -487,9 +510,9 @@
         }
         const r = encontrarCandidatoPlanilha(nomePlanilha, empresa);
         if (r.tipo === 'auto') {
-          candidatosAuto.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, candidato: r.candidato });
+          candidatosAuto.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, candidato: r.candidato, ordem: ordem });
         } else if (valor > 0) {
-          pendentes.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: r.tipo, candidatos: r.candidatos });
+          pendentes.push({ nomePlanilha: nomePlanilha, empresa: empresa, valor: valor, motivo: r.tipo, candidatos: r.candidatos, ordem: ordem });
         }
       });
     });
@@ -513,11 +536,11 @@
       if (c.valor <= 0) { encontrados.push(c.candidato.id); return; }
       if (contagemPorId[c.candidato.id] > 1) {
         pendentes.push({
-          nomePlanilha: c.nomePlanilha, empresa: c.empresa, valor: c.valor, motivo: 'conflito',
+          nomePlanilha: c.nomePlanilha, empresa: c.empresa, valor: c.valor, motivo: 'conflito', ordem: c.ordem,
           candidatos: candidatosPlausiveis(c.nomePlanilha, c.empresa)
         });
       } else {
-        autoMatches.push({ funcionarioId: c.candidato.id, valor: c.valor });
+        autoMatches.push({ funcionarioId: c.candidato.id, valor: c.valor, ordem: c.ordem });
         encontrados.push(c.candidato.id);
       }
     });
@@ -683,7 +706,8 @@
   function aplicarResolucaoImportacao() {
     const idsEnvolvidos = importEstado.encontrados.slice();
     const valoresPorId = {};
-    importEstado.autoMatches.forEach(function (m) { valoresPorId[m.funcionarioId] = m.valor; });
+    const ordemPorId = {}; // posição na planilha — usada só pra ordenar os recibos depois
+    importEstado.autoMatches.forEach(function (m) { valoresPorId[m.funcionarioId] = m.valor; ordemPorId[m.funcionarioId] = m.ordem; });
 
     if (importEstado.pendentes.length) {
       const selects = document.querySelectorAll('.sel-resolucao-import');
@@ -706,10 +730,12 @@
           lista.push(novo);
           idsEnvolvidos.push(novo.id);
           valoresPorId[novo.id] = p.valor;
+          ordemPorId[novo.id] = p.ordem;
           mudouCadastro = true;
         } else {
           idsEnvolvidos.push(valorSel);
           valoresPorId[valorSel] = p.valor;
+          ordemPorId[valorSel] = p.ordem;
         }
       });
 
@@ -722,6 +748,10 @@
       if (f) { f.valor = valoresPorId[id]; f.incluir = valoresPorId[id] > 0; }
     });
     salvarFuncionarios(todos);
+
+    const ordemFinal = Object.keys(ordemPorId).sort(function (a, b) { return ordemPorId[a] - ordemPorId[b]; });
+    salvarOrdemImportacao(ordemFinal);
+
     renderTabela();
 
     document.getElementById('blocoPendentes').style.display = 'none';
@@ -844,7 +874,7 @@
   // listaOverride: usado só na hora de IMPRIMIR, quando alguns funcionários
   // zerados são excluídos do lote final sem mexer na prévia normal da tela.
   function renderPreview(listaOverride) {
-    const incluidos = listaOverride || ordenarPorNome(getFuncionarios().filter(function (f) { return f.incluir; }));
+    const incluidos = listaOverride || ordenarParaRecibos(getFuncionarios().filter(function (f) { return f.incluir; }));
     const printArea = document.getElementById('printArea');
     const dataISO = document.getElementById('dataRecibo').value;
     const local = document.getElementById('localRecibo').value.trim() || 'Belo Horizonte';
@@ -918,7 +948,7 @@
   });
 
   document.getElementById('btnGerarRecibos').addEventListener('click', function () {
-    const incluidos = ordenarPorNome(getFuncionarios().filter(function (f) { return f.incluir; }));
+    const incluidos = ordenarParaRecibos(getFuncionarios().filter(function (f) { return f.incluir; }));
     const dataISO = document.getElementById('dataRecibo').value;
     const tipo = document.getElementById('tipoRecibo').value;
     if (!incluidos.length) { alert('Marque ao menos um funcionário pra incluir no lote.'); return; }

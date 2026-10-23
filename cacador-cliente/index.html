@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BH Cabines — Caçador de Cliente</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<!-- PWA: instalável como app ("Adicionar à tela inicial") -->
+<link rel="manifest" href="../manifest.json">
+<meta name="theme-color" content="#EA5B0C">
+<link rel="icon" href="../icons/icon-192.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BH Cabines">
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-in">
+    <a href="../index.html" class="hdr-back" title="Voltar ao painel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <div class="hdr-title">
+      <h1>Caçador de Cliente</h1>
+      <small>Busca de clientes potenciais para peças de caminhão</small>
+    </div>
+    <div class="ml hdr-right">
+      <span id="syncIndicador" class="sync-indicador" style="display:none"></span>
+      <span class="header-date" id="headerDate"></span>
+      <a href="../index.html" class="btn-menu">🏠 Menu</a>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+      <button class="nav-item active" data-view="busca">🗺️ Buscar no Mapa</button>
+      <button class="nav-item" data-view="carteira">💼 Carteira de Prospectos <span class="nav-contador" id="navContadorCarteira"></span></button>
+    </div>
+  </aside>
+
+  <main class="main-area">
+
+    <!-- ===================== BUSCAR NO MAPA ===================== -->
+    <section class="view" id="view-busca">
+
+      <div class="card">
+        <h3 class="card-title">O que você procura</h3>
+        <div class="form-row">
+          <div class="field">
+            <label>Tipo de cliente</label>
+            <select id="fCategoria"></select>
+          </div>
+          <div class="field" id="campoTermoLivre" style="display:none">
+            <label>Termo de busca</label>
+            <input type="text" id="fTermoLivre" placeholder="Ex.: borracharia de caminhão">
+          </div>
+          <div class="field">
+            <label>Estado</label>
+            <select id="fEstado"><option value="">Carregando...</option></select>
+          </div>
+          <div class="field">
+            <label>Cidade</label>
+            <input type="text" id="fCidade" list="dlCidades" placeholder="Escolha o estado primeiro" autocomplete="off" disabled>
+            <datalist id="dlCidades"></datalist>
+          </div>
+          <div class="field">
+            <label>Bairro (opcional)</label>
+            <input type="text" id="fBairro" placeholder="Ex.: Cidade Industrial">
+          </div>
+        </div>
+        <div class="btn-row-h" style="margin-top:12px">
+          <button class="btn bo" id="btnBuscar">🔍 Buscar empresas</button>
+        </div>
+        <p class="muted" id="buscaStatus" style="margin-top:10px">Clique num estado no mapa (ou escolha acima), depois na cidade, e busque.</p>
+      </div>
+
+      <div class="card card-mapa" style="margin-top:20px">
+        <div class="mapa-topo">
+          <div class="mapa-trilha" id="mapaTrilha">🇧🇷 Brasil</div>
+          <button class="btn bgray btn-pequeno" id="btnVoltarBrasil" style="display:none">⬅ Voltar ao Brasil</button>
+        </div>
+        <div id="mapa"></div>
+      </div>
+
+      <div class="card" id="resultadosCard" style="margin-top:20px;display:none">
+        <div class="resultados-topo">
+          <h3 class="card-title" style="margin-bottom:0">Empresas encontradas <span class="muted" id="resultadosContagem"></span></h3>
+          <div class="field resultados-filtro">
+            <label>Filtrar por bairro</label>
+            <select id="fFiltroBairro"><option value="">Todos os bairros</option></select>
+          </div>
+        </div>
+        <div id="listaResultados" class="lista-resultados"></div>
+        <div class="btn-row-h" style="margin-top:14px">
+          <button class="btn bgray" id="btnCarregarMais" style="display:none">Carregar mais 20</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================== CARTEIRA DE PROSPECTOS ===================== -->
+    <section class="view" id="view-carteira" style="display:none">
+      <div class="card">
+        <h3 class="card-title">Carteira de Prospectos</h3>
+        <p class="muted" style="margin-bottom:12px">Empresas salvas a partir da busca. Atualize o status conforme for fazendo contato.</p>
+        <div class="resumo-status" id="resumoStatus"></div>
+        <div class="form-row" style="margin-top:14px">
+          <div class="field"><label>Status</label><select id="cartFiltroStatus"><option value="">Todos</option></select></div>
+          <div class="field"><label>Tipo de cliente</label><select id="cartFiltroCategoria"><option value="">Todos</option></select></div>
+          <div class="field"><label>Cidade</label><input type="text" id="cartFiltroCidade" placeholder="Filtrar..."></div>
+          <div class="field"><label>Buscar</label><input type="text" id="cartFiltroTexto" placeholder="Nome, bairro, telefone..."></div>
+        </div>
+        <div class="btn-row-h" style="margin-top:12px">
+          <button class="btn bk" id="btnExportarCSV">⬇ Exportar planilha (CSV)</button>
+        </div>
+        <div class="table-wrap" style="margin-top:14px">
+          <table id="tblCarteira">
+            <thead><tr><th>Empresa</th><th>Tipo</th><th>Cidade</th><th>Bairro</th><th>Contato</th><th>Status</th><th>Observação</th><th class="tc">Salvo em</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

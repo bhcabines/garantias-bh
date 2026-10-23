@@ -1,0 +1,34 @@
+# O repositório é PÚBLICO e esta pasta também guarda planilhas de pagamento,
+# notas fiscais, invoices e outros documentos internos. Por isso a regra é
+# inversa: por padrão NADA desta pasta sobe pro GitHub, só o que está
+# liberado explicitamente abaixo (os arquivos do site).
+# Módulo novo do site = acrescentar a pasta dele aqui.
+/*
+
+!/.gitignore
+!/.nojeky11
+
+# Painel principal e páginas soltas
+!/index.html
+!/garantias.html
+!/vendas.html
+!/pesquisa.html
+!/usuarios.js
+!/manifest.json
+!/sw.js
+
+# Arquivos soltos que já estavam no GitHub (parecem uploads no lugar errado)
+!/script.js
+!/style.css
+!/dashboard-admin.js
+!/import.js
+
+# Pastas do site
+!/icons/
+!/logo_extraido/
+!/cockpit-comercial/
+!/gestao-custos/
+!/importacoes/
+!/quadro-funcionarios/
+!/expedicao/
+!/cacador-cliente/
