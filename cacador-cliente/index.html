@@ -37,12 +37,16 @@
   </div>
 </header>
 
+<!-- Nomes de vendedor já usados: sugestão em todo campo de vendedor -->
+<datalist id="dlVendedores"></datalist>
+
 <div class="layout">
 
   <aside class="sidebar">
     <div class="sidebar-inner">
       <button class="nav-item active" data-view="busca">🗺️ Buscar no Mapa</button>
-      <button class="nav-item" data-view="carteira">💼 Carteira de Prospectos <span class="nav-contador" id="navContadorCarteira"></span></button>
+      <button class="nav-item" data-view="banco">🗂️ Banco de Empresas <span class="nav-contador" id="navContadorBanco"></span></button>
+      <button class="nav-item" data-view="agenda">📅 Agenda de Ligações</button>
     </div>
   </aside>
 
@@ -54,12 +58,12 @@
       <div class="card">
         <h3 class="card-title">O que você procura</h3>
         <div class="field">
-          <label>Tipos de cliente <span class="label-dica">marque um ou mais</span></label>
+          <label>Tipo de cliente <span class="label-dica">um por busca</span></label>
           <div class="tipos-opcoes" id="tiposOpcoes"></div>
         </div>
         <div class="form-row" style="margin-top:14px">
-          <div class="field">
-            <label>Outro tipo (opcional)</label>
+          <div class="field" id="campoTermoLivre" style="display:none">
+            <label>Qual tipo?</label>
             <input type="text" id="fTermoLivre" placeholder="Ex.: borracharia de caminhão">
           </div>
           <div class="field">
@@ -97,10 +101,6 @@
           <h3 class="card-title" style="margin-bottom:0">Empresas encontradas <span class="muted" id="resultadosContagem"></span></h3>
           <div class="resultados-filtros">
             <div class="field resultados-filtro">
-              <label>Tipo</label>
-              <select id="fFiltroTipo"><option value="">Todos os tipos</option></select>
-            </div>
-            <div class="field resultados-filtro">
               <label>Cidade</label>
               <select id="fFiltroCidade"><option value="">Todas as cidades</option></select>
             </div>
@@ -110,6 +110,11 @@
             </div>
           </div>
         </div>
+        <div class="barra-atribuir">
+          <span>Passar as empresas <b>sem vendedor</b> desta lista para:</span>
+          <input type="text" id="resVendedor" list="dlVendedores" placeholder="Nome do vendedor" autocomplete="off">
+          <button class="btn bo btn-pequeno" id="btnAtribuirResultados">Atribuir</button>
+        </div>
         <div id="listaResultados" class="lista-resultados"></div>
         <div class="btn-row-h" style="margin-top:14px">
           <button class="btn bgray" id="btnCarregarMais" style="display:none">Carregar mais 20</button>
@@ -118,27 +123,52 @@
 
     </section>
 
-    <!-- ===================== CARTEIRA DE PROSPECTOS ===================== -->
-    <section class="view" id="view-carteira" style="display:none">
+    <!-- ===================== BANCO DE EMPRESAS ===================== -->
+    <section class="view" id="view-banco" style="display:none">
       <div class="card">
-        <h3 class="card-title">Carteira de Prospectos</h3>
-        <p class="muted" style="margin-bottom:12px">Empresas salvas a partir da busca. Atualize o status conforme for fazendo contato.</p>
+        <h3 class="card-title">Banco de Empresas</h3>
+        <p class="muted" style="margin-bottom:12px">Toda empresa que aparece numa busca fica guardada aqui. Escolha o vendedor de cada uma pra montar a agenda de ligações dele.</p>
         <div class="resumo-status" id="resumoStatus"></div>
         <div class="form-row" style="margin-top:14px">
-          <div class="field"><label>Status</label><select id="cartFiltroStatus"><option value="">Todos</option></select></div>
-          <div class="field"><label>Tipo de cliente</label><select id="cartFiltroCategoria"><option value="">Todos</option></select></div>
-          <div class="field"><label>Cidade</label><input type="text" id="cartFiltroCidade" placeholder="Filtrar..."></div>
-          <div class="field"><label>Buscar</label><input type="text" id="cartFiltroTexto" placeholder="Nome, bairro, telefone..."></div>
+          <div class="field"><label>Vendedor</label><select id="bancoFiltroVendedor"></select></div>
+          <div class="field"><label>Status</label><select id="bancoFiltroStatus"></select></div>
+          <div class="field"><label>Tipo de cliente</label><select id="bancoFiltroCategoria"></select></div>
+          <div class="field"><label>Cidade</label><input type="text" id="bancoFiltroCidade" placeholder="Filtrar..."></div>
+          <div class="field"><label>Buscar</label><input type="text" id="bancoFiltroTexto" placeholder="Nome, telefone, endereço..."></div>
         </div>
-        <div class="btn-row-h" style="margin-top:12px">
-          <button class="btn bk" id="btnExportarCSV">⬇ Exportar planilha (CSV)</button>
+        <div class="barra-atribuir" style="margin-top:14px">
+          <span id="bancoSelecionadas">Marque as empresas na primeira coluna</span>
+          <input type="text" id="bancoVendedorLote" list="dlVendedores" placeholder="Nome do vendedor" autocomplete="off">
+          <button class="btn bo btn-pequeno" id="btnAtribuirLote">Atribuir às marcadas</button>
+          <button class="btn bk btn-pequeno ml" id="btnExportarCSV">⬇ Exportar planilha (CSV)</button>
         </div>
-        <div class="table-wrap" style="margin-top:14px">
-          <table id="tblCarteira">
-            <thead><tr><th>Empresa</th><th>Tipo</th><th>Cidade</th><th>Bairro</th><th>Contato</th><th>Status</th><th>Observação</th><th class="tc">Salvo em</th><th></th></tr></thead>
+        <div class="table-wrap" style="margin-top:12px">
+          <table id="tblBanco">
+            <thead><tr>
+              <th class="tc"><input type="checkbox" id="bancoMarcarTodas" title="Marcar todas da tela"></th>
+              <th>Empresa</th><th>Vendedor</th><th>WhatsApp</th><th>Telefone</th><th>Site</th><th>Cidade</th><th>Endereço</th>
+              <th>Status</th><th>Ligar em</th><th>Observação</th><th></th>
+            </tr></thead>
             <tbody></tbody>
           </table>
         </div>
+        <div class="btn-row-h" style="margin-top:12px;align-items:center">
+          <span class="muted" id="bancoRodape"></span>
+          <button class="btn bgray btn-pequeno" id="btnBancoMais" style="display:none">Mostrar mais</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== AGENDA DE LIGAÇÕES ===================== -->
+    <section class="view" id="view-agenda" style="display:none">
+      <div class="card">
+        <h3 class="card-title">Agenda de Ligações</h3>
+        <div class="agenda-topo no-print">
+          <div class="field agenda-vendedor"><label>Vendedor</label><select id="agendaVendedor"></select></div>
+          <button class="btn bgray" id="btnImprimirAgenda">🖨 Imprimir agenda</button>
+        </div>
+        <h2 class="agenda-impressao-titulo" id="agendaTituloImpressao"></h2>
+        <div id="agendaConteudo"></div>
       </div>
     </section>
 

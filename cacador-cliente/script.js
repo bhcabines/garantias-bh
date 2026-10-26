@@ -4,8 +4,9 @@
    autopeças linha pesada...) por região, num mapa do Brasil com os contornos
    oficiais do IBGE. A busca em si é feita pelo Apps Script, que chama o
    Google Places com a chave guardada lá — o site é público, então a chave
-   nunca pode aparecer aqui. Os prospectos salvos vão pra "carteira", que
-   sincroniza pelo mesmo Apps Script dos outros módulos.
+   nunca pode aparecer aqui. Toda empresa encontrada entra no Banco de
+   Empresas (aba "Cacador_Empresas" da planilha), onde ganha vendedor,
+   status e data pra ligar; a Agenda mostra isso por vendedor.
    ============================================================================ */
 (function () {
 
@@ -13,9 +14,9 @@
   const IBGE = 'https://servicodados.ibge.gov.br/api';
 
   // "pista": palavras (sem acento) que, no nome da empresa ou na categoria do
-  // Google, indicam o tipo. Serve pra separar o resultado de uma busca que
-  // juntou vários tipos numa só. "pistaFraca" só vale se nem o nome nem o
-  // Google disseram nada: "Apail Diesel" é loja de autopeças, não oficina.
+  // Google, indicam o tipo. Só é usada na busca "Outro", que não tem tipo
+  // fixo. "pistaFraca" só vale se nem o nome nem o Google disseram nada:
+  // "Apail Diesel" é loja de autopeças, não oficina.
   const CATEGORIAS = {
     transportadora: { nome: 'Transportadora', termo: 'transportadora', pista: /transport|cargas|frete|mudanca/, pistaFraca: /expresso|rodoviari/ },
     oficina: { nome: 'Oficina de caminhão', termo: 'oficina mecânica de caminhão', pista: /oficina|mecanic|retifica/, pistaFraca: /diesel|molas|cambio|freio|suspensao/ },
@@ -28,6 +29,7 @@
   // Quando o nome bate com mais de um tipo, vale o primeiro desta lista:
   // "Diesel Peças" é autopeças, "Transportes e Logística" é transportadora.
   const PRIORIDADE_PISTA = ['lanternagem', 'autopecas', 'locadora', 'associacao', 'transportadora', 'frota', 'oficina'];
+  const OUTRO = 'outro';
 
   const STATUS = {
     novo: 'Novo',
@@ -39,60 +41,124 @@
   };
 
   /* ---------------------------------------------------------------------
-     CARTEIRA — storage local + servidor (mesmo padrão dos outros módulos:
-     servidor vence, mas nunca sobrescreve o local com vazio)
+     BANCO DE EMPRESAS — memória + localStorage + servidor.
+     Diferente dos outros módulos, aqui não dá pra mandar a lista inteira a
+     cada mudança (são milhares de empresas): cada alteração entra numa fila
+     de pendentes e só as empresas da fila vão pro servidor.
      --------------------------------------------------------------------- */
-  const LS_KEY = 'cacador_carteira';
+  const LS_EMPRESAS = 'cacador_empresas';
+  const LS_PENDENTES = 'cacador_pendentes';
 
-  function getCarteira() {
-    try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { return []; }
+  let empresas = [];
+  let empresaPorId = {};
+  let pendentes = [];           // ids alterados aqui e ainda não confirmados pelo servidor
+
+  function reindexar() {
+    empresaPorId = {};
+    empresas.forEach(function (c) { empresaPorId[c.id] = c; });
   }
-  function saveCarteiraLocal(lista) { localStorage.setItem(LS_KEY, JSON.stringify(lista || [])); }
+
+  // localStorage pode estar cheio ou bloqueado: aí o banco fica só na
+  // memória e no servidor, sem quebrar a página.
+  function carregarLocal() {
+    try { empresas = JSON.parse(localStorage.getItem(LS_EMPRESAS) || '[]'); } catch (e) { empresas = []; }
+    try { pendentes = JSON.parse(localStorage.getItem(LS_PENDENTES) || '[]'); } catch (e) { pendentes = []; }
+    reindexar();
+  }
+  function guardarLocal() {
+    try { localStorage.setItem(LS_EMPRESAS, JSON.stringify(empresas)); } catch (e) {}
+  }
+  function guardarPendentes() {
+    try { localStorage.setItem(LS_PENDENTES, JSON.stringify(pendentes)); } catch (e) {}
+  }
 
   function setSyncIndicador(texto, esconderDepois) {
     const el = document.getElementById('syncIndicador');
     el.textContent = texto;
     el.style.display = 'inline-block';
-    if (esconderDepois) setTimeout(function () { el.style.display = 'none'; }, esconderDepois);
+    clearTimeout(setSyncIndicador.timer);
+    if (esconderDepois) setSyncIndicador.timer = setTimeout(function () { el.style.display = 'none'; }, esconderDepois);
   }
 
-  // Só envia depois que o servidor provou que conhece a ação 'getCacador'
+  // Só envia depois que o servidor provou que conhece 'getEmpresasCacador'
   // (respondeu com uma lista). Antes disso, um POST com ação desconhecida
   // cai no registro de log de acesso do Apps Script e grava lixo na planilha.
   let servidorPronto = false;
+  let enviando = false;
 
-  function pushCarteira(lista) {
-    if (!servidorPronto) return Promise.resolve({ ok: false, pendente: true });
+  function enviarPendentes() {
+    if (enviando || !servidorPronto || !pendentes.length) return;
+    const lista = pendentes.map(function (id) { return empresaPorId[id]; }).filter(Boolean);
+    const enviado = {};
+    lista.forEach(function (c) { enviado[c.id] = JSON.stringify(c); });
+    enviando = true;
+    let deuCerto = false;
+    setSyncIndicador('🔄 Salvando...');
     // Sem header de Content-Type de propósito — 'application/json' força
     // preflight CORS que o Apps Script não responde, e o envio falha calado.
-    return fetch(SYNC_URL, { method: 'POST', body: JSON.stringify({ action: 'saveCacador', data: lista }) })
-      .then(function (r) { return r.json(); });
+    fetch(SYNC_URL, { method: 'POST', body: JSON.stringify({ action: 'salvarEmpresasCacador', data: lista }) })
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r || r.ok !== true) throw new Error('servidor recusou');
+        // Sai da fila só o que não mudou de novo enquanto ia pro servidor.
+        pendentes = pendentes.filter(function (id) {
+          const c = empresaPorId[id];
+          return c && JSON.stringify(c) !== enviado[id];
+        });
+        guardarPendentes();
+        deuCerto = true;
+        setSyncIndicador('✅ Salvo', 1500);
+      })
+      .catch(function () {
+        setSyncIndicador('⚠️ Sem conexão: ficou salvo neste aparelho, envio de novo daqui a pouco', 5000);
+        setTimeout(enviarPendentes, 60000);
+      })
+      .finally(function () {
+        enviando = false;
+        if (deuCerto && pendentes.length) enviarPendentes();
+      });
+  }
+
+  // Chamar depois de mudar empresas na memória.
+  function salvarEmpresas(ids) {
+    ids.forEach(function (id) { if (pendentes.indexOf(id) === -1) pendentes.push(id); });
+    guardarPendentes();
+    guardarLocal();
+    atualizarContadorBanco();
+    atualizarListaVendedores();
+    enviarPendentes();
+  }
+
+  function atualizarEmpresa(id, mudancas) {
+    const c = empresaPorId[id];
+    if (!c) return;
+    Object.keys(mudancas).forEach(function (k) { c[k] = mudancas[k]; });
+    c.atualizadoEm = new Date().toISOString();
+    salvarEmpresas([id]);
   }
 
   function carregarDoServidor() {
     setSyncIndicador('🔄 Sincronizando...');
-    return fetch(SYNC_URL + '?action=getCacador&t=' + Date.now()).then(function (r) { return r.json(); }).then(function (servidor) {
+    return fetch(SYNC_URL + '?action=getEmpresasCacador&t=' + Date.now()).then(function (r) { return r.json(); }).then(function (servidor) {
       if (!Array.isArray(servidor)) {
-        setSyncIndicador('⚠️ Carteira salva só neste aparelho (servidor ainda não configurado)', 5000);
+        setSyncIndicador('⚠️ Banco salvo só neste aparelho (servidor ainda não configurado)', 5000);
         return;
       }
       servidorPronto = true;
-      if (servidor.length > 0) {
-        saveCarteiraLocal(servidor);
-      } else {
-        const local = getCarteira();
-        if (local.length > 0) pushCarteira(local).catch(function () {});
-      }
+      // Servidor vence, menos nas empresas alteradas aqui e ainda não enviadas.
+      const locais = {};
+      pendentes.forEach(function (id) { if (empresaPorId[id]) locais[id] = empresaPorId[id]; });
+      empresas = servidor.filter(function (c) { return c && c.id && !locais[c.id]; })
+        .concat(Object.keys(locais).map(function (id) { return locais[id]; }));
+      reindexar();
+      pendentes = pendentes.filter(function (id) { return !!empresaPorId[id]; });
+      guardarPendentes();
+      guardarLocal();
       setSyncIndicador('✅ Sincronizado', 2000);
+      enviarPendentes();
     }).catch(function () {
-      setSyncIndicador('⚠️ Offline — usando dados locais', 3000);
+      setSyncIndicador('⚠️ Offline — usando dados deste aparelho', 3000);
     });
-  }
-
-  function salvarCarteira(lista) {
-    saveCarteiraLocal(lista);
-    pushCarteira(lista).catch(function () {});
-    atualizarContadorCarteira();
   }
 
   /* ---------------------------------------------------------------------
@@ -113,15 +179,35 @@
     return isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR');
   }
 
-  // Celular brasileiro tem 11 dígitos com o 3º sendo 9 (DDD + 9xxxx-xxxx):
-  // só nesses casos dá pra oferecer o atalho de WhatsApp.
-  function linkWhatsapp(telefone) {
-    const d = String(telefone || '').replace(/\D/g, '');
-    return (d.length === 11 && d.charAt(2) === '9') ? 'https://wa.me/55' + d : '';
+  // "2026-10-27" -> "27/10/2026" (sem passar por Date, que mudaria o dia pelo fuso)
+  function fmtDia(dia) {
+    const p = String(dia || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : '';
+  }
+
+  function hojeISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
+
+  // Celular brasileiro tem 11 dígitos com o 3º sendo 9 (DDD + 9xxxx-xxxx).
+  function ehCelular(telefone) {
+    const d = soDigitos(telefone);
+    return d.length === 11 && d.charAt(2) === '9';
+  }
+
+  // O WhatsApp pode ser digitado à mão (inclusive fixo com WhatsApp Business),
+  // então aceita 10 ou 11 dígitos, com ou sem o 55 na frente.
+  function linkWhatsapp(numero) {
+    let d = soDigitos(numero);
+    if ((d.length === 12 || d.length === 13) && d.indexOf('55') === 0) d = d.slice(2);
+    return (d.length === 10 || d.length === 11) ? 'https://wa.me/55' + d : '';
   }
 
   function linkTelefone(telefone) {
-    const d = String(telefone || '').replace(/\D/g, '');
+    const d = soDigitos(telefone);
     return d ? 'tel:+55' + d : '';
   }
 
@@ -129,14 +215,49 @@
     return String(url || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
   }
 
+  function nomeDoTipo(c) { return (CATEGORIAS[c.categoria] || {}).nome || ''; }
+  function tipoParaMostrar(c) { return nomeDoTipo(c) || c.tipoGoogle || ''; }
+  // Busca "oficina" marca tudo como oficina, inclusive concessionária: a
+  // categoria do Google do lado mostra o que a empresa é de fato.
+  function tipoCompleto(c) {
+    const nosso = nomeDoTipo(c);
+    return [nosso, c.tipoGoogle !== nosso ? c.tipoGoogle : ''].filter(Boolean).join(' · ');
+  }
+
+  /* ---------------------------------------------------------------------
+     VENDEDORES — o nome é digitado livre; a lista sai das empresas
+     --------------------------------------------------------------------- */
+  function listaVendedores() {
+    const nomes = {};
+    empresas.forEach(function (c) { if (c.vendedor) nomes[c.vendedor] = true; });
+    return Object.keys(nomes).sort(function (a, b) { return a.localeCompare(b, 'pt-BR'); });
+  }
+
+  // "joão " e "João" viram o mesmo vendedor: usa a grafia que já existe.
+  function nomeVendedor(digitado) {
+    const nome = String(digitado || '').trim().replace(/\s+/g, ' ');
+    if (!nome) return '';
+    const existente = listaVendedores().find(function (v) { return normalizar(v) === normalizar(nome); });
+    return existente || nome;
+  }
+
+  function atualizarListaVendedores() {
+    document.getElementById('dlVendedores').innerHTML = listaVendedores().map(function (v) {
+      return '<option value="' + escapeHtml(v) + '">';
+    }).join('');
+  }
+
   /* ---------------------------------------------------------------------
      NAVEGAÇÃO
      --------------------------------------------------------------------- */
+  let viewAtual = 'busca';
+
   function irParaView(view) {
+    viewAtual = view;
     document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.toggle('active', b.dataset.view === view); });
     document.querySelectorAll('.view').forEach(function (v) { v.style.display = 'none'; });
     document.getElementById('view-' + view).style.display = 'flex';
-    if (view === 'carteira') renderCarteira();
+    renderViewAtual();
     // O Leaflet calcula o tamanho do mapa na hora em que ele aparece.
     if (view === 'busca') setTimeout(function () { mapa.invalidateSize(); }, 50);
   }
@@ -144,9 +265,15 @@
     btn.addEventListener('click', function () { irParaView(btn.dataset.view); });
   });
 
-  function atualizarContadorCarteira() {
-    const n = getCarteira().length;
-    document.getElementById('navContadorCarteira').textContent = n ? String(n) : '';
+  function renderViewAtual() {
+    if (viewAtual === 'banco') renderBanco();
+    if (viewAtual === 'agenda') renderAgenda();
+    if (viewAtual === 'busca' && resultados.length) renderResultados();
+  }
+
+  function atualizarContadorBanco() {
+    const n = empresas.length;
+    document.getElementById('navContadorBanco').textContent = n ? String(n) : '';
   }
 
   /* ---------------------------------------------------------------------
@@ -429,16 +556,31 @@
   let resultados = [];          // empresas normalizadas da busca atual
   let ultimaBusca = null;       // parâmetros, pra "carregar mais" usar os mesmos
   let proximaPagina = '';
+  let novosNoBanco = {};        // id -> true: entrou no banco nesta busca
+  let listaResultadosVisivel = [];
 
+  // Um tipo por busca: as 20 empresas que o Google devolve são todas do tipo
+  // escolhido, em vez de poucas de cada.
   const tiposOpcoes = document.getElementById('tiposOpcoes');
-  tiposOpcoes.innerHTML = Object.keys(CATEGORIAS).map(function (k, i) {
-    return '<label class="tipo-chip"><input type="checkbox" value="' + k + '"' + (i === 0 ? ' checked' : '') + '> ' + escapeHtml(CATEGORIAS[k].nome) + '</label>';
+  tiposOpcoes.innerHTML = Object.keys(CATEGORIAS).concat([OUTRO]).map(function (k, i) {
+    const nome = k === OUTRO ? 'Outro (digitar)' : CATEGORIAS[k].nome;
+    return '<label class="tipo-chip"><input type="radio" name="tipoCliente" value="' + k + '"' + (i === 0 ? ' checked' : '') + '> ' + escapeHtml(nome) + '</label>';
   }).join('');
-  tiposOpcoes.addEventListener('change', atualizarResumo);
+  tiposOpcoes.addEventListener('change', function () {
+    document.getElementById('campoTermoLivre').style.display = tipoMarcado() === OUTRO ? 'flex' : 'none';
+    atualizarResumo();
+  });
   document.getElementById('fTermoLivre').addEventListener('input', atualizarResumo);
 
-  function categoriasMarcadas() {
-    return Array.from(tiposOpcoes.querySelectorAll('input:checked')).map(function (i) { return i.value; });
+  function tipoMarcado() {
+    const i = tiposOpcoes.querySelector('input:checked');
+    return i ? i.value : '';
+  }
+
+  function termoDaBusca() {
+    const t = tipoMarcado();
+    if (t === OUTRO) return document.getElementById('fTermoLivre').value.trim();
+    return CATEGORIAS[t] ? CATEGORIAS[t].termo : '';
   }
 
   // "a", "a ou b", "a, b ou c"
@@ -447,29 +589,24 @@
     return lista.slice(0, -1).join(', ') + ' ou ' + lista[lista.length - 1];
   }
 
-  // Tudo vira UMA busca no Google (decisão pra economizar a cota grátis):
-  // "transportadora ou oficina mecânica de caminhão em Contagem ou Betim, MG".
-  // Ela traz no máximo 20 por vez, misturadas; o "Carregar mais" traz as próximas.
+  // Ex.: "oficina mecânica de caminhão no bairro Industrial, em Contagem ou Betim, MG"
   function textoDaBusca() {
-    const termos = categoriasMarcadas().map(function (k) { return CATEGORIAS[k].termo; });
-    const livre = document.getElementById('fTermoLivre').value.trim();
-    if (livre) termos.push(livre);
-    if (!termos.length || !ufSelecionada) return '';
+    const termo = termoDaBusca();
+    if (!termo || !ufSelecionada) return '';
     let onde = '';
     if (bairrosSelecionados.length) onde += (bairrosSelecionados.length === 1 ? 'no bairro ' : 'nos bairros ') + juntarComOu(bairrosSelecionados) + ', ';
     if (cidadesSelecionadas.length) onde += 'em ' + juntarComOu(cidadesSelecionadas.map(function (c) { return c.nome; })) + ', ' + ufSelecionada.sigla;
     else onde += 'em ' + ufSelecionada.nome;
-    return juntarComOu(termos) + ' ' + onde;
+    return termo + ' ' + onde;
   }
 
   function atualizarResumo() {
     const el = document.getElementById('buscaResumo');
     const q = textoDaBusca();
     if (!q) { el.innerHTML = ''; return; }
-    const qtdTipos = categoriasMarcadas().length + (document.getElementById('fTermoLivre').value.trim() ? 1 : 0);
     let html = 'Vai buscar: <b>' + escapeHtml(q) + '</b><br>Usa 1 busca da cota e traz até 20 empresas.';
-    if (qtdTipos > 1 || cidadesSelecionadas.length > 1 || bairrosSelecionados.length > 1) {
-      html += ' <span class="aviso">Como junta tudo, vêm poucas de cada. Se faltar algum tipo, use "Carregar mais" ou busque ele separado.</span>';
+    if (cidadesSelecionadas.length > 1 || bairrosSelecionados.length > 1) {
+      html += ' <span class="aviso">Com várias cidades ou bairros juntos, as 20 se dividem entre eles. Use "Carregar mais" pra ver as próximas.</span>';
     }
     el.innerHTML = html;
   }
@@ -479,12 +616,11 @@
     return c ? (curto ? c.shortText : c.longText) || '' : '';
   }
 
-  // Busca de um tipo só: a empresa é desse tipo. Busca que juntou vários:
-  // descobre pelo nome, depois pela categoria que o Google deu, e por último
-  // pelas pistas fracas do nome. Sem pista nenhuma fica em branco (aparece
-  // como "Outros", com a categoria do Google do lado).
+  // Tipo escolhido na busca: a empresa é desse tipo. Busca "Outro":
+  // descobre pelo nome, depois pela categoria que o Google deu, e por
+  // último pelas pistas fracas do nome. Sem pista fica em branco.
   function deduzirCategoria(nome, tipoGoogle, busca) {
-    if (busca.categorias.length === 1 && !busca.temLivre) return busca.categorias[0];
+    if (busca.categoria) return busca.categoria;
     const nomeN = normalizar(nome);
     const tipoN = normalizar(tipoGoogle);
     const tentativas = [
@@ -522,15 +658,60 @@
     };
   }
 
+  // Campos que vêm do Google e se atualizam a cada busca. Vendedor, status,
+  // WhatsApp, data e observação são preenchidos pelo pessoal e nunca são
+  // sobrescritos por uma busca nova.
+  const CAMPOS_GOOGLE = ['nome', 'tipoGoogle', 'endereco', 'bairro', 'cidade', 'uf', 'telefone', 'site', 'nota', 'avaliacoes', 'mapsUrl', 'lat', 'lng', 'fechado'];
+
+  // Põe no banco o que é novo e atualiza o que mudou no Google.
+  // Devolve os ids que entraram agora.
+  function guardarNoBanco(lista) {
+    const agora = new Date().toISOString();
+    const mudaram = [];
+    const novos = [];
+    lista.forEach(function (r) {
+      let c = empresaPorId[r.id];
+      if (!c) {
+        c = { id: r.id };
+        CAMPOS_GOOGLE.forEach(function (k) { c[k] = r[k]; });
+        c.categoria = r.categoria;
+        c.tipo = tipoParaMostrar(c);
+        c.whatsapp = ehCelular(r.telefone) ? r.telefone : '';
+        c.vendedor = '';
+        c.status = 'novo';
+        c.ligarEm = '';
+        c.obs = '';
+        c.encontradoEm = agora;
+        c.atualizadoEm = agora;
+        empresas.push(c);
+        empresaPorId[c.id] = c;
+        novos.push(c.id);
+        mudaram.push(c.id);
+        return;
+      }
+      let mudou = false;
+      CAMPOS_GOOGLE.forEach(function (k) {
+        if (JSON.stringify(c[k]) !== JSON.stringify(r[k])) { c[k] = r[k]; mudou = true; }
+      });
+      if (!c.categoria && r.categoria) { c.categoria = r.categoria; mudou = true; }
+      if (mudou) {
+        c.tipo = tipoParaMostrar(c);
+        c.atualizadoEm = agora;
+        mudaram.push(c.id);
+      }
+    });
+    if (mudaram.length) salvarEmpresas(mudaram);
+    return novos;
+  }
+
   function montarBusca() {
     // Texto digitado sem Enter também vale.
     if (document.getElementById('fBairro').value.trim()) adicionarBairrosDigitados();
-    const categorias = categoriasMarcadas();
-    const temLivre = !!document.getElementById('fTermoLivre').value.trim();
-    if (!categorias.length && !temLivre) { alert('Marque pelo menos um tipo de cliente (ou escreva outro tipo).'); return null; }
+    const tipo = tipoMarcado();
+    if (tipo === OUTRO && !document.getElementById('fTermoLivre').value.trim()) { alert('Escreva qual tipo de empresa você procura.'); return null; }
     if (!ufSelecionada) { alert('Escolha pelo menos o estado (no mapa ou na lista).'); return null; }
 
-    const busca = { categorias: categorias, temLivre: temLivre, q: textoDaBusca() };
+    const busca = { categoria: tipo === OUTRO ? '' : tipo, q: textoDaBusca() };
     // Restringe ao retângulo que cobre as cidades (ou o estado): o Google só
     // devolve empresas dentro dessa área, em vez de "parecidas" do país inteiro.
     // Com cidades distantes o retângulo pega as do meio também — o filtro de
@@ -580,10 +761,14 @@
       } else {
         resultados = novos;
         ultimaBusca = busca;
+        novosNoBanco = {};
         FILTROS_RESULTADO.forEach(function (f) { document.getElementById(f.id).value = ''; });
       }
+      const entraram = guardarNoBanco(novos);
+      entraram.forEach(function (id) { novosNoBanco[id] = true; });
       proximaPagina = r.nextPageToken || '';
-      let msg = resultados.length + ' empresa(s) encontrada(s).';
+      let msg = resultados.length + ' empresa(s) encontrada(s)';
+      msg += entraram.length ? ', ' + entraram.length + ' nova(s) guardada(s) no banco.' : ', todas já estavam no banco.';
       if (r.doCache) msg += ' Busca repetida, não contou na cota.';
       else if (typeof r.usadosMes === 'number') msg += ' Buscas usadas este mês: ' + r.usadosMes + ' de ' + r.limite + ' (cota grátis do Google).';
       status.textContent = msg;
@@ -599,12 +784,9 @@
   document.getElementById('btnBuscar').addEventListener('click', function () { executarBusca(false); });
   document.getElementById('btnCarregarMais').addEventListener('click', function () { executarBusca(true); });
 
-  function nomeDoTipo(r) { return (CATEGORIAS[r.categoria] || {}).nome || 'Outros'; }
-
-  // Cada filtro só oferece o que existe nos resultados que passam pelos
-  // filtros anteriores (ex.: escolheu Contagem, só aparecem bairros de Contagem).
+  // Cada filtro só oferece o que existe nos resultados que passam pelo
+  // filtro anterior (ex.: escolheu Contagem, só aparecem bairros de Contagem).
   const FILTROS_RESULTADO = [
-    { id: 'fFiltroTipo', todos: 'Todos os tipos', valor: nomeDoTipo },
     { id: 'fFiltroCidade', todos: 'Todas as cidades', valor: function (r) { return r.cidade; } },
     { id: 'fFiltroBairro', todos: 'Todos os bairros', valor: function (r) { return r.bairro; } }
   ];
@@ -628,69 +810,63 @@
     return lista;
   }
 
-  function idsNaCarteira() {
-    const ids = {};
-    getCarteira().forEach(function (c) { ids[c.id] = true; });
-    return ids;
-  }
-
   function renderResultados() {
     const card = document.getElementById('resultadosCard');
     card.style.display = 'block';
 
     const lista = aplicarFiltrosResultado();
+    listaResultadosVisivel = lista;
     document.getElementById('resultadosContagem').textContent = '(' + lista.length + ')';
     document.getElementById('btnCarregarMais').style.display = proximaPagina ? 'inline-flex' : 'none';
 
-    const salvos = idsNaCarteira();
     const el = document.getElementById('listaResultados');
     if (!lista.length) {
       el.innerHTML = '<p class="muted">Nenhuma empresa encontrada com esses filtros. Tente outro tipo de cliente, outra cidade, ou tire o bairro.</p>';
     } else {
       el.innerHTML = lista.map(function (r) {
-        const wa = linkWhatsapp(r.telefone);
-        const tipo = [r.categoria ? nomeDoTipo(r) : '', r.tipoGoogle].filter(Boolean).join(' · ');
+        const c = empresaPorId[r.id] || {};
+        const wa = linkWhatsapp(c.whatsapp);
+        const tipo = [nomeDoTipo(r), r.tipoGoogle].filter(Boolean).join(' · ');
         const linhas = [];
         if (r.endereco) linhas.push('📍 ' + escapeHtml(r.endereco));
         if (r.telefone) linhas.push('📞 <a href="' + linkTelefone(r.telefone) + '">' + escapeHtml(r.telefone) + '</a>' + (wa ? ' · <a href="' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : ''));
+        else if (wa) linhas.push('💬 <a href="' + wa + '" target="_blank" rel="noopener">WhatsApp</a>');
         if (r.site) linhas.push('🌐 <a href="' + escapeHtml(r.site) + '" target="_blank" rel="noopener">' + escapeHtml(encurtarSite(r.site)) + '</a>');
+        const dono = c.vendedor
+          ? '<div class="res-dono">👤 Vendedor: <b>' + escapeHtml(c.vendedor) + '</b> · ' + escapeHtml(STATUS[c.status] || '') + '</div>'
+          : '<div class="res-dono sem">👤 Sem vendedor</div>';
         return '<div class="res-item' + (r.fechado ? ' fechado' : '') + '" data-id="' + escapeHtml(r.id) + '">' +
           '<div class="res-nome">' + escapeHtml(r.nome) + '</div>' +
           (tipo ? '<div class="res-tipo">' + escapeHtml(tipo) + '</div>' : '') +
           (r.fechado ? '<div class="selo-fechado">Fechado permanentemente</div>' : '') +
           (r.nota !== null ? '<div class="res-nota">⭐ ' + r.nota.toFixed(1) + ' <span class="muted">(' + r.avaliacoes + ' avaliações)</span></div>' : '') +
           linhas.map(function (l) { return '<div class="res-linha">' + l + '</div>'; }).join('') +
+          dono +
           '<div class="res-acoes">' +
-            (salvos[r.id]
-              ? '<span class="selo-salvo">✓ Na carteira</span>'
-              : '<button class="btn bo btn-pequeno" data-salvar="' + escapeHtml(r.id) + '">+ Salvar na carteira</button>') +
+            (novosNoBanco[r.id] ? '<span class="selo-banco novo">🆕 Novo no banco</span>' : '<span class="selo-banco">📂 Já estava no banco</span>') +
             (r.mapsUrl ? '<a class="btn bgray btn-pequeno" href="' + escapeHtml(r.mapsUrl) + '" target="_blank" rel="noopener">Ver no Google Maps</a>' : '') +
           '</div>' +
         '</div>';
       }).join('');
     }
 
-    el.querySelectorAll('[data-salvar]').forEach(function (btn) {
-      btn.addEventListener('click', function () { salvarNaCarteira(btn.dataset.salvar); });
-    });
-
-    desenharMarcadores(lista, salvos);
+    desenharMarcadores(lista);
   }
 
-  function desenharMarcadores(lista, salvos) {
+  function desenharMarcadores(lista) {
     camadaMarcadores.clearLayers();
     const pontos = [];
     lista.forEach(function (r) {
       if (r.lat === null || r.lng === null) return;
-      const salvo = !!salvos[r.id];
+      const c = empresaPorId[r.id] || {};
       const m = L.circleMarker([r.lat, r.lng], {
         radius: 7, weight: 2, color: '#fff',
-        fillColor: salvo ? '#16a34a' : '#EA5B0C', fillOpacity: 0.95
+        fillColor: c.vendedor ? '#16a34a' : '#EA5B0C', fillOpacity: 0.95
       });
       m.bindPopup('<b>' + escapeHtml(r.nome) + '</b>' +
         (r.telefone ? '<br>📞 ' + escapeHtml(r.telefone) : '') +
         (r.bairro ? '<br>' + escapeHtml(r.bairro) : '') +
-        (salvo ? '<br><span style="color:#15803d;font-weight:700">✓ Na carteira</span>' : ''));
+        (c.vendedor ? '<br><span style="color:#15803d;font-weight:700">👤 ' + escapeHtml(c.vendedor) + '</span>' : ''));
       m.on('click', function () {
         const card = document.querySelector('.res-item[data-id="' + CSS.escape(r.id) + '"]');
         if (!card) return;
@@ -704,147 +880,331 @@
     if (pontos.length) mapa.fitBounds(pontos, { padding: [30, 30], maxZoom: 15 });
   }
 
-  function salvarNaCarteira(id) {
-    const r = resultados.find(function (x) { return x.id === id; });
-    if (!r) return;
-    const carteira = getCarteira();
-    if (carteira.find(function (c) { return c.id === id; })) { renderResultados(); return; }
+  // Passa pro vendedor só as empresas da lista que ainda não têm dono:
+  // não tira empresa de quem já está trabalhando nela.
+  document.getElementById('btnAtribuirResultados').addEventListener('click', function () {
+    const input = document.getElementById('resVendedor');
+    const nome = nomeVendedor(input.value);
+    if (!nome) { alert('Escreva o nome do vendedor.'); input.focus(); return; }
+    const daLista = listaResultadosVisivel.map(function (r) { return empresaPorId[r.id]; }).filter(Boolean);
+    const livres = daLista.filter(function (c) { return !c.vendedor; });
+    if (!livres.length) { alert('Todas as empresas desta lista já têm vendedor.'); return; }
+    const ocupadas = daLista.length - livres.length;
+    if (!confirm('Passar ' + livres.length + ' empresa(s) para ' + nome + '?' + (ocupadas ? '\n\n' + ocupadas + ' já têm vendedor e continuam com ele.' : ''))) return;
     const agora = new Date().toISOString();
-    carteira.push({
-      id: r.id, nome: r.nome, categoria: r.categoria, tipoGoogle: r.tipoGoogle,
-      endereco: r.endereco, bairro: r.bairro, cidade: r.cidade, uf: r.uf,
-      telefone: r.telefone, site: r.site, nota: r.nota, avaliacoes: r.avaliacoes,
-      mapsUrl: r.mapsUrl, lat: r.lat, lng: r.lng,
-      status: 'novo', obs: '', salvoEm: agora, atualizadoEm: agora
-    });
-    salvarCarteira(carteira);
+    livres.forEach(function (c) { c.vendedor = nome; c.atualizadoEm = agora; });
+    salvarEmpresas(livres.map(function (c) { return c.id; }));
+    input.value = '';
     renderResultados();
+    document.getElementById('buscaStatus').textContent = '✅ ' + livres.length + ' empresa(s) passada(s) para ' + nome + '. Veja na Agenda de Ligações.';
+  });
+
+  /* ---------------------------------------------------------------------
+     CAMPOS EDITÁVEIS (Banco e Agenda usam os mesmos)
+     --------------------------------------------------------------------- */
+  function opcoesStatus(atual) {
+    return Object.keys(STATUS).map(function (k) {
+      return '<option value="' + k + '"' + (k === atual ? ' selected' : '') + '>' + STATUS[k] + '</option>';
+    }).join('');
+  }
+
+  function celulaWhatsapp(c) {
+    const wa = linkWhatsapp(c.whatsapp);
+    return '<div class="cel-whats"><input type="text" class="campo-tabela campo-whats" data-id="' + escapeHtml(c.id) + '" value="' + escapeHtml(c.whatsapp) + '" placeholder="(DDD) número">' +
+      '<a href="' + (wa || '#') + '" target="_blank" rel="noopener" title="Abrir conversa no WhatsApp" style="' + (wa ? '' : 'display:none') + '">💬</a></div>';
+  }
+
+  // Um "change" em qualquer campo de uma tabela salva a empresa da linha.
+  // Depois disso cada tela decide se precisa redesenhar.
+  function ligarEdicao(tbody, depois) {
+    tbody.addEventListener('change', function (ev) {
+      const el = ev.target;
+      const id = el.dataset.id;
+      if (!id || !empresaPorId[id]) return;
+      let mudancas = null;
+      if (el.classList.contains('campo-whats')) {
+        mudancas = { whatsapp: el.value.trim() };
+        const link = el.parentElement.querySelector('a');
+        const wa = linkWhatsapp(el.value);
+        link.href = wa || '#';
+        link.style.display = wa ? '' : 'none';
+      } else if (el.classList.contains('campo-vendedor')) {
+        mudancas = { vendedor: nomeVendedor(el.value) };
+        el.value = mudancas.vendedor;
+      } else if (el.classList.contains('sel-status')) {
+        mudancas = { status: el.value };
+        el.className = 'campo-tabela sel-status st-' + el.value;
+      } else if (el.classList.contains('campo-data')) {
+        mudancas = { ligarEm: el.value };
+      } else if (el.classList.contains('campo-obs')) {
+        mudancas = { obs: el.value.trim() };
+      }
+      if (!mudancas) return;
+      atualizarEmpresa(id, mudancas);
+      depois(mudancas);
+    });
   }
 
   /* ---------------------------------------------------------------------
-     CARTEIRA DE PROSPECTOS
+     BANCO DE EMPRESAS (tela)
      --------------------------------------------------------------------- */
-  document.getElementById('cartFiltroStatus').innerHTML = '<option value="">Todos</option>' + Object.keys(STATUS).map(function (k) {
+  const SEM_VENDEDOR = '__sem__';
+  const PASSO_BANCO = 200;      // linhas desenhadas por vez (milhares de inputs travam o celular)
+  let limiteBanco = PASSO_BANCO;
+  let marcadas = {};            // id -> true (primeira coluna)
+
+  document.getElementById('bancoFiltroStatus').innerHTML = '<option value="">Todos</option>' + Object.keys(STATUS).map(function (k) {
     return '<option value="' + k + '">' + STATUS[k] + '</option>';
   }).join('');
-  document.getElementById('cartFiltroCategoria').innerHTML = '<option value="">Todos</option>' + Object.keys(CATEGORIAS).map(function (k) {
+  document.getElementById('bancoFiltroCategoria').innerHTML = '<option value="">Todos</option>' + Object.keys(CATEGORIAS).map(function (k) {
     return '<option value="' + k + '">' + escapeHtml(CATEGORIAS[k].nome) + '</option>';
-  }).join('');
+  }).join('') + '<option value="' + OUTRO + '">Outros</option>';
 
-  function carteiraFiltrada() {
-    const st = document.getElementById('cartFiltroStatus').value;
-    const cat = document.getElementById('cartFiltroCategoria').value;
-    const cid = normalizar(document.getElementById('cartFiltroCidade').value);
-    const txt = normalizar(document.getElementById('cartFiltroTexto').value);
-    return getCarteira().filter(function (c) {
-      return (!st || c.status === st) &&
-        (!cat || c.categoria === cat) &&
+  function preencherFiltroVendedor() {
+    const sel = document.getElementById('bancoFiltroVendedor');
+    const atual = sel.value;
+    const vendedores = listaVendedores();
+    sel.innerHTML = '<option value="">Todos</option><option value="' + SEM_VENDEDOR + '">Sem vendedor</option>' + vendedores.map(function (v) {
+      return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>';
+    }).join('');
+    sel.value = (atual === SEM_VENDEDOR || vendedores.indexOf(atual) !== -1) ? atual : '';
+  }
+
+  function bancoFiltrado() {
+    const vend = document.getElementById('bancoFiltroVendedor').value;
+    const st = document.getElementById('bancoFiltroStatus').value;
+    const cat = document.getElementById('bancoFiltroCategoria').value;
+    const cid = normalizar(document.getElementById('bancoFiltroCidade').value);
+    const txt = normalizar(document.getElementById('bancoFiltroTexto').value);
+    return empresas.filter(function (c) {
+      return (!vend || (vend === SEM_VENDEDOR ? !c.vendedor : c.vendedor === vend)) &&
+        (!st || c.status === st) &&
+        (!cat || (cat === OUTRO ? !CATEGORIAS[c.categoria] : c.categoria === cat)) &&
         (!cid || normalizar(c.cidade).indexOf(cid) !== -1) &&
-        (!txt || normalizar([c.nome, c.bairro, c.telefone, c.endereco, c.obs].join(' ')).indexOf(txt) !== -1);
-    }).sort(function (a, b) { return new Date(b.salvoEm) - new Date(a.salvoEm); });
+        (!txt || normalizar([c.nome, c.bairro, c.telefone, c.whatsapp, c.endereco, c.site, c.obs].join(' ')).indexOf(txt) !== -1);
+    }).sort(function (a, b) { return String(b.encontradoEm || '').localeCompare(String(a.encontradoEm || '')); });
   }
 
-  function renderCarteira() {
-    const todos = getCarteira();
+  function atualizarContagemMarcadas() {
+    const n = Object.keys(marcadas).length;
+    document.getElementById('bancoSelecionadas').textContent = n ? n + ' marcada(s). Passar para:' : 'Marque as empresas na primeira coluna';
+  }
+
+  function renderResumoBanco() {
     const contagem = {};
-    todos.forEach(function (c) { contagem[c.status] = (contagem[c.status] || 0) + 1; });
-    document.getElementById('resumoStatus').innerHTML = Object.keys(STATUS).map(function (k) {
-      return '<span class="status-badge st-' + k + '">' + STATUS[k] + ': ' + (contagem[k] || 0) + '</span>';
-    }).join('');
-
-    const lista = carteiraFiltrada();
-    const tbody = document.querySelector('#tblCarteira tbody');
-    if (!lista.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="9">' + (todos.length ? 'Nenhum prospecto com esses filtros.' : 'Nenhum prospecto salvo ainda. Busque no mapa e clique em "Salvar na carteira".') + '</td></tr>';
-      return;
-    }
-    tbody.innerHTML = lista.map(function (c) {
-      const wa = linkWhatsapp(c.telefone);
-      const contato = [];
-      if (c.telefone) contato.push('<a href="' + linkTelefone(c.telefone) + '">' + escapeHtml(c.telefone) + '</a>');
-      if (wa) contato.push('<a href="' + wa + '" target="_blank" rel="noopener">WhatsApp</a>');
-      if (c.site) contato.push('<a href="' + escapeHtml(c.site) + '" target="_blank" rel="noopener">Site</a>');
-      const opcoes = Object.keys(STATUS).map(function (k) {
-        return '<option value="' + k + '"' + (k === c.status ? ' selected' : '') + '>' + STATUS[k] + '</option>';
+    empresas.forEach(function (c) { contagem[c.status] = (contagem[c.status] || 0) + 1; });
+    const semVendedor = empresas.filter(function (c) { return !c.vendedor; }).length;
+    document.getElementById('resumoStatus').innerHTML =
+      '<span class="status-badge st-novo">Total: ' + empresas.length + '</span>' +
+      '<span class="status-badge st-novo">Sem vendedor: ' + semVendedor + '</span>' +
+      Object.keys(STATUS).map(function (k) {
+        return '<span class="status-badge st-' + k + '">' + STATUS[k] + ': ' + (contagem[k] || 0) + '</span>';
       }).join('');
-      return '<tr>' +
-        '<td class="nome-cel">' + escapeHtml(c.nome) + '</td>' +
-        '<td>' + escapeHtml((CATEGORIAS[c.categoria] || {}).nome || c.tipoGoogle || '') + '</td>' +
-        '<td>' + escapeHtml(c.cidade) + (c.uf ? ' - ' + escapeHtml(c.uf) : '') + '</td>' +
-        '<td>' + escapeHtml(c.bairro) + '</td>' +
-        '<td class="contato-cel">' + (contato.join('<br>') || '<span class="muted">—</span>') + '</td>' +
-        '<td><select class="campo-tabela sel-status st-' + c.status + '" data-id="' + escapeHtml(c.id) + '">' + opcoes + '</select></td>' +
-        '<td><input type="text" class="campo-tabela campo-obs" data-id="' + escapeHtml(c.id) + '" value="' + escapeHtml(c.obs) + '" placeholder="Anotação..."></td>' +
-        '<td class="tc">' + fmtData(c.salvoEm) + '</td>' +
-        '<td class="tc" style="white-space:nowrap">' +
-          (c.mapsUrl ? '<a class="icon-btn" href="' + escapeHtml(c.mapsUrl) + '" target="_blank" rel="noopener" title="Ver no Google Maps">🗺️</a>' : '') +
-          '<button class="icon-btn" data-excluir="' + escapeHtml(c.id) + '" title="Remover da carteira">🗑️</button>' +
-        '</td>' +
-      '</tr>';
-    }).join('');
-
-    tbody.querySelectorAll('.sel-status').forEach(function (sel) {
-      sel.addEventListener('change', function () { atualizarProspecto(sel.dataset.id, { status: sel.value }); renderCarteira(); });
-    });
-    tbody.querySelectorAll('.campo-obs').forEach(function (inp) {
-      inp.addEventListener('change', function () { atualizarProspecto(inp.dataset.id, { obs: inp.value.trim() }); });
-    });
-    tbody.querySelectorAll('[data-excluir]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        const c = getCarteira().find(function (x) { return x.id === btn.dataset.excluir; });
-        if (!c || !confirm('Remover "' + c.nome + '" da carteira?')) return;
-        salvarCarteira(getCarteira().filter(function (x) { return x.id !== c.id; }));
-        renderCarteira();
-      });
-    });
   }
 
-  function atualizarProspecto(id, mudancas) {
-    const carteira = getCarteira();
-    const c = carteira.find(function (x) { return x.id === id; });
-    if (!c) return;
-    Object.keys(mudancas).forEach(function (k) { c[k] = mudancas[k]; });
-    c.atualizadoEm = new Date().toISOString();
-    salvarCarteira(carteira);
+  function renderBanco() {
+    const todos = empresas;
+    renderResumoBanco();
+    preencherFiltroVendedor();
+
+    const lista = bancoFiltrado();
+    const visiveis = lista.slice(0, limiteBanco);
+    const tbody = document.querySelector('#tblBanco tbody');
+    if (!lista.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="12">' + (todos.length ? 'Nenhuma empresa com esses filtros.' : 'O banco ainda está vazio. Toda busca no mapa guarda as empresas encontradas aqui.') + '</td></tr>';
+    } else {
+      tbody.innerHTML = visiveis.map(function (c) {
+        const id = escapeHtml(c.id);
+        return '<tr class="' + (marcadas[c.id] ? 'linha-marcada' : '') + '">' +
+          '<td class="tc"><input type="checkbox" class="marcar-linha" data-marcar="' + id + '"' + (marcadas[c.id] ? ' checked' : '') + '></td>' +
+          '<td class="nome-cel">' + escapeHtml(c.nome) + (c.fechado ? ' <span class="selo-fechado">(fechada)</span>' : '') + '<div class="sub">' + escapeHtml(tipoCompleto(c)) + '</div></td>' +
+          '<td><input type="text" class="campo-tabela campo-vendedor" list="dlVendedores" data-id="' + id + '" value="' + escapeHtml(c.vendedor) + '" placeholder="Vendedor..."></td>' +
+          '<td>' + celulaWhatsapp(c) + '</td>' +
+          '<td class="contato-cel">' + (c.telefone ? '<a href="' + linkTelefone(c.telefone) + '">' + escapeHtml(c.telefone) + '</a>' : '<span class="muted">—</span>') + '</td>' +
+          '<td class="contato-cel site-cel">' + (c.site ? '<a href="' + escapeHtml(c.site) + '" target="_blank" rel="noopener" title="' + escapeHtml(c.site) + '">' + escapeHtml(encurtarSite(c.site)) + '</a>' : '<span class="muted">—</span>') + '</td>' +
+          '<td>' + escapeHtml(c.cidade) + (c.uf ? ' - ' + escapeHtml(c.uf) : '') + '</td>' +
+          '<td class="end-cel">' + escapeHtml(c.endereco) + '</td>' +
+          '<td><select class="campo-tabela sel-status st-' + c.status + '" data-id="' + id + '">' + opcoesStatus(c.status) + '</select></td>' +
+          '<td><input type="date" class="campo-tabela campo-data" data-id="' + id + '" value="' + escapeHtml(c.ligarEm) + '"></td>' +
+          '<td><input type="text" class="campo-tabela campo-obs" data-id="' + id + '" value="' + escapeHtml(c.obs) + '" placeholder="Anotação..."></td>' +
+          '<td class="tc">' + (c.mapsUrl ? '<a class="icon-btn" href="' + escapeHtml(c.mapsUrl) + '" target="_blank" rel="noopener" title="Ver no Google Maps">🗺️</a>' : '') + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+    document.getElementById('bancoMarcarTodas').checked = visiveis.length > 0 && visiveis.every(function (c) { return marcadas[c.id]; });
+    document.getElementById('bancoRodape').textContent = lista.length ? 'Mostrando ' + visiveis.length + ' de ' + lista.length + ' empresa(s).' : '';
+    const btnMais = document.getElementById('btnBancoMais');
+    btnMais.style.display = lista.length > visiveis.length ? 'inline-flex' : 'none';
+    btnMais.textContent = 'Mostrar mais ' + Math.min(PASSO_BANCO, lista.length - visiveis.length);
+    atualizarContagemMarcadas();
   }
 
-  ['cartFiltroStatus', 'cartFiltroCategoria'].forEach(function (id) {
-    document.getElementById(id).addEventListener('change', renderCarteira);
+  const tbodyBanco = document.querySelector('#tblBanco tbody');
+  // Sem redesenhar a tabela (o foco pularia pro topo): o campo já mostra o
+  // valor novo, só o resumo e a lista de vendedores do filtro mudam.
+  ligarEdicao(tbodyBanco, function (mudancas) {
+    if ('vendedor' in mudancas || 'status' in mudancas) {
+      renderResumoBanco();
+      preencherFiltroVendedor();
+    }
   });
-  ['cartFiltroCidade', 'cartFiltroTexto'].forEach(function (id) {
-    document.getElementById(id).addEventListener('input', renderCarteira);
+  tbodyBanco.addEventListener('change', function (ev) {
+    const id = ev.target.dataset.marcar;
+    if (!id) return;
+    if (ev.target.checked) marcadas[id] = true; else delete marcadas[id];
+    ev.target.closest('tr').classList.toggle('linha-marcada', ev.target.checked);
+    atualizarContagemMarcadas();
+  });
+  document.getElementById('bancoMarcarTodas').addEventListener('change', function () {
+    const marcar = this.checked;
+    tbodyBanco.querySelectorAll('.marcar-linha').forEach(function (cb) {
+      cb.checked = marcar;
+      if (marcar) marcadas[cb.dataset.marcar] = true; else delete marcadas[cb.dataset.marcar];
+      cb.closest('tr').classList.toggle('linha-marcada', marcar);
+    });
+    atualizarContagemMarcadas();
+  });
+
+  // Filtro novo = lista nova: desmarca tudo e volta pras primeiras linhas.
+  function filtroBancoMudou() {
+    marcadas = {};
+    limiteBanco = PASSO_BANCO;
+    renderBanco();
+  }
+  ['bancoFiltroVendedor', 'bancoFiltroStatus', 'bancoFiltroCategoria'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', filtroBancoMudou);
+  });
+  ['bancoFiltroCidade', 'bancoFiltroTexto'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', filtroBancoMudou);
+  });
+  document.getElementById('btnBancoMais').addEventListener('click', function () {
+    limiteBanco += PASSO_BANCO;
+    renderBanco();
+  });
+
+  document.getElementById('btnAtribuirLote').addEventListener('click', function () {
+    const ids = Object.keys(marcadas).filter(function (id) { return empresaPorId[id]; });
+    if (!ids.length) { alert('Marque as empresas na primeira coluna da tabela.'); return; }
+    const input = document.getElementById('bancoVendedorLote');
+    const nome = nomeVendedor(input.value);
+    let pergunta;
+    if (!nome) {
+      pergunta = 'Tirar o vendedor das ' + ids.length + ' empresa(s) marcada(s)?';
+    } else {
+      const deOutro = ids.filter(function (id) { const v = empresaPorId[id].vendedor; return v && v !== nome; }).length;
+      pergunta = 'Passar ' + ids.length + ' empresa(s) para ' + nome + '?' + (deOutro ? '\n\n' + deOutro + ' delas estão com outro vendedor e vão passar para ' + nome + '.' : '');
+    }
+    if (!confirm(pergunta)) return;
+    const agora = new Date().toISOString();
+    ids.forEach(function (id) { empresaPorId[id].vendedor = nome; empresaPorId[id].atualizadoEm = agora; });
+    salvarEmpresas(ids);
+    marcadas = {};
+    input.value = '';
+    renderBanco();
   });
 
   // CSV com ";" e BOM: é o formato que o Excel em português abre direto,
   // com acentos certos e cada campo na sua coluna.
   document.getElementById('btnExportarCSV').addEventListener('click', function () {
-    const lista = carteiraFiltrada();
-    if (!lista.length) { alert('Não há prospectos pra exportar com esses filtros.'); return; }
-    const colunas = ['Empresa', 'Tipo', 'Status', 'Telefone', 'WhatsApp', 'Site', 'Endereço', 'Bairro', 'Cidade', 'UF', 'Nota Google', 'Avaliações', 'Observação', 'Google Maps', 'Salvo em'];
+    const lista = bancoFiltrado();
+    if (!lista.length) { alert('Não há empresas pra exportar com esses filtros.'); return; }
+    const colunas = ['Empresa', 'Tipo', 'WhatsApp', 'Telefone', 'Site', 'Cidade', 'UF', 'Bairro', 'Endereço', 'Vendedor', 'Status', 'Ligar em', 'Observação', 'Nota Google', 'Avaliações', 'Google Maps', 'Encontrada em'];
     const cel = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
     const linhas = lista.map(function (c) {
       return [
-        c.nome, (CATEGORIAS[c.categoria] || {}).nome || c.tipoGoogle, STATUS[c.status] || c.status,
-        c.telefone, linkWhatsapp(c.telefone), c.site, c.endereco, c.bairro, c.cidade, c.uf,
-        c.nota === null ? '' : String(c.nota).replace('.', ','), c.avaliacoes, c.obs, c.mapsUrl, fmtData(c.salvoEm)
+        c.nome, tipoParaMostrar(c), c.whatsapp, c.telefone, c.site, c.cidade, c.uf, c.bairro, c.endereco,
+        c.vendedor, STATUS[c.status] || c.status, fmtDia(c.ligarEm), c.obs,
+        c.nota === null || c.nota === undefined ? '' : String(c.nota).replace('.', ','), c.avaliacoes, c.mapsUrl, fmtData(c.encontradoEm)
       ].map(cel).join(';');
     });
     const csv = '﻿' + colunas.map(cel).join(';') + '\r\n' + linhas.join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'carteira-prospectos-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = 'banco-empresas-' + hojeISO() + '.csv';
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   });
 
   /* ---------------------------------------------------------------------
+     AGENDA DE LIGAÇÕES — empresas de um vendedor, pela data de ligar.
+     Descartadas não aparecem.
+     --------------------------------------------------------------------- */
+  function empresasDaAgenda(vendedor) {
+    return empresas.filter(function (c) { return c.vendedor === vendedor && c.status !== 'descartado'; });
+  }
+
+  function renderAgenda() {
+    const sel = document.getElementById('agendaVendedor');
+    const atual = sel.value;
+    const vendedores = listaVendedores();
+    sel.innerHTML = vendedores.length ? vendedores.map(function (v) {
+      return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + ' (' + empresasDaAgenda(v).length + ')</option>';
+    }).join('') : '<option value="">Nenhum vendedor ainda</option>';
+    if (vendedores.indexOf(atual) !== -1) sel.value = atual;
+    const vend = sel.value;
+    const el = document.getElementById('agendaConteudo');
+    document.getElementById('agendaTituloImpressao').textContent = vend ? 'Agenda de ligações — ' + vend + ' — ' + fmtDia(hojeISO()) : '';
+    if (!vend) {
+      el.innerHTML = '<p class="muted" style="margin-top:12px">Ainda não há empresas com vendedor. Nos resultados da busca ou no Banco de Empresas, preencha o vendedor das empresas que ele vai atender.</p>';
+      return;
+    }
+
+    const hoje = hojeISO();
+    const lista = empresasDaAgenda(vend);
+    const porData = function (a, b) { return String(a.ligarEm).localeCompare(String(b.ligarEm)) || a.nome.localeCompare(b.nome, 'pt-BR'); };
+    const grupos = [
+      { titulo: '🔴 Atrasadas', classe: 'atrasada', itens: lista.filter(function (c) { return c.ligarEm && c.ligarEm < hoje; }).sort(porData) },
+      { titulo: '🟠 Ligar hoje', classe: 'hoje', itens: lista.filter(function (c) { return c.ligarEm === hoje; }).sort(porData) },
+      { titulo: '📆 Próximos dias', classe: '', itens: lista.filter(function (c) { return c.ligarEm > hoje; }).sort(porData) },
+      { titulo: '⚪ Sem data marcada', classe: '', itens: lista.filter(function (c) { return !c.ligarEm; }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); }) }
+    ];
+
+    if (!lista.length) {
+      el.innerHTML = '<p class="muted" style="margin-top:12px">' + escapeHtml(vend) + ' não tem empresas ativas (as descartadas não aparecem na agenda).</p>';
+      return;
+    }
+    el.innerHTML = '<p class="agenda-resumo">' + lista.length + ' empresa(s) · ' + grupos[0].itens.length + ' atrasada(s) · ' + grupos[1].itens.length + ' pra hoje</p>' +
+      grupos.filter(function (g) { return g.itens.length; }).map(function (g) {
+        return '<h4 class="agenda-titulo ' + g.classe + '">' + g.titulo + ' <span class="muted">(' + g.itens.length + ')</span></h4>' +
+          '<div class="table-wrap"><table><thead><tr><th>Empresa</th><th>WhatsApp</th><th>Telefone</th><th>Cidade</th><th>Status</th><th>Ligar em</th><th>Observação</th></tr></thead><tbody>' +
+          g.itens.map(function (c) {
+            const id = escapeHtml(c.id);
+            return '<tr>' +
+              '<td class="nome-cel">' + escapeHtml(c.nome) + '<div class="sub">' + escapeHtml(tipoCompleto(c)) + (c.site ? ' · <a href="' + escapeHtml(c.site) + '" target="_blank" rel="noopener">site</a>' : '') + '</div></td>' +
+              '<td>' + celulaWhatsapp(c) + '</td>' +
+              '<td class="contato-cel">' + (c.telefone ? '<a href="' + linkTelefone(c.telefone) + '">' + escapeHtml(c.telefone) + '</a>' : '<span class="muted">—</span>') + '</td>' +
+              '<td>' + escapeHtml(c.cidade) + (c.bairro ? '<div class="sub muted">' + escapeHtml(c.bairro) + '</div>' : '') + '</td>' +
+              '<td><select class="campo-tabela sel-status st-' + c.status + '" data-id="' + id + '">' + opcoesStatus(c.status) + '</select></td>' +
+              '<td><input type="date" class="campo-tabela campo-data" data-id="' + id + '" value="' + escapeHtml(c.ligarEm) + '"></td>' +
+              '<td><input type="text" class="campo-tabela campo-obs" data-id="' + id + '" value="' + escapeHtml(c.obs) + '" placeholder="Anotação..."></td>' +
+            '</tr>';
+          }).join('') +
+          '</tbody></table></div>';
+      }).join('');
+  }
+
+  // Mudou a data ou o status: a empresa pode trocar de grupo (ou sair, se
+  // foi descartada), então redesenha.
+  ligarEdicao(document.getElementById('agendaConteudo'), function (mudancas) {
+    if ('ligarEm' in mudancas || 'status' in mudancas) renderAgenda();
+  });
+  document.getElementById('agendaVendedor').addEventListener('change', renderAgenda);
+  document.getElementById('btnImprimirAgenda').addEventListener('click', function () { window.print(); });
+
+  /* ---------------------------------------------------------------------
      INICIALIZAÇÃO
      --------------------------------------------------------------------- */
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-  atualizarContadorCarteira();
+  carregarLocal();
+  atualizarContadorBanco();
+  atualizarListaVendedores();
   carregarEstados();
-  carregarDoServidor().then(atualizarContadorCarteira);
+  carregarDoServidor().then(function () {
+    atualizarContadorBanco();
+    atualizarListaVendedores();
+    renderViewAtual();
+  });
 
 })();

@@ -102,10 +102,16 @@ input:disabled{background:#f3f2f1;color:#aaa}
 .res-linha a:hover{text-decoration:underline}
 .res-nota{font-size:.78rem;color:#b45309;font-weight:700}
 .res-acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-.selo-salvo{display:inline-flex;align-items:center;padding:6px 12px;border-radius:8px;font-size:.74rem;font-weight:700;background:#dcfce7;color:#15803d}
+.selo-banco{display:inline-flex;align-items:center;padding:6px 12px;border-radius:8px;font-size:.74rem;font-weight:700;background:#f3f4f6;color:#4b5563}
+.selo-banco.novo{background:#dcfce7;color:#15803d}
+.res-dono{font-size:.78rem;color:var(--dark)}
+.res-dono.sem{color:#aaa}
 .selo-fechado{font-size:.7rem;font-weight:700;color:var(--bad)}
+.barra-atribuir{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--dark);background:#faf9f8;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px}
+.barra-atribuir input{width:220px}
+.barra-atribuir .ml{margin-left:auto}
 
-/* ===== Carteira ===== */
+/* ===== Banco de Empresas / Agenda ===== */
 .resumo-status{display:flex;gap:8px;flex-wrap:wrap}
 .status-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:20px;font-size:.7rem;font-weight:700;white-space:nowrap}
 .st-novo{background:#f3f4f6;color:#374151}
@@ -121,9 +127,23 @@ tbody td{border:1px solid var(--border);padding:7px 10px;vertical-align:middle}
 tbody tr:nth-child(even){background:#fafafa}
 .empty-row td{text-align:center;color:#bbb;font-style:italic;padding:18px}
 .tc{text-align:center}
-.nome-cel{font-weight:600}
+.nome-cel{font-weight:600;min-width:180px}
+.nome-cel .sub{font-weight:500;font-size:.7rem;color:#999;margin-top:2px}
 .campo-tabela{padding:5px 7px;font-size:.78rem;min-width:130px}
+.campo-data{min-width:0;width:135px}
 .contato-cel a{color:var(--orange);font-weight:600;text-decoration:none;white-space:nowrap}
+.site-cel a{display:inline-block;max-width:170px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+.end-cel{min-width:220px;font-size:.75rem;color:var(--dark)}
+.cel-whats{display:flex;align-items:center;gap:4px}
+.cel-whats a{text-decoration:none;font-size:1rem}
+.linha-marcada td{background:var(--orange-dim)}
+.agenda-topo{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.agenda-vendedor{min-width:260px}
+.agenda-resumo{font-size:.82rem;color:var(--dark);margin:12px 0 4px}
+.agenda-titulo{font-size:.85rem;font-weight:700;margin:20px 0 8px;color:var(--black)}
+.agenda-titulo.atrasada{color:var(--bad)}
+.agenda-titulo.hoje{color:var(--warn)}
+.agenda-impressao-titulo{display:none}
 
 /* ===== Celular ===== */
 @media (max-width:860px){
@@ -139,4 +159,21 @@ tbody tr:nth-child(even){background:#fafafa}
   #mapa{height:380px}
   .lista-resultados{grid-template-columns:1fr}
   .resultados-filtros,.resultados-filtro{width:100%}
+  .barra-atribuir input{width:100%}
+  .barra-atribuir .ml{margin-left:0}
+  .agenda-vendedor{min-width:0;width:100%}
+}
+
+/* ===== Impressão da agenda: só a lista do vendedor ===== */
+@media print{
+  .hdr,.sidebar,.no-print{display:none !important}
+  body{background:#fff}
+  .layout{display:block}
+  .main-area{padding:0}
+  .card{border:none;box-shadow:none;padding:0}
+  .agenda-impressao-titulo{display:block;font-size:1.1rem;margin-bottom:8px}
+  .table-wrap{max-height:none;overflow:visible}
+  table{font-size:.72rem}
+  tbody tr{break-inside:avoid}
+  input,select{border:none;padding:0;background:none;-webkit-appearance:none;appearance:none}
 }
