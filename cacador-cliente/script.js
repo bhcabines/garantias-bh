@@ -53,9 +53,14 @@
   let empresaPorId = {};
   let pendentes = [];           // ids alterados aqui e ainda não confirmados pelo servidor
 
+  // Além do ID principal, cada empresa responde pelos IDs das outras fichas
+  // do Google que já foram reconhecidas como ela (outrosIds).
   function reindexar() {
     empresaPorId = {};
     empresas.forEach(function (c) { empresaPorId[c.id] = c; });
+    empresas.forEach(function (c) {
+      (c.outrosIds || []).forEach(function (id) { if (!empresaPorId[id]) empresaPorId[id] = c; });
+    });
   }
 
   // localStorage pode estar cheio ou bloqueado: aí o banco fica só na
@@ -204,6 +209,19 @@
     let d = soDigitos(numero);
     if ((d.length === 12 || d.length === 13) && d.indexOf('55') === 0) d = d.slice(2);
     return (d.length === 10 || d.length === 11) ? 'https://wa.me/55' + d : '';
+  }
+
+  // Telefone só com dígitos e sem o 55: "(31) 3530-7060" e "+55 31 3530-7060" batem.
+  function chaveFone(telefone) {
+    let d = soDigitos(telefone);
+    if ((d.length === 12 || d.length === 13) && d.indexOf('55') === 0) d = d.slice(2);
+    return d.length >= 10 ? d : '';
+  }
+
+  // Nome sem acento, caixa, pontuação e sufixo de razão social:
+  // "MASTER DISTRIBUIDORA DE PEÇAS LTDA" = "Master Distribuidora de Peças".
+  function chaveNome(nome) {
+    return normalizar(nome).replace(/[^a-z0-9]+/g, ' ').replace(/\b(ltda|me|eireli|epp|s ?a)\b/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   function linkTelefone(telefone) {
@@ -664,14 +682,43 @@
   const CAMPOS_GOOGLE = ['nome', 'tipoGoogle', 'endereco', 'bairro', 'cidade', 'uf', 'telefone', 'site', 'nota', 'avaliacoes', 'mapsUrl', 'lat', 'lng', 'fechado'];
 
   // Põe no banco o que é novo e atualiza o que mudou no Google.
-  // Devolve os ids que entraram agora.
+  // Empresa não entra duas vezes: além do mesmo ID, a mesma empresa pode ter
+  // duas fichas no Google (loja e escritório, por exemplo). Se já existe uma
+  // na mesma cidade com o mesmo telefone ou o mesmo nome, a ficha nova vira
+  // um "outro ID" dela. Devolve { novos, repetidas }.
   function guardarNoBanco(lista) {
     const agora = new Date().toISOString();
     const mudaram = [];
     const novos = [];
+    let repetidas = 0;
+    const porFone = {};
+    const porNome = {};
+    function indexar(c) {
+      const cid = normalizar(c.cidade);
+      [c.telefone, c.whatsapp].forEach(function (t) { const f = chaveFone(t); if (f) porFone[cid + '|' + f] = c; });
+      const n = chaveNome(c.nome);
+      if (n) porNome[cid + '|' + n] = c;
+    }
+    function mesmaEmpresa(r) {
+      const cid = normalizar(r.cidade);
+      const f = chaveFone(r.telefone);
+      return (f && porFone[cid + '|' + f]) || porNome[cid + '|' + chaveNome(r.nome)] || null;
+    }
+    function marcarMudou(id) { if (mudaram.indexOf(id) === -1) mudaram.push(id); }
+    empresas.forEach(indexar);
+
     lista.forEach(function (r) {
       let c = empresaPorId[r.id];
       if (!c) {
+        const igual = mesmaEmpresa(r);
+        if (igual) {
+          igual.outrosIds = (igual.outrosIds || []).concat([r.id]);
+          igual.atualizadoEm = agora;
+          empresaPorId[r.id] = igual;
+          repetidas++;
+          marcarMudou(igual.id);
+          return;
+        }
         c = { id: r.id };
         CAMPOS_GOOGLE.forEach(function (k) { c[k] = r[k]; });
         c.categoria = r.categoria;
@@ -685,10 +732,14 @@
         c.atualizadoEm = agora;
         empresas.push(c);
         empresaPorId[c.id] = c;
+        indexar(c); // a outra ficha dela pode vir nesta mesma busca
         novos.push(c.id);
-        mudaram.push(c.id);
+        marcarMudou(c.id);
         return;
       }
+      // Ficha secundária: os dados do Google ficam os da ficha principal,
+      // senão a empresa alternaria entre os dois endereços a cada busca.
+      if (c.id !== r.id) return;
       let mudou = false;
       CAMPOS_GOOGLE.forEach(function (k) {
         if (JSON.stringify(c[k]) !== JSON.stringify(r[k])) { c[k] = r[k]; mudou = true; }
@@ -697,11 +748,11 @@
       if (mudou) {
         c.tipo = tipoParaMostrar(c);
         c.atualizadoEm = agora;
-        mudaram.push(c.id);
+        marcarMudou(c.id);
       }
     });
     if (mudaram.length) salvarEmpresas(mudaram);
-    return novos;
+    return { novos: novos, repetidas: repetidas };
   }
 
   function montarBusca() {
@@ -764,11 +815,13 @@
         novosNoBanco = {};
         FILTROS_RESULTADO.forEach(function (f) { document.getElementById(f.id).value = ''; });
       }
-      const entraram = guardarNoBanco(novos);
-      entraram.forEach(function (id) { novosNoBanco[id] = true; });
+      const guardado = guardarNoBanco(novos);
+      guardado.novos.forEach(function (id) { novosNoBanco[id] = true; });
       proximaPagina = r.nextPageToken || '';
       let msg = resultados.length + ' empresa(s) encontrada(s)';
-      msg += entraram.length ? ', ' + entraram.length + ' nova(s) guardada(s) no banco.' : ', todas já estavam no banco.';
+      msg += guardado.novos.length ? ', ' + guardado.novos.length + ' nova(s) guardada(s) no banco.' : ', todas já estavam no banco.';
+      if (guardado.repetidas === 1) msg += ' 1 era outra ficha do Google de uma empresa que já está no banco e não foi duplicada.';
+      else if (guardado.repetidas > 1) msg += ' ' + guardado.repetidas + ' eram outras fichas do Google de empresas que já estão no banco e não foram duplicadas.';
       if (r.doCache) msg += ' Busca repetida, não contou na cota.';
       else if (typeof r.usadosMes === 'number') msg += ' Buscas usadas este mês: ' + r.usadosMes + ' de ' + r.limite + ' (cota grátis do Google).';
       status.textContent = msg;
@@ -843,7 +896,9 @@
           linhas.map(function (l) { return '<div class="res-linha">' + l + '</div>'; }).join('') +
           dono +
           '<div class="res-acoes">' +
-            (novosNoBanco[r.id] ? '<span class="selo-banco novo">🆕 Novo no banco</span>' : '<span class="selo-banco">📂 Já estava no banco</span>') +
+            (novosNoBanco[r.id] ? '<span class="selo-banco novo">🆕 Novo no banco</span>'
+              : c.id && c.id !== r.id ? '<span class="selo-banco" title="Outra ficha do Google da mesma empresa (mesmo telefone ou nome na mesma cidade)">📂 Já no banco como "' + escapeHtml(c.nome) + '"</span>'
+              : '<span class="selo-banco">📂 Já estava no banco</span>') +
             (r.mapsUrl ? '<a class="btn bgray btn-pequeno" href="' + escapeHtml(r.mapsUrl) + '" target="_blank" rel="noopener">Ver no Google Maps</a>' : '') +
           '</div>' +
         '</div>';
@@ -886,7 +941,13 @@
     const input = document.getElementById('resVendedor');
     const nome = nomeVendedor(input.value);
     if (!nome) { alert('Escreva o nome do vendedor.'); input.focus(); return; }
-    const daLista = listaResultadosVisivel.map(function (r) { return empresaPorId[r.id]; }).filter(Boolean);
+    // Duas fichas da mesma empresa na lista contam uma vez só.
+    const vistas = {};
+    const daLista = listaResultadosVisivel.map(function (r) { return empresaPorId[r.id]; }).filter(function (c) {
+      if (!c || vistas[c.id]) return false;
+      vistas[c.id] = true;
+      return true;
+    });
     const livres = daLista.filter(function (c) { return !c.vendedor; });
     if (!livres.length) { alert('Todas as empresas desta lista já têm vendedor.'); return; }
     const ocupadas = daLista.length - livres.length;
