@@ -40,6 +40,19 @@ Cockpit.Sync = (function () {
     return post({ action: 'deleteCockpitVendas', data: { data: dataStr }, nome: Cockpit.Auth.currentUserName() });
   }
 
+  // Agenda: contatos do banco do Caçador de Cliente. Com o código, o Apps
+  // Script devolve só os do vendedor; ao salvar, "porVendedor" faz ele recusar
+  // contato que não é desse vendedor (gestor manda sem, e pode mexer em todos).
+  function fetchAgenda(codigoVendedor) {
+    return fetch(SYNC_URL + '?action=getBancoCacador&vendedor=' + encodeURIComponent(codigoVendedor) + '&t=' + Date.now())
+      .then(function (r) { return r.json(); });
+  }
+  function pushAgenda(lista, porVendedor) {
+    const payload = { action: 'atualizarEmpresasCacador', data: lista, nome: Cockpit.Auth.currentUserName() };
+    if (porVendedor) payload.porVendedor = porVendedor;
+    return post(payload);
+  }
+
   return {
     fetchConfig: fetchConfig,
     pushConfig: pushConfig,
@@ -47,6 +60,8 @@ Cockpit.Sync = (function () {
     pushVendedores: pushVendedores,
     fetchVendas: fetchVendas,
     pushVendas: pushVendas,
-    deleteVendas: deleteVendas
+    deleteVendas: deleteVendas,
+    fetchAgenda: fetchAgenda,
+    pushAgenda: pushAgenda
   };
 })();

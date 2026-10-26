@@ -37,16 +37,13 @@
   </div>
 </header>
 
-<!-- Nomes de vendedor já usados: sugestão em todo campo de vendedor -->
-<datalist id="dlVendedores"></datalist>
-
 <div class="layout">
 
   <aside class="sidebar">
     <div class="sidebar-inner">
       <button class="nav-item active" data-view="busca">🗺️ Buscar no Mapa</button>
       <button class="nav-item" data-view="banco">🗂️ Banco de Empresas <span class="nav-contador" id="navContadorBanco"></span></button>
-      <button class="nav-item" data-view="agenda">📅 Agenda de Ligações</button>
+      <button class="nav-item" data-view="distribuicao">👥 Distribuição</button>
     </div>
   </aside>
 
@@ -110,11 +107,6 @@
             </div>
           </div>
         </div>
-        <div class="barra-atribuir">
-          <span>Passar as empresas <b>sem vendedor</b> desta lista para:</span>
-          <input type="text" id="resVendedor" list="dlVendedores" placeholder="Nome do vendedor" autocomplete="off">
-          <button class="btn bo btn-pequeno" id="btnAtribuirResultados">Atribuir</button>
-        </div>
         <div id="listaResultados" class="lista-resultados"></div>
         <div class="btn-row-h" style="margin-top:14px">
           <button class="btn bgray" id="btnCarregarMais" style="display:none">Carregar mais 20</button>
@@ -127,7 +119,7 @@
     <section class="view" id="view-banco" style="display:none">
       <div class="card">
         <h3 class="card-title">Banco de Empresas</h3>
-        <p class="muted" style="margin-bottom:12px">Toda empresa que aparece numa busca fica guardada aqui. Escolha o vendedor de cada uma pra montar a agenda de ligações dele.</p>
+        <p class="muted" style="margin-bottom:12px">Toda empresa que aparece numa busca fica guardada aqui e é distribuída sozinha entre os vendedores (veja em Distribuição). Cada vendedor trabalha os contatos dele na Agenda do Cockpit Comercial. Aqui dá pra conferir tudo e passar uma empresa pra outro vendedor.</p>
         <div class="resumo-status" id="resumoStatus"></div>
         <div class="form-row" style="margin-top:14px">
           <div class="field"><label>Vendedor</label><select id="bancoFiltroVendedor"></select></div>
@@ -138,8 +130,8 @@
         </div>
         <div class="barra-atribuir" style="margin-top:14px">
           <span id="bancoSelecionadas">Marque as empresas na primeira coluna</span>
-          <input type="text" id="bancoVendedorLote" list="dlVendedores" placeholder="Nome do vendedor" autocomplete="off">
-          <button class="btn bo btn-pequeno" id="btnAtribuirLote">Atribuir às marcadas</button>
+          <select id="bancoVendedorLote"></select>
+          <button class="btn bo btn-pequeno" id="btnAtribuirLote">Passar as marcadas</button>
           <button class="btn bk btn-pequeno ml" id="btnExportarCSV">⬇ Exportar planilha (CSV)</button>
         </div>
         <div class="table-wrap" style="margin-top:12px">
@@ -159,16 +151,25 @@
       </div>
     </section>
 
-    <!-- ===================== AGENDA DE LIGAÇÕES ===================== -->
-    <section class="view" id="view-agenda" style="display:none">
+    <!-- ===================== DISTRIBUIÇÃO ===================== -->
+    <section class="view" id="view-distribuicao" style="display:none">
       <div class="card">
-        <h3 class="card-title">Agenda de Ligações</h3>
-        <div class="agenda-topo no-print">
-          <div class="field agenda-vendedor"><label>Vendedor</label><select id="agendaVendedor"></select></div>
-          <button class="btn bgray" id="btnImprimirAgenda">🖨 Imprimir agenda</button>
+        <h3 class="card-title">Distribuição automática</h3>
+        <p class="muted" style="margin-bottom:12px">Cada empresa nova que aparece numa busca vai sozinha pra um dos vendedores marcados abaixo, sempre pra quem está com <b>menos contatos em aberto</b> (Novo, Contatado, Interessado ou Negociando). Quem está de férias no Cockpit não recebe. A lista de vendedores vem do cadastro do Cockpit Comercial.</p>
+        <div id="distribuicaoAviso"></div>
+        <div class="table-wrap">
+          <table id="tblDistribuicao">
+            <thead><tr>
+              <th class="tc">Participa</th><th>Vendedor</th><th>Setor</th><th>Situação</th>
+              <th class="tc">Novos</th><th class="tc">Em andamento</th><th class="tc">Clientes</th><th class="tc">Descartados</th><th class="tc">Total</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
-        <h2 class="agenda-impressao-titulo" id="agendaTituloImpressao"></h2>
-        <div id="agendaConteudo"></div>
+        <div class="barra-atribuir" style="margin-top:14px;margin-bottom:0">
+          <span id="distribuicaoSemVendedor"></span>
+          <button class="btn bo btn-pequeno" id="btnDistribuirAgora">Distribuir agora</button>
+        </div>
       </div>
     </section>
 

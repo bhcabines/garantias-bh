@@ -31,27 +31,36 @@
   const PRIORIDADE_PISTA = ['lanternagem', 'autopecas', 'locadora', 'associacao', 'transportadora', 'frota', 'oficina'];
   const OUTRO = 'outro';
 
+  // Mesma lista na Agenda do Cockpit (cockpit-comercial/js/agenda.js) e no
+  // Apps Script (CACADOR_STATUS): mudou aqui, muda lá.
   const STATUS = {
     novo: 'Novo',
     contatado: 'Contatado',
     interessado: 'Interessado',
     negociando: 'Negociando',
+    jaecliente: 'Já é cliente',
     cliente: 'Virou cliente',
     descartado: 'Descartado'
   };
+  // Em aberto = ainda dá trabalho pro vendedor. É o que conta na distribuição.
+  const STATUS_ABERTOS = { novo: true, contatado: true, interessado: true, negociando: true };
+  const SETORES = { TELEMARKETING: 'Telemarketing', BALCAO: 'Balcão', ECOMMERCE: 'E-commerce', APOIO: 'Apoio' };
 
   /* ---------------------------------------------------------------------
      BANCO DE EMPRESAS — memória + localStorage + servidor.
      Diferente dos outros módulos, aqui não dá pra mandar a lista inteira a
-     cada mudança (são milhares de empresas): cada alteração entra numa fila
-     de pendentes e só as empresas da fila vão pro servidor.
+     cada mudança (são milhares de empresas), e a Agenda do Cockpit também
+     altera as mesmas empresas. Por isso cada alteração anota QUAIS CAMPOS
+     mudaram, e só esses campos vão pro servidor, que junta com o que já está
+     gravado — o status que o vendedor marcou não é apagado por uma busca
+     feita aqui com a versão antiga da empresa aberta.
      --------------------------------------------------------------------- */
   const LS_EMPRESAS = 'cacador_empresas';
   const LS_PENDENTES = 'cacador_pendentes';
 
   let empresas = [];
   let empresaPorId = {};
-  let pendentes = [];           // ids alterados aqui e ainda não confirmados pelo servidor
+  let pendentes = {};           // id -> campos alterados aqui e ainda não confirmados (['*'] = empresa inteira)
 
   // Além do ID principal, cada empresa responde pelos IDs das outras fichas
   // do Google que já foram reconhecidas como ela (outrosIds).
@@ -67,7 +76,15 @@
   // memória e no servidor, sem quebrar a página.
   function carregarLocal() {
     try { empresas = JSON.parse(localStorage.getItem(LS_EMPRESAS) || '[]'); } catch (e) { empresas = []; }
-    try { pendentes = JSON.parse(localStorage.getItem(LS_PENDENTES) || '[]'); } catch (e) { pendentes = []; }
+    let p;
+    try { p = JSON.parse(localStorage.getItem(LS_PENDENTES) || '{}'); } catch (e) { p = {}; }
+    // A versão anterior guardava só a lista de ids: essas vão inteiras.
+    if (Array.isArray(p)) {
+      const convertido = {};
+      p.forEach(function (id) { convertido[id] = ['*']; });
+      p = convertido;
+    }
+    pendentes = p || {};
     reindexar();
   }
   function guardarLocal() {
@@ -85,30 +102,48 @@
     if (esconderDepois) setSyncIndicador.timer = setTimeout(function () { el.style.display = 'none'; }, esconderDepois);
   }
 
-  // Só envia depois que o servidor provou que conhece 'getEmpresasCacador'
-  // (respondeu com uma lista). Antes disso, um POST com ação desconhecida
-  // cai no registro de log de acesso do Apps Script e grava lixo na planilha.
+  // Só envia depois que o servidor provou que conhece 'getBancoCacador'
+  // (respondeu ok). Antes disso, um POST com ação desconhecida cai no
+  // registro de log de acesso do Apps Script e grava lixo na planilha.
   let servidorPronto = false;
   let enviando = false;
 
+  function marcarAlterado(id, campos) {
+    const atual = pendentes[id] || [];
+    if (atual.indexOf('*') !== -1) return;
+    pendentes[id] = campos.indexOf('*') !== -1 ? ['*'] : atual.concat(campos.filter(function (k) { return atual.indexOf(k) === -1; }));
+  }
+
+  // O que vai pro servidor: só os campos alterados (ou a empresa inteira, se é nova).
+  function pacote(id) {
+    const c = empresaPorId[id];
+    if (!c || c.id !== id) return null;
+    const campos = pendentes[id] || [];
+    if (campos.indexOf('*') !== -1) return Object.assign({}, c);
+    const p = { id: id };
+    campos.forEach(function (k) { p[k] = c[k] === undefined ? null : c[k]; });
+    return p;
+  }
+
   function enviarPendentes() {
-    if (enviando || !servidorPronto || !pendentes.length) return;
-    const lista = pendentes.map(function (id) { return empresaPorId[id]; }).filter(Boolean);
+    const ids = Object.keys(pendentes);
+    if (enviando || !servidorPronto || !ids.length) return;
+    const lista = ids.map(pacote).filter(Boolean);
     const enviado = {};
-    lista.forEach(function (c) { enviado[c.id] = JSON.stringify(c); });
+    lista.forEach(function (p) { enviado[p.id] = JSON.stringify(p); });
     enviando = true;
     let deuCerto = false;
     setSyncIndicador('🔄 Salvando...');
     // Sem header de Content-Type de propósito — 'application/json' força
     // preflight CORS que o Apps Script não responde, e o envio falha calado.
-    fetch(SYNC_URL, { method: 'POST', body: JSON.stringify({ action: 'salvarEmpresasCacador', data: lista }) })
+    fetch(SYNC_URL, { method: 'POST', body: JSON.stringify({ action: 'atualizarEmpresasCacador', data: lista }) })
       .then(function (r) { return r.json(); })
       .then(function (r) {
         if (!r || r.ok !== true) throw new Error('servidor recusou');
         // Sai da fila só o que não mudou de novo enquanto ia pro servidor.
-        pendentes = pendentes.filter(function (id) {
-          const c = empresaPorId[id];
-          return c && JSON.stringify(c) !== enviado[id];
+        ids.forEach(function (id) {
+          const p = pacote(id);
+          if (!p || JSON.stringify(p) === enviado[id]) delete pendentes[id];
         });
         guardarPendentes();
         deuCerto = true;
@@ -120,17 +155,15 @@
       })
       .finally(function () {
         enviando = false;
-        if (deuCerto && pendentes.length) enviarPendentes();
+        if (deuCerto && Object.keys(pendentes).length) enviarPendentes();
       });
   }
 
-  // Chamar depois de mudar empresas na memória.
-  function salvarEmpresas(ids) {
-    ids.forEach(function (id) { if (pendentes.indexOf(id) === -1) pendentes.push(id); });
+  // Chamar depois de mudar empresas na memória e marcar os campos.
+  function persistir() {
     guardarPendentes();
     guardarLocal();
     atualizarContadorBanco();
-    atualizarListaVendedores();
     enviarPendentes();
   }
 
@@ -139,24 +172,41 @@
     if (!c) return;
     Object.keys(mudancas).forEach(function (k) { c[k] = mudancas[k]; });
     c.atualizadoEm = new Date().toISOString();
-    salvarEmpresas([id]);
+    marcarAlterado(c.id, Object.keys(mudancas).concat(['atualizadoEm']));
+    persistir();
+  }
+
+  // Os vendedores mudam status pela Agenda do Cockpit o tempo todo: antes de
+  // contar a carga de cada um (distribuição) ou mostrar o banco, a cópia
+  // daqui é atualizada se tiver ficado velha.
+  let ultimaCarga = 0;
+  function recarregarSeAntigo(idadeMaxima) {
+    return Date.now() - ultimaCarga > idadeMaxima ? carregarDoServidor() : Promise.resolve();
   }
 
   function carregarDoServidor() {
     setSyncIndicador('🔄 Sincronizando...');
-    return fetch(SYNC_URL + '?action=getEmpresasCacador&t=' + Date.now()).then(function (r) { return r.json(); }).then(function (servidor) {
-      if (!Array.isArray(servidor)) {
-        setSyncIndicador('⚠️ Banco salvo só neste aparelho (servidor ainda não configurado)', 5000);
+    return fetch(SYNC_URL + '?action=getBancoCacador&t=' + Date.now()).then(function (r) { return r.json(); }).then(function (r) {
+      if (!r || r.ok !== true || !Array.isArray(r.empresas)) {
+        setSyncIndicador('⚠️ Banco salvo só neste aparelho (falta atualizar o Apps Script)', 5000);
         return;
       }
       servidorPronto = true;
-      // Servidor vence, menos nas empresas alteradas aqui e ainda não enviadas.
-      const locais = {};
-      pendentes.forEach(function (id) { if (empresaPorId[id]) locais[id] = empresaPorId[id]; });
-      empresas = servidor.filter(function (c) { return c && c.id && !locais[c.id]; })
-        .concat(Object.keys(locais).map(function (id) { return locais[id]; }));
+      ultimaCarga = Date.now();
+      const doServidor = {};
+      r.empresas.forEach(function (c) { if (c && c.id) doServidor[c.id] = c; });
+      // Servidor vence, menos nos campos alterados aqui e ainda não enviados.
+      Object.keys(pendentes).forEach(function (id) {
+        const local = empresaPorId[id];
+        if (!local || local.id !== id) { delete pendentes[id]; return; }
+        if (pendentes[id].indexOf('*') !== -1 || !doServidor[id]) {
+          doServidor[id] = Object.assign({}, doServidor[id] || {}, local);
+          return;
+        }
+        pendentes[id].forEach(function (k) { doServidor[id][k] = local[k]; });
+      });
+      empresas = Object.keys(doServidor).map(function (id) { return doServidor[id]; });
       reindexar();
-      pendentes = pendentes.filter(function (id) { return !!empresaPorId[id]; });
       guardarPendentes();
       guardarLocal();
       setSyncIndicador('✅ Sincronizado', 2000);
@@ -243,26 +293,112 @@
   }
 
   /* ---------------------------------------------------------------------
-     VENDEDORES — o nome é digitado livre; a lista sai das empresas
+     VENDEDORES — vêm do cadastro do Cockpit Comercial. A empresa guarda o
+     código do vendedor (é por ele que a Agenda do Cockpit acha os contatos
+     de quem fez login) e o nome, pra exibir.
      --------------------------------------------------------------------- */
-  function listaVendedores() {
-    const nomes = {};
-    empresas.forEach(function (c) { if (c.vendedor) nomes[c.vendedor] = true; });
-    return Object.keys(nomes).sort(function (a, b) { return a.localeCompare(b, 'pt-BR'); });
+  const LS_VENDEDORES = 'cacador_vendedores';
+  const LS_CONFIG = 'cacador_config';
+
+  let vendedores = [];          // [{ cod, nome, setor, status }] — sem os inativos
+  let config = { participantes: [] };
+  let configPronta = false;     // o Apps Script já sabe guardar a configuração
+
+  // Mesma regra do Cockpit (Cockpit.Calc.normalizarCodigoVendedor): "007" e 7 são o mesmo.
+  function codVendedor(codigo) {
+    const n = Number(codigo);
+    return isNaN(n) ? String(codigo || '').trim() : String(n);
   }
 
-  // "joão " e "João" viram o mesmo vendedor: usa a grafia que já existe.
-  function nomeVendedor(digitado) {
-    const nome = String(digitado || '').trim().replace(/\s+/g, ' ');
-    if (!nome) return '';
-    const existente = listaVendedores().find(function (v) { return normalizar(v) === normalizar(nome); });
-    return existente || nome;
+  function usarVendedores(lista) {
+    vendedores = (lista || []).filter(function (v) { return v && v.status !== 'inativo'; }).map(function (v) {
+      return { cod: codVendedor(v.codigo), nome: v.nome, setor: v.setor, status: v.status || 'ativo' };
+    }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
   }
 
-  function atualizarListaVendedores() {
-    document.getElementById('dlVendedores').innerHTML = listaVendedores().map(function (v) {
-      return '<option value="' + escapeHtml(v) + '">';
-    }).join('');
+  function vendedorPorCod(cod) {
+    return vendedores.find(function (v) { return v.cod === cod; }) || null;
+  }
+
+  // "IAGO MARQUES LEMOS" -> "Iago": pra mensagens curtas.
+  function primeiroNome(nome) {
+    const p = String(nome || '').trim().split(/\s+/)[0] || '';
+    return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+  }
+
+  function carregarVendedores() {
+    try { usarVendedores(JSON.parse(localStorage.getItem(LS_VENDEDORES) || '[]')); } catch (e) {}
+    return fetch(SYNC_URL + '?action=getCockpitVendedores&t=' + Date.now()).then(function (r) { return r.json(); }).then(function (lista) {
+      if (!Array.isArray(lista)) return;
+      usarVendedores(lista);
+      try { localStorage.setItem(LS_VENDEDORES, JSON.stringify(lista)); } catch (e) {}
+    }).catch(function () {});
+  }
+
+  function carregarConfig() {
+    try { config = JSON.parse(localStorage.getItem(LS_CONFIG) || 'null') || config; } catch (e) {}
+    return fetch(SYNC_URL + '?action=getCacadorConfig&t=' + Date.now()).then(function (r) { return r.json(); }).then(function (r) {
+      if (!r || r.ok !== true) return;
+      configPronta = true;
+      config = Object.assign({ participantes: [] }, r.config || {});
+      try { localStorage.setItem(LS_CONFIG, JSON.stringify(config)); } catch (e) {}
+    }).catch(function () {});
+  }
+
+  function salvarConfig() {
+    try { localStorage.setItem(LS_CONFIG, JSON.stringify(config)); } catch (e) {}
+    if (!configPronta) return Promise.resolve(false);
+    return fetch(SYNC_URL, { method: 'POST', body: JSON.stringify({ action: 'saveCacadorConfig', data: config }) })
+      .then(function (r) { return r.json(); })
+      .then(function (r) { return !!(r && r.ok); })
+      .catch(function () { return false; });
+  }
+
+  // Quem recebe agora: marcado em Distribuição e ativo (férias não recebe).
+  function participantesDaVez() {
+    const marcados = config.participantes || [];
+    return vendedores.filter(function (v) { return v.status === 'ativo' && marcados.indexOf(v.cod) !== -1; });
+  }
+
+  function cargaEmAberto(cod) {
+    return empresas.filter(function (c) { return c.vendedorCodigo === cod && STATUS_ABERTOS[c.status]; }).length;
+  }
+
+  // Cada empresa vai pra quem está com menos contatos em aberto naquela hora;
+  // no empate, vale a ordem alfabética. Com cargas iguais, 20 empresas e 7
+  // vendedores dá 3-3-3-3-3-3-2, e na próxima busca quem ficou com menos sai
+  // na frente. Devolve { nome: quantidade } ou null se não há participantes.
+  function distribuir(lista) {
+    const part = participantesDaVez();
+    if (!part.length || !lista.length) return null;
+    const carga = {};
+    part.forEach(function (v) { carga[v.cod] = cargaEmAberto(v.cod); });
+    const agora = new Date().toISOString();
+    const resumo = {};
+    lista.forEach(function (c) {
+      let alvo = part[0];
+      part.forEach(function (v) { if (carga[v.cod] < carga[alvo.cod]) alvo = v; });
+      c.vendedor = alvo.nome;
+      c.vendedorCodigo = alvo.cod;
+      c.distribuidoEm = agora;
+      c.atualizadoEm = agora;
+      carga[alvo.cod]++;
+      resumo[alvo.nome] = (resumo[alvo.nome] || 0) + 1;
+      marcarAlterado(c.id, ['vendedor', 'vendedorCodigo', 'distribuidoEm', 'atualizadoEm']);
+    });
+    persistir();
+    return resumo;
+  }
+
+  function textoResumoDistribuicao(resumo) {
+    return Object.keys(resumo).sort(function (a, b) { return a.localeCompare(b, 'pt-BR'); }).map(function (nome) {
+      return primeiroNome(nome) + ' ' + resumo[nome];
+    }).join(', ');
+  }
+
+  // Empresas que ainda dão pra distribuir: sem vendedor e em aberto.
+  function semVendedor(lista) {
+    return lista.filter(function (c) { return !c.vendedorCodigo && STATUS_ABERTOS[c.status || 'novo']; });
   }
 
   /* ---------------------------------------------------------------------
@@ -276,6 +412,9 @@
     document.querySelectorAll('.view').forEach(function (v) { v.style.display = 'none'; });
     document.getElementById('view-' + view).style.display = 'flex';
     renderViewAtual();
+    if (view === 'banco' || view === 'distribuicao') {
+      recarregarSeAntigo(20000).then(function () { if (viewAtual === view) renderViewAtual(); });
+    }
     // O Leaflet calcula o tamanho do mapa na hora em que ele aparece.
     if (view === 'busca') setTimeout(function () { mapa.invalidateSize(); }, 50);
   }
@@ -285,7 +424,7 @@
 
   function renderViewAtual() {
     if (viewAtual === 'banco') renderBanco();
-    if (viewAtual === 'agenda') renderAgenda();
+    if (viewAtual === 'distribuicao') renderDistribuicao();
     if (viewAtual === 'busca' && resultados.length) renderResultados();
   }
 
@@ -575,7 +714,6 @@
   let ultimaBusca = null;       // parâmetros, pra "carregar mais" usar os mesmos
   let proximaPagina = '';
   let novosNoBanco = {};        // id -> true: entrou no banco nesta busca
-  let listaResultadosVisivel = [];
 
   // Um tipo por busca: as 20 empresas que o Google devolve são todas do tipo
   // escolhido, em vez de poucas de cada.
@@ -688,7 +826,7 @@
   // um "outro ID" dela. Devolve { novos, repetidas }.
   function guardarNoBanco(lista) {
     const agora = new Date().toISOString();
-    const mudaram = [];
+    let mudou = false;
     const novos = [];
     let repetidas = 0;
     const porFone = {};
@@ -704,7 +842,6 @@
       const f = chaveFone(r.telefone);
       return (f && porFone[cid + '|' + f]) || porNome[cid + '|' + chaveNome(r.nome)] || null;
     }
-    function marcarMudou(id) { if (mudaram.indexOf(id) === -1) mudaram.push(id); }
     empresas.forEach(indexar);
 
     lista.forEach(function (r) {
@@ -716,7 +853,8 @@
           igual.atualizadoEm = agora;
           empresaPorId[r.id] = igual;
           repetidas++;
-          marcarMudou(igual.id);
+          marcarAlterado(igual.id, ['outrosIds', 'atualizadoEm']);
+          mudou = true;
           return;
         }
         c = { id: r.id };
@@ -725,7 +863,9 @@
         c.tipo = tipoParaMostrar(c);
         c.whatsapp = ehCelular(r.telefone) ? r.telefone : '';
         c.vendedor = '';
+        c.vendedorCodigo = '';
         c.status = 'novo';
+        c.codCliente = '';
         c.ligarEm = '';
         c.obs = '';
         c.encontradoEm = agora;
@@ -734,24 +874,24 @@
         empresaPorId[c.id] = c;
         indexar(c); // a outra ficha dela pode vir nesta mesma busca
         novos.push(c.id);
-        marcarMudou(c.id);
+        marcarAlterado(c.id, ['*']);
+        mudou = true;
         return;
       }
       // Ficha secundária: os dados do Google ficam os da ficha principal,
       // senão a empresa alternaria entre os dois endereços a cada busca.
       if (c.id !== r.id) return;
-      let mudou = false;
-      CAMPOS_GOOGLE.forEach(function (k) {
-        if (JSON.stringify(c[k]) !== JSON.stringify(r[k])) { c[k] = r[k]; mudou = true; }
-      });
-      if (!c.categoria && r.categoria) { c.categoria = r.categoria; mudou = true; }
-      if (mudou) {
+      const campos = CAMPOS_GOOGLE.filter(function (k) { return JSON.stringify(c[k]) !== JSON.stringify(r[k]); });
+      campos.forEach(function (k) { c[k] = r[k]; });
+      if (!c.categoria && r.categoria) { c.categoria = r.categoria; campos.push('categoria'); }
+      if (campos.length) {
         c.tipo = tipoParaMostrar(c);
         c.atualizadoEm = agora;
-        marcarMudou(c.id);
+        marcarAlterado(c.id, campos.concat(['tipo', 'atualizadoEm']));
+        mudou = true;
       }
     });
-    if (mudaram.length) salvarEmpresas(mudaram);
+    if (mudou) persistir();
     return { novos: novos, repetidas: repetidas };
   }
 
@@ -796,6 +936,9 @@
     status.textContent = '🔄 Buscando "' + busca.q + '"...';
 
     chamarBusca(busca, continuar ? proximaPagina : '').then(function (r) {
+      // Carga de cada vendedor atualizada antes de distribuir as novas.
+      return recarregarSeAntigo(60000).then(function () { return r; });
+    }).then(function (r) {
       if (!r || typeof r.ok === 'undefined') {
         status.textContent = '⚠️ A busca do Google ainda não está configurada no Apps Script (falta colar o código novo e implantar).';
         return;
@@ -817,11 +960,19 @@
       }
       const guardado = guardarNoBanco(novos);
       guardado.novos.forEach(function (id) { novosNoBanco[id] = true; });
+      // As que ficaram sem vendedor (as novas e alguma antiga que tinha ficado
+      // sem) já vão pra alguém. Duas fichas da mesma empresa contam uma vez.
+      const daPagina = [];
+      novos.forEach(function (x) { const c = empresaPorId[x.id]; if (c && daPagina.indexOf(c) === -1) daPagina.push(c); });
+      const paraDistribuir = semVendedor(daPagina);
+      const distribuidas = distribuir(paraDistribuir);
       proximaPagina = r.nextPageToken || '';
       let msg = resultados.length + ' empresa(s) encontrada(s)';
       msg += guardado.novos.length ? ', ' + guardado.novos.length + ' nova(s) guardada(s) no banco.' : ', todas já estavam no banco.';
       if (guardado.repetidas === 1) msg += ' 1 era outra ficha do Google de uma empresa que já está no banco e não foi duplicada.';
       else if (guardado.repetidas > 1) msg += ' ' + guardado.repetidas + ' eram outras fichas do Google de empresas que já estão no banco e não foram duplicadas.';
+      if (distribuidas) msg += ' Distribuídas: ' + textoResumoDistribuicao(distribuidas) + '.';
+      else if (paraDistribuir.length) msg += ' ⚠️ ' + paraDistribuir.length + ' ficaram sem vendedor: marque quem participa em Distribuição.';
       if (r.doCache) msg += ' Busca repetida, não contou na cota.';
       else if (typeof r.usadosMes === 'number') msg += ' Buscas usadas este mês: ' + r.usadosMes + ' de ' + r.limite + ' (cota grátis do Google).';
       status.textContent = msg;
@@ -868,7 +1019,6 @@
     card.style.display = 'block';
 
     const lista = aplicarFiltrosResultado();
-    listaResultadosVisivel = lista;
     document.getElementById('resultadosContagem').textContent = '(' + lista.length + ')';
     document.getElementById('btnCarregarMais').style.display = proximaPagina ? 'inline-flex' : 'none';
 
@@ -935,38 +1085,37 @@
     if (pontos.length) mapa.fitBounds(pontos, { padding: [30, 30], maxZoom: 15 });
   }
 
-  // Passa pro vendedor só as empresas da lista que ainda não têm dono:
-  // não tira empresa de quem já está trabalhando nela.
-  document.getElementById('btnAtribuirResultados').addEventListener('click', function () {
-    const input = document.getElementById('resVendedor');
-    const nome = nomeVendedor(input.value);
-    if (!nome) { alert('Escreva o nome do vendedor.'); input.focus(); return; }
-    // Duas fichas da mesma empresa na lista contam uma vez só.
-    const vistas = {};
-    const daLista = listaResultadosVisivel.map(function (r) { return empresaPorId[r.id]; }).filter(function (c) {
-      if (!c || vistas[c.id]) return false;
-      vistas[c.id] = true;
-      return true;
-    });
-    const livres = daLista.filter(function (c) { return !c.vendedor; });
-    if (!livres.length) { alert('Todas as empresas desta lista já têm vendedor.'); return; }
-    const ocupadas = daLista.length - livres.length;
-    if (!confirm('Passar ' + livres.length + ' empresa(s) para ' + nome + '?' + (ocupadas ? '\n\n' + ocupadas + ' já têm vendedor e continuam com ele.' : ''))) return;
-    const agora = new Date().toISOString();
-    livres.forEach(function (c) { c.vendedor = nome; c.atualizadoEm = agora; });
-    salvarEmpresas(livres.map(function (c) { return c.id; }));
-    input.value = '';
-    renderResultados();
-    document.getElementById('buscaStatus').textContent = '✅ ' + livres.length + ' empresa(s) passada(s) para ' + nome + '. Veja na Agenda de Ligações.';
-  });
-
   /* ---------------------------------------------------------------------
-     CAMPOS EDITÁVEIS (Banco e Agenda usam os mesmos)
+     CAMPOS EDITÁVEIS DO BANCO
      --------------------------------------------------------------------- */
   function opcoesStatus(atual) {
     return Object.keys(STATUS).map(function (k) {
       return '<option value="' + k + '"' + (k === atual ? ' selected' : '') + '>' + STATUS[k] + '</option>';
     }).join('');
+  }
+
+  // Status + campo do código do cliente, que só aparece em "Já é cliente".
+  function celulaStatus(c) {
+    const id = escapeHtml(c.id);
+    return '<select class="campo-tabela sel-status st-' + c.status + '" data-id="' + id + '">' + opcoesStatus(c.status) + '</select>' +
+      '<input type="text" class="campo-tabela campo-codcliente" data-id="' + id + '" value="' + escapeHtml(c.codCliente) + '" placeholder="Cód. do cliente" style="' + (c.status === 'jaecliente' ? '' : 'display:none') + '">';
+  }
+
+  // Lista do cadastro do Cockpit; quem não está mais lá (ou está inativo)
+  // continua aparecendo pra empresa que ainda está com ele.
+  function opcoesVendedor(codAtual, nomeAtual, primeira) {
+    let html = '<option value="">' + primeira + '</option>' + vendedores.map(function (v) {
+      return '<option value="' + escapeHtml(v.cod) + '"' + (v.cod === codAtual ? ' selected' : '') + '>' + escapeHtml(v.nome) + (v.status === 'ferias' ? ' (férias)' : '') + '</option>';
+    }).join('');
+    if (codAtual && !vendedorPorCod(codAtual)) {
+      html += '<option value="' + escapeHtml(codAtual) + '" selected>' + escapeHtml(nomeAtual || codAtual) + ' (fora do cadastro)</option>';
+    }
+    return html;
+  }
+
+  function mudancasDeVendedor(cod) {
+    const v = vendedorPorCod(cod);
+    return { vendedor: v ? v.nome : '', vendedorCodigo: v ? v.cod : '', distribuidoEm: v ? new Date().toISOString() : '' };
   }
 
   function celulaWhatsapp(c) {
@@ -990,11 +1139,15 @@
         link.href = wa || '#';
         link.style.display = wa ? '' : 'none';
       } else if (el.classList.contains('campo-vendedor')) {
-        mudancas = { vendedor: nomeVendedor(el.value) };
-        el.value = mudancas.vendedor;
+        mudancas = mudancasDeVendedor(el.value);
       } else if (el.classList.contains('sel-status')) {
         mudancas = { status: el.value };
         el.className = 'campo-tabela sel-status st-' + el.value;
+        const cod = el.parentElement.querySelector('.campo-codcliente');
+        cod.style.display = el.value === 'jaecliente' ? '' : 'none';
+        if (el.value === 'jaecliente') cod.focus();
+      } else if (el.classList.contains('campo-codcliente')) {
+        mudancas = { codCliente: el.value.trim() };
       } else if (el.classList.contains('campo-data')) {
         mudancas = { ligarEm: el.value };
       } else if (el.classList.contains('campo-obs')) {
@@ -1024,11 +1177,19 @@
   function preencherFiltroVendedor() {
     const sel = document.getElementById('bancoFiltroVendedor');
     const atual = sel.value;
-    const vendedores = listaVendedores();
-    sel.innerHTML = '<option value="">Todos</option><option value="' + SEM_VENDEDOR + '">Sem vendedor</option>' + vendedores.map(function (v) {
-      return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>';
+    // Do cadastro + quem saiu do cadastro mas ainda tem empresa no nome.
+    const opcoes = vendedores.map(function (v) { return { cod: v.cod, nome: v.nome }; });
+    empresas.forEach(function (c) {
+      if (c.vendedorCodigo && !opcoes.some(function (o) { return o.cod === c.vendedorCodigo; })) opcoes.push({ cod: c.vendedorCodigo, nome: (c.vendedor || c.vendedorCodigo) + ' (fora do cadastro)' });
+    });
+    sel.innerHTML = '<option value="">Todos</option><option value="' + SEM_VENDEDOR + '">Sem vendedor</option>' + opcoes.map(function (o) {
+      return '<option value="' + escapeHtml(o.cod) + '">' + escapeHtml(o.nome) + '</option>';
     }).join('');
-    sel.value = (atual === SEM_VENDEDOR || vendedores.indexOf(atual) !== -1) ? atual : '';
+    sel.value = (atual === SEM_VENDEDOR || opcoes.some(function (o) { return o.cod === atual; })) ? atual : '';
+    const lote = document.getElementById('bancoVendedorLote');
+    const atualLote = lote.value;
+    lote.innerHTML = opcoesVendedor('', '', '— escolha o vendedor —') + '<option value="' + SEM_VENDEDOR + '">(tirar o vendedor)</option>';
+    lote.value = atualLote;
   }
 
   function bancoFiltrado() {
@@ -1038,7 +1199,7 @@
     const cid = normalizar(document.getElementById('bancoFiltroCidade').value);
     const txt = normalizar(document.getElementById('bancoFiltroTexto').value);
     return empresas.filter(function (c) {
-      return (!vend || (vend === SEM_VENDEDOR ? !c.vendedor : c.vendedor === vend)) &&
+      return (!vend || (vend === SEM_VENDEDOR ? !c.vendedorCodigo : c.vendedorCodigo === vend)) &&
         (!st || c.status === st) &&
         (!cat || (cat === OUTRO ? !CATEGORIAS[c.categoria] : c.categoria === cat)) &&
         (!cid || normalizar(c.cidade).indexOf(cid) !== -1) &&
@@ -1054,10 +1215,10 @@
   function renderResumoBanco() {
     const contagem = {};
     empresas.forEach(function (c) { contagem[c.status] = (contagem[c.status] || 0) + 1; });
-    const semVendedor = empresas.filter(function (c) { return !c.vendedor; }).length;
+    const nSemVendedor = empresas.filter(function (c) { return !c.vendedorCodigo; }).length;
     document.getElementById('resumoStatus').innerHTML =
       '<span class="status-badge st-novo">Total: ' + empresas.length + '</span>' +
-      '<span class="status-badge st-novo">Sem vendedor: ' + semVendedor + '</span>' +
+      '<span class="status-badge st-novo">Sem vendedor: ' + nSemVendedor + '</span>' +
       Object.keys(STATUS).map(function (k) {
         return '<span class="status-badge st-' + k + '">' + STATUS[k] + ': ' + (contagem[k] || 0) + '</span>';
       }).join('');
@@ -1079,13 +1240,13 @@
         return '<tr class="' + (marcadas[c.id] ? 'linha-marcada' : '') + '">' +
           '<td class="tc"><input type="checkbox" class="marcar-linha" data-marcar="' + id + '"' + (marcadas[c.id] ? ' checked' : '') + '></td>' +
           '<td class="nome-cel">' + escapeHtml(c.nome) + (c.fechado ? ' <span class="selo-fechado">(fechada)</span>' : '') + '<div class="sub">' + escapeHtml(tipoCompleto(c)) + '</div></td>' +
-          '<td><input type="text" class="campo-tabela campo-vendedor" list="dlVendedores" data-id="' + id + '" value="' + escapeHtml(c.vendedor) + '" placeholder="Vendedor..."></td>' +
+          '<td><select class="campo-tabela campo-vendedor" data-id="' + id + '">' + opcoesVendedor(c.vendedorCodigo, c.vendedor, '— sem vendedor —') + '</select></td>' +
           '<td>' + celulaWhatsapp(c) + '</td>' +
           '<td class="contato-cel">' + (c.telefone ? '<a href="' + linkTelefone(c.telefone) + '">' + escapeHtml(c.telefone) + '</a>' : '<span class="muted">—</span>') + '</td>' +
           '<td class="contato-cel site-cel">' + (c.site ? '<a href="' + escapeHtml(c.site) + '" target="_blank" rel="noopener" title="' + escapeHtml(c.site) + '">' + escapeHtml(encurtarSite(c.site)) + '</a>' : '<span class="muted">—</span>') + '</td>' +
           '<td>' + escapeHtml(c.cidade) + (c.uf ? ' - ' + escapeHtml(c.uf) : '') + '</td>' +
           '<td class="end-cel">' + escapeHtml(c.endereco) + '</td>' +
-          '<td><select class="campo-tabela sel-status st-' + c.status + '" data-id="' + id + '">' + opcoesStatus(c.status) + '</select></td>' +
+          '<td>' + celulaStatus(c) + '</td>' +
           '<td><input type="date" class="campo-tabela campo-data" data-id="' + id + '" value="' + escapeHtml(c.ligarEm) + '"></td>' +
           '<td><input type="text" class="campo-tabela campo-obs" data-id="' + id + '" value="' + escapeHtml(c.obs) + '" placeholder="Anotação..."></td>' +
           '<td class="tc">' + (c.mapsUrl ? '<a class="icon-btn" href="' + escapeHtml(c.mapsUrl) + '" target="_blank" rel="noopener" title="Ver no Google Maps">🗺️</a>' : '') + '</td>' +
@@ -1104,7 +1265,7 @@
   // Sem redesenhar a tabela (o foco pularia pro topo): o campo já mostra o
   // valor novo, só o resumo e a lista de vendedores do filtro mudam.
   ligarEdicao(tbodyBanco, function (mudancas) {
-    if ('vendedor' in mudancas || 'status' in mudancas) {
+    if ('vendedorCodigo' in mudancas || 'status' in mudancas) {
       renderResumoBanco();
       preencherFiltroVendedor();
     }
@@ -1146,21 +1307,27 @@
   document.getElementById('btnAtribuirLote').addEventListener('click', function () {
     const ids = Object.keys(marcadas).filter(function (id) { return empresaPorId[id]; });
     if (!ids.length) { alert('Marque as empresas na primeira coluna da tabela.'); return; }
-    const input = document.getElementById('bancoVendedorLote');
-    const nome = nomeVendedor(input.value);
+    const sel = document.getElementById('bancoVendedorLote');
+    if (!sel.value) { alert('Escolha o vendedor.'); sel.focus(); return; }
+    const tirar = sel.value === SEM_VENDEDOR;
+    const mudancas = mudancasDeVendedor(tirar ? '' : sel.value);
     let pergunta;
-    if (!nome) {
+    if (tirar) {
       pergunta = 'Tirar o vendedor das ' + ids.length + ' empresa(s) marcada(s)?';
     } else {
-      const deOutro = ids.filter(function (id) { const v = empresaPorId[id].vendedor; return v && v !== nome; }).length;
-      pergunta = 'Passar ' + ids.length + ' empresa(s) para ' + nome + '?' + (deOutro ? '\n\n' + deOutro + ' delas estão com outro vendedor e vão passar para ' + nome + '.' : '');
+      const deOutro = ids.filter(function (id) { const v = empresaPorId[id].vendedorCodigo; return v && v !== mudancas.vendedorCodigo; }).length;
+      pergunta = 'Passar ' + ids.length + ' empresa(s) para ' + mudancas.vendedor + '?' + (deOutro ? '\n\n' + deOutro + ' delas estão com outro vendedor e vão sair da agenda dele.' : '');
     }
     if (!confirm(pergunta)) return;
     const agora = new Date().toISOString();
-    ids.forEach(function (id) { empresaPorId[id].vendedor = nome; empresaPorId[id].atualizadoEm = agora; });
-    salvarEmpresas(ids);
+    ids.forEach(function (id) {
+      const c = empresaPorId[id];
+      Object.assign(c, mudancas, { atualizadoEm: agora });
+      marcarAlterado(c.id, Object.keys(mudancas).concat(['atualizadoEm']));
+    });
+    persistir();
     marcadas = {};
-    input.value = '';
+    sel.value = '';
     renderBanco();
   });
 
@@ -1169,12 +1336,12 @@
   document.getElementById('btnExportarCSV').addEventListener('click', function () {
     const lista = bancoFiltrado();
     if (!lista.length) { alert('Não há empresas pra exportar com esses filtros.'); return; }
-    const colunas = ['Empresa', 'Tipo', 'WhatsApp', 'Telefone', 'Site', 'Cidade', 'UF', 'Bairro', 'Endereço', 'Vendedor', 'Status', 'Ligar em', 'Observação', 'Nota Google', 'Avaliações', 'Google Maps', 'Encontrada em'];
+    const colunas = ['Empresa', 'Tipo', 'WhatsApp', 'Telefone', 'Site', 'Cidade', 'UF', 'Bairro', 'Endereço', 'Vendedor', 'Status', 'Cód. cliente', 'Ligar em', 'Observação', 'Nota Google', 'Avaliações', 'Google Maps', 'Encontrada em'];
     const cel = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
     const linhas = lista.map(function (c) {
       return [
         c.nome, tipoParaMostrar(c), c.whatsapp, c.telefone, c.site, c.cidade, c.uf, c.bairro, c.endereco,
-        c.vendedor, STATUS[c.status] || c.status, fmtDia(c.ligarEm), c.obs,
+        c.vendedor, STATUS[c.status] || c.status, c.codCliente, fmtDia(c.ligarEm), c.obs,
         c.nota === null || c.nota === undefined ? '' : String(c.nota).replace('.', ','), c.avaliacoes, c.mapsUrl, fmtData(c.encontradoEm)
       ].map(cel).join(';');
     });
@@ -1189,70 +1356,67 @@
   });
 
   /* ---------------------------------------------------------------------
-     AGENDA DE LIGAÇÕES — empresas de um vendedor, pela data de ligar.
-     Descartadas não aparecem.
+     DISTRIBUIÇÃO (tela) — quem participa e como está a carteira de cada um
      --------------------------------------------------------------------- */
-  function empresasDaAgenda(vendedor) {
-    return empresas.filter(function (c) { return c.vendedor === vendedor && c.status !== 'descartado'; });
-  }
+  function renderDistribuicao() {
+    const aviso = document.getElementById('distribuicaoAviso');
+    const avisos = [];
+    if (!vendedores.length) avisos.push('Não consegui carregar os vendedores do Cockpit Comercial. Confira a internet e recarregue a página.');
+    if (!configPronta) avisos.push('O Apps Script ainda não sabe guardar quem participa: por enquanto a escolha vale só neste computador.');
+    aviso.innerHTML = avisos.map(function (t) { return '<div class="aviso-caixa">⚠️ ' + escapeHtml(t) + '</div>'; }).join('');
 
-  function renderAgenda() {
-    const sel = document.getElementById('agendaVendedor');
-    const atual = sel.value;
-    const vendedores = listaVendedores();
-    sel.innerHTML = vendedores.length ? vendedores.map(function (v) {
-      return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + ' (' + empresasDaAgenda(v).length + ')</option>';
-    }).join('') : '<option value="">Nenhum vendedor ainda</option>';
-    if (vendedores.indexOf(atual) !== -1) sel.value = atual;
-    const vend = sel.value;
-    const el = document.getElementById('agendaConteudo');
-    document.getElementById('agendaTituloImpressao').textContent = vend ? 'Agenda de ligações — ' + vend + ' — ' + fmtDia(hojeISO()) : '';
-    if (!vend) {
-      el.innerHTML = '<p class="muted" style="margin-top:12px">Ainda não há empresas com vendedor. Nos resultados da busca ou no Banco de Empresas, preencha o vendedor das empresas que ele vai atender.</p>';
-      return;
-    }
-
-    const hoje = hojeISO();
-    const lista = empresasDaAgenda(vend);
-    const porData = function (a, b) { return String(a.ligarEm).localeCompare(String(b.ligarEm)) || a.nome.localeCompare(b.nome, 'pt-BR'); };
-    const grupos = [
-      { titulo: '🔴 Atrasadas', classe: 'atrasada', itens: lista.filter(function (c) { return c.ligarEm && c.ligarEm < hoje; }).sort(porData) },
-      { titulo: '🟠 Ligar hoje', classe: 'hoje', itens: lista.filter(function (c) { return c.ligarEm === hoje; }).sort(porData) },
-      { titulo: '📆 Próximos dias', classe: '', itens: lista.filter(function (c) { return c.ligarEm > hoje; }).sort(porData) },
-      { titulo: '⚪ Sem data marcada', classe: '', itens: lista.filter(function (c) { return !c.ligarEm; }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); }) }
-    ];
-
-    if (!lista.length) {
-      el.innerHTML = '<p class="muted" style="margin-top:12px">' + escapeHtml(vend) + ' não tem empresas ativas (as descartadas não aparecem na agenda).</p>';
-      return;
-    }
-    el.innerHTML = '<p class="agenda-resumo">' + lista.length + ' empresa(s) · ' + grupos[0].itens.length + ' atrasada(s) · ' + grupos[1].itens.length + ' pra hoje</p>' +
-      grupos.filter(function (g) { return g.itens.length; }).map(function (g) {
-        return '<h4 class="agenda-titulo ' + g.classe + '">' + g.titulo + ' <span class="muted">(' + g.itens.length + ')</span></h4>' +
-          '<div class="table-wrap"><table><thead><tr><th>Empresa</th><th>WhatsApp</th><th>Telefone</th><th>Cidade</th><th>Status</th><th>Ligar em</th><th>Observação</th></tr></thead><tbody>' +
-          g.itens.map(function (c) {
-            const id = escapeHtml(c.id);
-            return '<tr>' +
-              '<td class="nome-cel">' + escapeHtml(c.nome) + '<div class="sub">' + escapeHtml(tipoCompleto(c)) + (c.site ? ' · <a href="' + escapeHtml(c.site) + '" target="_blank" rel="noopener">site</a>' : '') + '</div></td>' +
-              '<td>' + celulaWhatsapp(c) + '</td>' +
-              '<td class="contato-cel">' + (c.telefone ? '<a href="' + linkTelefone(c.telefone) + '">' + escapeHtml(c.telefone) + '</a>' : '<span class="muted">—</span>') + '</td>' +
-              '<td>' + escapeHtml(c.cidade) + (c.bairro ? '<div class="sub muted">' + escapeHtml(c.bairro) + '</div>' : '') + '</td>' +
-              '<td><select class="campo-tabela sel-status st-' + c.status + '" data-id="' + id + '">' + opcoesStatus(c.status) + '</select></td>' +
-              '<td><input type="date" class="campo-tabela campo-data" data-id="' + id + '" value="' + escapeHtml(c.ligarEm) + '"></td>' +
-              '<td><input type="text" class="campo-tabela campo-obs" data-id="' + id + '" value="' + escapeHtml(c.obs) + '" placeholder="Anotação..."></td>' +
-            '</tr>';
-          }).join('') +
-          '</tbody></table></div>';
+    const marcados = config.participantes || [];
+    const tbody = document.querySelector('#tblDistribuicao tbody');
+    if (!vendedores.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Nenhum vendedor carregado.</td></tr>';
+    } else {
+      tbody.innerHTML = vendedores.map(function (v) {
+        const deles = empresas.filter(function (c) { return c.vendedorCodigo === v.cod; });
+        const conta = function (lista) { return deles.filter(function (c) { return lista.indexOf(c.status) !== -1; }).length; };
+        const ferias = v.status === 'ferias';
+        return '<tr class="' + (ferias ? 'dist-fora' : '') + '">' +
+          '<td class="tc"><input type="checkbox" class="participa" data-cod="' + escapeHtml(v.cod) + '"' + (marcados.indexOf(v.cod) !== -1 ? ' checked' : '') + '></td>' +
+          '<td class="nome-cel">' + escapeHtml(v.nome) + '</td>' +
+          '<td>' + escapeHtml(SETORES[v.setor] || v.setor || '—') + '</td>' +
+          '<td>' + (ferias ? 'Férias (não recebe)' : 'Ativo') + '</td>' +
+          '<td class="tc">' + conta(['novo']) + '</td>' +
+          '<td class="tc">' + conta(['contatado', 'interessado', 'negociando']) + '</td>' +
+          '<td class="tc">' + conta(['jaecliente', 'cliente']) + '</td>' +
+          '<td class="tc">' + conta(['descartado']) + '</td>' +
+          '<td class="tc"><b>' + deles.length + '</b></td>' +
+        '</tr>';
       }).join('');
+    }
+    const n = semVendedor(empresas).length;
+    document.getElementById('distribuicaoSemVendedor').textContent = n ? n + ' empresa(s) no banco sem vendedor.' : 'Todas as empresas do banco já têm vendedor.';
+    document.getElementById('btnDistribuirAgora').disabled = !n;
   }
 
-  // Mudou a data ou o status: a empresa pode trocar de grupo (ou sair, se
-  // foi descartada), então redesenha.
-  ligarEdicao(document.getElementById('agendaConteudo'), function (mudancas) {
-    if ('ligarEm' in mudancas || 'status' in mudancas) renderAgenda();
+  document.querySelector('#tblDistribuicao tbody').addEventListener('change', function (ev) {
+    const cod = ev.target.dataset.cod;
+    if (!cod) return;
+    const lista = (config.participantes || []).filter(function (c) { return c !== cod; });
+    if (ev.target.checked) lista.push(cod);
+    config.participantes = lista;
+    salvarConfig().then(function (ok) {
+      if (configPronta) setSyncIndicador(ok ? '✅ Distribuição salva' : '⚠️ Não consegui salvar a distribuição', ok ? 1500 : 4000);
+    });
   });
-  document.getElementById('agendaVendedor').addEventListener('change', renderAgenda);
-  document.getElementById('btnImprimirAgenda').addEventListener('click', function () { window.print(); });
+
+  document.getElementById('btnDistribuirAgora').addEventListener('click', function () {
+    if (!participantesDaVez().length) { alert('Marque pelo menos um vendedor ativo na coluna "Participa".'); return; }
+    if (!semVendedor(empresas).length) return;
+    if (!confirm('Distribuir ' + semVendedor(empresas).length + ' empresa(s) sem vendedor entre os vendedores marcados?')) return;
+    const btn = this;
+    btn.disabled = true;
+    // Carga de cada um conferida no servidor na hora de dividir.
+    carregarDoServidor().then(function () {
+      const lista = semVendedor(empresas);
+      const resumo = lista.length ? distribuir(lista) : null;
+      renderDistribuicao();
+      alert(resumo ? 'Distribuídas: ' + textoResumoDistribuicao(resumo) + '.' : 'Nenhuma empresa sem vendedor.');
+    });
+  });
 
   /* ---------------------------------------------------------------------
      INICIALIZAÇÃO
@@ -1260,11 +1424,9 @@
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
   carregarLocal();
   atualizarContadorBanco();
-  atualizarListaVendedores();
   carregarEstados();
-  carregarDoServidor().then(function () {
+  Promise.all([carregarDoServidor(), carregarVendedores(), carregarConfig()]).then(function () {
     atualizarContadorBanco();
-    atualizarListaVendedores();
     renderViewAtual();
   });
 

@@ -76,13 +76,18 @@
   function switchView(viewName) {
     document.querySelectorAll('.nav-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.view === viewName); });
     document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'view-' + viewName); });
+    // Sempre que abre, busca a agenda de novo: o Caçador pode ter distribuído contatos.
+    if (viewName === 'agenda') Cockpit.Agenda.abrir();
   }
 
   function wireNav() {
     document.querySelectorAll('.nav-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        if (btn.dataset.view === 'admin') {
-          Cockpit.Auth.requireUnlock(function () { switchView('admin'); });
+        // Agenda: o vendedor entra direto na dele; quem não é vendedor só vê
+        // a agenda dos outros com a senha da Administração.
+        const agendaDeGestor = btn.dataset.view === 'agenda' && !Cockpit.DashboardIndividual.vendedorAtual();
+        if (btn.dataset.view === 'admin' || agendaDeGestor) {
+          Cockpit.Auth.requireUnlock(function () { switchView(btn.dataset.view); });
         } else {
           switchView(btn.dataset.view);
         }
@@ -102,7 +107,11 @@
     navIndividual.style.display = souVendedor ? 'flex' : 'none';
     if (souVendedor) {
       navAdmin.style.display = 'none';
-      switchView('individual');
+      // Só leva pra "Minha Visão" quem ainda está na tela inicial (ou na
+      // Administração, que vendedor não vê): quem já abriu a Agenda antes de os
+      // dados chegarem continua nela, sem perder o que estava digitando.
+      const atual = document.querySelector('.view.active');
+      if (!atual || atual.id === 'view-geral' || atual.id === 'view-admin') switchView('individual');
     }
   }
 
@@ -115,8 +124,10 @@
     Cockpit.DashboardGeral.init();
     Cockpit.DashboardAdmin.init();
     Cockpit.DashboardIndividual.init();
+    Cockpit.Agenda.init();
     aplicarRestricaoDeAcessoIndividual();
     Cockpit.DashboardIndividual.render();
+    Cockpit.Agenda.iniciarSeVendedor();
 
     carregarDadosDoServidor().then(function () {
       // Refaz a checagem de acesso: num aparelho novo, o cadastro de vendedores só
@@ -129,6 +140,8 @@
       Cockpit.DashboardAdmin.renderHistorico();
       Cockpit.DashboardAdmin.refreshMetasForm();
       Cockpit.DashboardIndividual.render();
+      // Num aparelho novo, só agora dá pra saber se o login é de vendedor.
+      Cockpit.Agenda.iniciarSeVendedor();
     });
   });
 })();

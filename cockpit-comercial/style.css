@@ -204,6 +204,54 @@ tbody tr:nth-child(even){background:#fafafa}
 .corrida-row.pendente .corrida-truck{border-color:#ccc;color:#ccc;background:#f3f2f1}
 .corrida-row.pendente .corrida-track{opacity:.6}
 
+/* ===== Agenda (contatos do Caçador de Cliente) ===== */
+.nav-badge{margin-left:auto;min-width:20px;padding:1px 7px;border-radius:20px;background:var(--orange);color:var(--white);font-size:.68rem;font-weight:700;text-align:center}
+.nav-badge:empty{display:none}
+.nav-btn.active .nav-badge{background:var(--white);color:var(--orange)}
+.agenda-resumo{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.agenda-resumo:empty{display:none}
+.ag-chip{display:inline-flex;align-items:center;padding:4px 11px;border-radius:20px;font-size:.72rem;font-weight:700;background:#f3f4f6;color:#374151}
+.ag-chip.hoje{background:#fee2e2;color:#b91c1c}
+.st-novo{background:#ffedd5;color:#c2410c}
+.st-contatado{background:#dbeafe;color:#1d4ed8}
+.st-interessado{background:#fef3c7;color:#92400e}
+.st-negociando{background:#fde68a;color:#78350f}
+.st-jaecliente{background:#ccfbf1;color:#0f766e}
+.st-cliente{background:#dcfce7;color:#15803d}
+.st-descartado{background:#fee2e2;color:#b91c1c}
+.ag-secao{margin-top:22px}
+.ag-secao.novos{background:var(--orange-dim);border:2px solid var(--orange);border-radius:14px;padding:16px}
+.ag-secao.quente .ag-secao-titulo h3{color:#b45309}
+.ag-secao-titulo{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.ag-secao-titulo h3{font-size:1rem;font-weight:700;color:var(--black)}
+.ag-secao.novos .ag-secao-titulo h3{color:var(--orange)}
+.ag-secao-titulo .dica{font-size:.78rem;color:#888}
+.ag-conta{display:inline-block;min-width:22px;padding:1px 8px;margin-left:4px;border-radius:20px;background:var(--white);border:1px solid var(--border);font-size:.72rem;text-align:center;color:var(--dark)}
+details.ag-secao summary{cursor:pointer;list-style:none}
+details.ag-secao summary::-webkit-details-marker{display:none}
+details.ag-secao summary .ag-secao-titulo h3::before{content:'▸ ';color:#999}
+details.ag-secao[open] summary .ag-secao-titulo h3::before{content:'▾ '}
+.ag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:12px}
+.ag-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.03)}
+.ag-card.novo{border:2px solid var(--orange);box-shadow:0 4px 14px rgba(234,91,12,.15)}
+.ag-topo{display:flex;align-items:flex-start;gap:8px}
+.ag-nome{font-weight:700;font-size:.92rem;line-height:1.25;color:var(--black)}
+.ag-selo{margin-left:auto;font-size:.62rem;font-weight:800;background:var(--orange);color:var(--white);padding:2px 8px;border-radius:20px;letter-spacing:.5px}
+.ag-tipo{font-size:.68rem;color:#999;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.ag-linha{font-size:.8rem;color:var(--dark);line-height:1.4}
+.ag-linha a{color:var(--orange);font-weight:600;text-decoration:none}
+.ag-linha a:hover{text-decoration:underline}
+.ag-endereco{font-size:.74rem;color:#888}
+.ag-data{align-self:flex-start;font-size:.74rem;font-weight:700;padding:3px 10px;border-radius:20px;background:#f3f4f6;color:#374151}
+.ag-data.atrasada{background:#fee2e2;color:#b91c1c}
+.ag-data.hoje{background:#ffedd5;color:#c2410c}
+.ag-campos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;padding-top:10px;border-top:1px solid #f0eeec}
+.ag-campos .largo{grid-column:span 2}
+.ag-campos input,.ag-campos select{padding:6px 8px;font-size:.8rem}
+.ag-campos textarea{width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:.8rem;font-family:inherit;resize:vertical}
+.ag-campos textarea:focus{outline:none;border-color:var(--orange)}
+.ag-campos select.ag-status{font-weight:700}
+
 @media(max-width:900px){
   .app-layout{flex-direction:column}
   .side-nav{width:100%;flex-direction:row;overflow-x:auto}

@@ -108,7 +108,7 @@ input:disabled{background:#f3f2f1;color:#aaa}
 .res-dono.sem{color:#aaa}
 .selo-fechado{font-size:.7rem;font-weight:700;color:var(--bad)}
 .barra-atribuir{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--dark);background:#faf9f8;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px}
-.barra-atribuir input{width:220px}
+.barra-atribuir input,.barra-atribuir select{width:240px}
 .barra-atribuir .ml{margin-left:auto}
 
 /* ===== Banco de Empresas / Agenda ===== */
@@ -118,6 +118,7 @@ input:disabled{background:#f3f2f1;color:#aaa}
 .st-contatado{background:#dbeafe;color:#1d4ed8}
 .st-interessado{background:#fef3c7;color:#92400e}
 .st-negociando{background:#ffedd5;color:#c2410c}
+.st-jaecliente{background:#ccfbf1;color:#0f766e}
 .st-cliente{background:#dcfce7;color:#15803d}
 .st-descartado{background:#fee2e2;color:#b91c1c}
 .table-wrap{overflow:auto;max-height:65vh}
@@ -137,13 +138,9 @@ tbody tr:nth-child(even){background:#fafafa}
 .cel-whats{display:flex;align-items:center;gap:4px}
 .cel-whats a{text-decoration:none;font-size:1rem}
 .linha-marcada td{background:var(--orange-dim)}
-.agenda-topo{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:6px}
-.agenda-vendedor{min-width:260px}
-.agenda-resumo{font-size:.82rem;color:var(--dark);margin:12px 0 4px}
-.agenda-titulo{font-size:.85rem;font-weight:700;margin:20px 0 8px;color:var(--black)}
-.agenda-titulo.atrasada{color:var(--bad)}
-.agenda-titulo.hoje{color:var(--warn)}
-.agenda-impressao-titulo{display:none}
+.campo-codcliente{display:block;margin-top:5px}
+.dist-fora td{color:#aaa}
+.aviso-caixa{padding:10px 14px;border-radius:8px;font-size:.8rem;margin-bottom:14px;background:#fef9c3;border:1px solid #fde68a;color:#854d0e}
 
 /* ===== Celular ===== */
 @media (max-width:860px){
@@ -159,21 +156,6 @@ tbody tr:nth-child(even){background:#fafafa}
   #mapa{height:380px}
   .lista-resultados{grid-template-columns:1fr}
   .resultados-filtros,.resultados-filtro{width:100%}
-  .barra-atribuir input{width:100%}
+  .barra-atribuir input,.barra-atribuir select{width:100%}
   .barra-atribuir .ml{margin-left:0}
-  .agenda-vendedor{min-width:0;width:100%}
-}
-
-/* ===== Impressão da agenda: só a lista do vendedor ===== */
-@media print{
-  .hdr,.sidebar,.no-print{display:none !important}
-  body{background:#fff}
-  .layout{display:block}
-  .main-area{padding:0}
-  .card{border:none;box-shadow:none;padding:0}
-  .agenda-impressao-titulo{display:block;font-size:1.1rem;margin-bottom:8px}
-  .table-wrap{max-height:none;overflow:visible}
-  table{font-size:.72rem}
-  tbody tr{break-inside:avoid}
-  input,select{border:none;padding:0;background:none;-webkit-appearance:none;appearance:none}
 }

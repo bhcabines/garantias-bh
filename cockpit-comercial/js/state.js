@@ -68,6 +68,28 @@ Cockpit.State = (function () {
     localStorage.setItem(LS_VENDAS, JSON.stringify(arr || []));
   }
 
+  // Agenda (contatos do Caçador de Cliente): última lista carregada, pra
+  // abrir sem internet, e as alterações que ainda não subiram pro servidor
+  // ({ id: { por: código do vendedor ou '', mudancas: {...} } }).
+  // try/catch: com o armazenamento cheio, a agenda segue só em memória.
+  const LS_AGENDA = 'cockpit_agenda';
+  const LS_AGENDA_PENDENTES = 'cockpit_agenda_pendentes';
+
+  function getAgendaLocal() {
+    try { return JSON.parse(localStorage.getItem(LS_AGENDA)) || { dono: '', contatos: [] }; }
+    catch (e) { return { dono: '', contatos: [] }; }
+  }
+  function saveAgendaLocal(obj) {
+    try { localStorage.setItem(LS_AGENDA, JSON.stringify(obj)); } catch (e) {}
+  }
+  function getAgendaPendentes() {
+    try { return JSON.parse(localStorage.getItem(LS_AGENDA_PENDENTES)) || {}; }
+    catch (e) { return {}; }
+  }
+  function saveAgendaPendentes(obj) {
+    try { localStorage.setItem(LS_AGENDA_PENDENTES, JSON.stringify(obj || {})); } catch (e) {}
+  }
+
   // Atualiza o cache local após uma importação bem-sucedida, sem precisar
   // refazer o fetch completo do histórico no Apps Script.
   function upsertVendasForDate(dataStr, novasLinhas) {
@@ -92,6 +114,10 @@ Cockpit.State = (function () {
     saveVendedoresLocal: saveVendedoresLocal,
     getVendas: getVendas,
     saveVendasLocal: saveVendasLocal,
-    upsertVendasForDate: upsertVendasForDate
+    upsertVendasForDate: upsertVendasForDate,
+    getAgendaLocal: getAgendaLocal,
+    saveAgendaLocal: saveAgendaLocal,
+    getAgendaPendentes: getAgendaPendentes,
+    saveAgendaPendentes: saveAgendaPendentes
   };
 })();
