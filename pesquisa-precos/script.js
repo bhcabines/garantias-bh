@@ -2,6 +2,8 @@
    PESQUISA DE PREÇOS — script.js
    Pesquisa um produto (nome e/ou código original) em duas fontes, pelo Apps
    Script (arquivo Precos.gs). O site é público, então as chaves ficam só lá.
+   O campo Caminhão filtra: só entram ofertas que citam uma palavra dele (ou o
+   código); sem caminhão e com código, só as que citam o código.
      • Google Shopping (SerpApi): onde aparecem Mercado Livre, Amazon, Magalu...
      • Lojas na web (Firecrawl): acha as páginas das lojas e lê o preço.
    As duas rodam juntas e cada uma aparece assim que chega. Toda pesquisa fica
@@ -22,6 +24,10 @@
   const FORA_DA_CURVA_ABAIXO = 0.4;
   const FORA_DA_CURVA_ACIMA = 2.5;
   const PALAVRAS_VAZIAS = { de: 1, da: 1, do: 1, das: 1, dos: 1, para: 1, pra: 1, com: 1, sem: 1, em: 1, no: 1, na: 1, e: 1, a: 1, o: 1, as: 1, os: 1, um: 1, uma: 1, preco: 1 };
+  // Campo Caminhão (mesmas listas do servidor): palavras que não filtram nada,
+  // e os outros nomes da mesma marca.
+  const PALAVRAS_SEM_FILTRO = { caminhao: 1, caminhoes: 1, truck: 1, modelo: 1, linha: 1 };
+  const SINONIMOS = { mb: ['mercedes', 'benz'], mercedes: ['mb', 'benz'], benz: ['mb', 'mercedes'], vw: ['volkswagen', 'volks'], volkswagen: ['vw', 'volks'], volks: ['vw', 'volkswagen'] };
 
   let estado = null;            // pesquisa aberta na tela
   let doHistorico = false;      // a pesquisa aberta veio do Histórico (preços de outro dia)
@@ -35,6 +41,7 @@
   let gravadas = {};
   let apagadas = {};
   let mostrarTodasLojas = false;
+  let mostrarEscondidas = false;  // ofertas que não citam o caminhão nem o código
   let gruposVisiveis = [];
   let fotoQuebrada = {};
   let timerSalvar = null;
@@ -95,6 +102,58 @@
   // Código sem espaço, ponto ou traço: "A 943 810-01.16" = "A9438100116".
   function normCodigo(s) { return semAcento(s).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
   function temCodigo(texto, codigoN) { return !!codigoN && codigoN.length >= 4 && normCodigo(texto).indexOf(codigoN) >= 0; }
+
+  // Mesmas regras do servidor. "Volvo FH, MB 1620" → volvo, fh, mb, 1620 (+ mercedes, benz).
+  function palavrasDe(s) {
+    const lista = [];
+    semAcento(s).split(/[^a-z0-9]+/).forEach(function (t) {
+      if (t.length < 2 || PALAVRAS_VAZIAS[t] || PALAVRAS_SEM_FILTRO[t]) return;
+      [t].concat(SINONIMOS[t] || []).forEach(function (x) { if (lista.indexOf(x) < 0) lista.push(x); });
+    });
+    return lista;
+  }
+
+  // Basta uma das palavras. Número só vale inteiro ("1620" acha "L1620", não
+  // "11620"); sigla curta só como palavra ("FH" acha "FH12", não "embutida");
+  // letra misturada com número compara sem espaço.
+  function temPalavra(texto, palavras) {
+    if (!palavras.length) return false;
+    const t = semAcento(texto);
+    const compacto = t.replace(/[^a-z0-9]/g, '');
+    return palavras.some(function (k) {
+      if (/^\d+$/.test(k)) return new RegExp('(^|[^0-9])' + k + '(?![0-9])').test(t);
+      if (/^[a-z]+$/.test(k)) return new RegExp('(^|[^a-z0-9])' + k + (k.length <= 3 ? '(?![a-z])' : '')).test(t);
+      return compacto.indexOf(k) >= 0;
+    });
+  }
+
+  // O que a oferta vai precisar citar: 'palavras' (uma palavra do caminhão, ou o
+  // código), 'codigo' (só o código) ou '' (nada: só o nome foi preenchido).
+  function regraDa(codigo, palavras) {
+    return palavrasDe(palavras).length ? 'palavras' : (normCodigo(codigo).length >= 4 ? 'codigo' : '');
+  }
+
+  // Junta os pedaços sem repetir palavra: "Maçaneta MB 1620" + "MB 1620" = "Maçaneta MB 1620".
+  function juntar(partes) {
+    const vistas = {};
+    const saida = [];
+    partes.forEach(function (parte) {
+      String(parte || '').split(/[\s,;]+/).forEach(function (w) {
+        const k = semAcento(w).replace(/[^a-z0-9]/g, '');
+        if (!k || vistas[k]) return;
+        vistas[k] = true;
+        saida.push(w);
+      });
+    });
+    return saida.join(' ');
+  }
+
+  // "Maçaneta externa" + "MB 1620" → "Maçaneta externa · MB 1620", sem repetir o
+  // que o nome já diz ("Para-choque Volvo FH" + "Volvo FH" fica só o nome).
+  function comCaminhao(nome, palavras) {
+    if (!palavras || juntar([nome, palavras]) === juntar([nome])) return nome;
+    return nome ? nome + ' · ' + palavras : palavras;
+  }
 
   // "R$ 1.234,56", "1234.56", "1.234" → número
   function numeroBR(v) {
@@ -195,13 +254,16 @@
   /* ---------------------------------------------------------------------
      PESQUISAR
      --------------------------------------------------------------------- */
-  function novaPesquisa(nome, codigo, nosso) {
+  function novaPesquisa(nome, codigo, palavras, nosso) {
     return {
       id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       data: new Date().toISOString(),
       quem: quemSou(),
       nome: nome,
       codigo: codigo,
+      palavras: palavras,
+      // Pesquisa feita antes do campo Caminhão não tem regra: continua como era.
+      exigir: regraDa(codigo, palavras),
       nossoPreco: nosso || null,
       fontes: {},
       ofertas: [],
@@ -213,6 +275,7 @@
   function pesquisar(forcar) {
     const nome = $('fNome').value.replace(/\s+/g, ' ').trim();
     const codigo = $('fCodigo').value.replace(/\s+/g, ' ').trim();
+    const palavras = $('fPalavras').value.replace(/\s+/g, ' ').trim();
     if (!nome && !codigo) {
       alert('Digite o nome do produto ou o código original.');
       $('fNome').focus();
@@ -224,7 +287,7 @@
       return;
     }
 
-    estado = novaPesquisa(nome, codigo, numeroBR($('fNosso').value));
+    estado = novaPesquisa(nome, codigo, palavras, numeroBR($('fNosso').value));
     doHistorico = false;
     mostrarTodasLojas = false;
     fotoQuebrada = {};
@@ -238,7 +301,7 @@
 
     const id = estado.id;
     const pedidos = Object.keys(FONTES).filter(function (f) { return usar[f]; }).map(function (f) {
-      return apiGet({ action: ACAO_DA_FONTE[f], nome: nome, codigo: codigo, forcar: forcar ? '1' : '' }, TEMPO_MAXIMO[f])
+      return apiGet({ action: ACAO_DA_FONTE[f], nome: nome, codigo: codigo, palavras: palavras, forcar: forcar ? '1' : '' }, TEMPO_MAXIMO[f])
         .then(function (r) { if (estado && estado.id === id) receber(f, r); })
         .catch(function (e) {
           if (!estado || estado.id !== id) return;
@@ -258,8 +321,15 @@
     if (r && r.ok === true) {
       servidorPronto = true;
       const ja = {};
-      estado.ofertas.forEach(function (o) { ja[o.id] = true; });
-      const novas = (r.ofertas || []).filter(function (o) { return o && o.id && Number(o.preco) > 0 && !ja[o.id]; });
+      estado.ofertas.forEach(function (o) { ja[o.id] = ja[chaveRepetida(o)] = true; });
+      const novas = (r.ofertas || []).filter(function (o) {
+        if (!o || !o.id || !(Number(o.preco) > 0)) return false;
+        limparOferta(o);
+        // O Google às vezes repete a mesma oferta (mesma loja, título e preço) com outro código.
+        if (ja[o.id] || ja[chaveRepetida(o)]) return false;
+        ja[o.id] = ja[chaveRepetida(o)] = true;
+        return true;
+      });
       estado.ofertas = estado.ofertas.concat(novas);
       estado.fontes[fonte] = { estado: 'ok', n: novas.length, doCache: !!r.doCache, resumo: r.resumo || null };
       if (r.saldo && saldo) { saldo[fonte] = r.saldo; renderSaldo(); }
@@ -268,6 +338,19 @@
     }
     renderTudo();
     guardarLocal();
+  }
+
+  // NFC junta acento solto na letra ("a" + "~" vira "ã"), como vem de alguns sites.
+  // Link do Google vem com espaço no meio do endereço.
+  function limparOferta(o) {
+    o.titulo = String(o.titulo || '').normalize('NFC');
+    o.loja = String(o.loja || '').normalize('NFC');
+    if (o.link) o.link = String(o.link).trim().replace(/ /g, '%20');
+    return o;
+  }
+
+  function chaveRepetida(o) {
+    return [o.fonte, semAcento(o.loja), semAcento(o.titulo), o.preco].join('|');
   }
 
   function carregando() {
@@ -285,13 +368,24 @@
      --------------------------------------------------------------------- */
   function avaliar() {
     const tokens = tokensDe(estado.nome);
+    // A primeira palavra quase sempre é o tipo da peça: pesquisando "para-choque",
+    // oferta sem "para-choque" no título é outra coisa (grade, tampa, alça...).
+    const principal = tokens[0] || '';
     const codigoN = normCodigo(estado.codigo);
+    const palavras = estado.exigir === 'palavras' ? palavrasDe(estado.palavras) : [];
     const info = {};
     estado.ofertas.forEach(function (o) {
+      const codigo = !!o.codigoConfere || temCodigo(o.titulo, codigoN);
       let auto = '';
-      if (o.usado || /\b(usad[oa]s?|seminov[oa]s?|recondicionad[oa]s?)\b/.test(semAcento(o.titulo))) auto = 'usado';
+      // Não cita o caminhão (nem o código): fica escondida no fim da lista.
+      let escondida = false;
+      if (!codigo && (estado.exigir === 'codigo' || (estado.exigir === 'palavras' && !o.palavraConfere && !temPalavra(o.titulo, palavras)))) {
+        auto = 'não cita ' + alvoDaRegra();
+        escondida = true;
+      } else if (o.usado || /\b(usad[oa]s?|seminov[oa]s?|recondicionad[oa]s?)\b/.test(semAcento(o.titulo))) auto = 'usado';
       else if (o.disponivel === false) auto = 'sem estoque';
-      info[o.id] = { auto: auto, parecido: parecido(tokens, o.titulo), codigo: !!o.codigoConfere || temCodigo(o.titulo, codigoN) };
+      else if (principal && !codigo && semAcento(o.titulo).replace(/[^a-z0-9]/g, '').indexOf(principal) < 0) auto = 'não parece ser o mesmo produto';
+      info[o.id] = { auto: auto, escondida: escondida, parecido: parecido(tokens, o.titulo), codigo: codigo };
     });
     const base = estado.ofertas.filter(function (o) { return !info[o.id].auto && estado.decisoes[o.id] !== 'fora'; });
     if (base.length >= 5) {
@@ -324,9 +418,16 @@
         media: contadas.length ? soma / contadas.length : 0,
         mediana: mediana(precos),
         lojas: grupos.length,
-        fora: estado.ofertas.length - contadas.length
+        fora: estado.ofertas.length - contadas.length,
+        escondidas: estado.ofertas.filter(function (o) { return info[o.id].escondida && !info[o.id].conta; }).length
       }
     };
+  }
+
+  // "MB 1620 nem o código original" / "o código original"
+  function alvoDaRegra() {
+    if (estado.exigir === 'palavras') return estado.palavras + (normCodigo(estado.codigo).length >= 4 ? ' nem o código original' : '');
+    return 'o código original';
   }
 
   function chaveLoja(o) {
@@ -369,13 +470,15 @@
   }
 
   function termoDaPesquisa() {
-    return [estado.nome, estado.codigo].filter(Boolean).join(' ');
+    return juntar([estado.nome, estado.palavras, estado.codigo]);
   }
 
   function renderTopo() {
-    $('resTitulo').textContent = estado.nome || ('Código ' + estado.codigo);
+    $('resTitulo').textContent = comCaminhao(estado.nome || ('Código ' + estado.codigo), estado.palavras);
     const partes = [];
     if (estado.nome && estado.codigo) partes.push('Código original ' + estado.codigo);
+    if (estado.exigir === 'palavras') partes.push('Só entram ofertas que citam ' + estado.palavras + (normCodigo(estado.codigo).length >= 4 ? ' ou o código' : ''));
+    else if (estado.exigir === 'codigo') partes.push('Só entram ofertas com o código original');
     partes.push('Pesquisado em ' + fmtDataHora(estado.data) + (estado.quem ? ' por ' + estado.quem : ''));
     $('resSub').textContent = partes.join(' · ');
     const termo = termoDaPesquisa();
@@ -409,6 +512,7 @@
         txt += ' · ' + r.abertas + (r.abertas === 1 ? ' página aberta' : ' páginas abertas');
         if (r.falharam) txt += ', ' + r.falharam + ' não abri' + (r.falharam === 1 ? 'u' : 'ram');
         if (r.semPreco) txt += ', ' + r.semPreco + ' sem preço';
+        if (r.descartadas) txt += ' · ' + r.descartadas + (r.descartadas === 1 ? ' página não citava ' : ' páginas não citavam ') + alvoDaRegra() + ' e nem foram abertas (não gastaram crédito)';
         if (r.limiteMinuto) txt += ' · o plano grátis abre 10 páginas por minuto: pesquise de novo daqui a 1 minuto pra completar';
       }
       if (s.doCache) txt += ' · da memória (pesquisa repetida nas últimas 6h, não gastou nada)';
@@ -422,7 +526,10 @@
 
   /* ---------- Foto do produto: uma só, pra comparar com as ofertas ---------- */
   function fotosCandidatas(av) {
-    const lista = estado.ofertas.filter(function (o) { return imgOk(o.imagem) && !fotoQuebrada[o.imagem]; });
+    const lista = estado.ofertas.filter(function (o) {
+      const i = av.info[o.id];
+      return imgOk(o.imagem) && !fotoQuebrada[o.imagem] && !(i.escondida && !i.conta);
+    });
     lista.sort(function (a, b) {
       const ia = av.info[a.id], ib = av.info[b.id];
       return (ib.conta - ia.conta) || (ib.codigo - ia.codigo) || ((b.fonte === 'web') - (a.fonte === 'web'))
@@ -573,7 +680,8 @@
     botao.textContent = mostrarTodasLojas ? 'Ver só as ' + LOJAS_VISIVEIS + ' mais baratas' : 'Ver todas as ' + grupos.length + ' lojas';
 
     if (!gruposVisiveis.length) {
-      el.innerHTML = '<p class="gr-vazio">' + (carregando() ? 'Buscando preços...' : 'Nenhuma oferta na conta.') + '</p>';
+      el.innerHTML = '<p class="gr-vazio">' + (carregando() ? 'Buscando preços...'
+        : (av.stats.escondidas ? 'Nenhuma oferta na conta: as que apareceram não citam ' + esc(alvoDaRegra()) + ' (estão escondidas no fim da lista de ofertas).' : 'Nenhuma oferta na conta.')) + '</p>';
       return;
     }
     const nosso = estado.nossoPreco;
@@ -637,6 +745,7 @@
     $('filtroMostrar').value = '';
     $('filtroOrdem').value = 'menor';
     $('filtroTexto').value = '';
+    mostrarEscondidas = false;
   }
 
   function renderOfertas(av) {
@@ -646,6 +755,7 @@
     const texto = semAcento($('filtroTexto').value.trim());
     const menorId = av.stats.menor ? av.stats.menor.id : '';
 
+    let escondidas = 0;
     let lista = estado.ofertas.filter(function (o) {
       const i = av.info[o.id];
       if (fonte && o.fonte !== fonte) return false;
@@ -653,20 +763,29 @@
       if (mostrar === 'codigo' && !i.codigo) return false;
       if (mostrar === 'fora' && i.conta) return false;
       if (texto && semAcento(o.titulo + ' ' + o.loja).indexOf(texto) < 0) return false;
+      if (i.escondida && !i.conta) {
+        escondidas++;
+        return mostrarEscondidas;
+      }
       return true;
     });
     lista.sort(function (a, b) {
       const ia = av.info[a.id], ib = av.info[b.id];
       if (ordem === 'parecido') return (ib.codigo - ia.codigo) || (ib.parecido - ia.parecido) || (a.preco - b.preco);
-      // As que ficaram de fora vão pro fim da lista.
-      return (ib.conta - ia.conta) || (ordem === 'maior' ? b.preco - a.preco : a.preco - b.preco);
+      // As que ficaram de fora vão pro fim da lista; as escondidas, depois delas.
+      return (ib.conta - ia.conta) || (ia.escondida - ib.escondida) || (ordem === 'maior' ? b.preco - a.preco : a.preco - b.preco);
     });
 
     $('ofertasContagem').textContent = estado.ofertas.length ? '(' + lista.length + (lista.length !== estado.ofertas.length ? ' de ' + estado.ofertas.length : '') + ')' : '';
     const el = $('listaOfertas');
+    const linhaEscondidas = escondidas ? '<div class="escondidas-linha"><span>🎯 ' + escondidas + (escondidas === 1 ? ' oferta não cita ' : ' ofertas não citam ') + esc(alvoDaRegra())
+      + (mostrarEscondidas ? (escondidas === 1 ? ' e está aparecendo acima, fora da conta.' : ' e estão aparecendo acima, fora da conta.') : (escondidas === 1 ? ' e ficou escondida.' : ' e ficaram escondidas.')) + '</span>'
+      + '<button class="btn blinha btn-pequeno" type="button" data-acao="verEscondidas">' + (mostrarEscondidas ? 'Esconder de novo' : 'Mostrar') + '</button></div>' : '';
     if (!lista.length) {
       el.innerHTML = '<p class="lista-vazia">' + (carregando() ? 'Buscando preços...'
-        : (estado.ofertas.length ? 'Nenhuma oferta com esses filtros.' : 'Nenhum preço encontrado. Tente só o código, ou um nome mais curto (ex.: “para-choque Volvo FH”).')) + '</p>';
+        : (escondidas ? 'Nenhuma oferta cita ' + esc(alvoDaRegra()) + '.'
+          : (estado.ofertas.length ? 'Nenhuma oferta com esses filtros.' : 'Nenhum preço encontrado. Tente só o código, ou um nome mais curto (ex.: “para-choque Volvo FH”).'))) + '</p>'
+        + linhaEscondidas;
       return;
     }
     el.innerHTML = lista.map(function (o) {
@@ -693,7 +812,7 @@
         + '<button class="btn blinha btn-pequeno" type="button" data-acao="' + (i.conta ? 'tirar' : 'contar') + '" data-id="' + esc(o.id) + '">'
         + (i.conta ? '✕ Tirar da conta' : '↺ Contar') + '</button>'
         + '</div></div>';
-    }).join('');
+    }).join('') + linhaEscondidas;
   }
 
   function decidir(id, acao) {
@@ -744,7 +863,7 @@
   function exportarPlanilha() {
     if (!estado || !estado.ofertas.length) { alert('Ainda não há ofertas pra exportar.'); return; }
     const av = avaliar();
-    const colunas = ['Produto pesquisado', 'Código original', 'Data da pesquisa', 'Loja', 'Fonte', 'Título da oferta', 'Preço', 'Frete', 'Entra na conta', 'Observação', 'Link'];
+    const colunas = ['Produto pesquisado', 'Código original', 'Caminhão', 'Data da pesquisa', 'Loja', 'Fonte', 'Título da oferta', 'Preço', 'Frete', 'Entra na conta', 'Observação', 'Link'];
     // Texto começando com = + - @ viraria fórmula no Excel.
     const cel = function (v) {
       let s = String(v == null ? '' : v);
@@ -754,7 +873,7 @@
     const ordenadas = av.contadas.concat(estado.ofertas.filter(function (o) { return !av.info[o.id].conta; }));
     const linhas = ordenadas.map(function (o) {
       const i = av.info[o.id];
-      return [estado.nome, estado.codigo, fmtDataHora(estado.data), o.loja, FONTES[o.fonte], o.titulo,
+      return [estado.nome, estado.codigo, estado.palavras || '', fmtDataHora(estado.data), o.loja, FONTES[o.fonte], o.titulo,
         o.preco.toFixed(2).replace('.', ','), o.frete, i.conta ? 'sim' : 'não',
         [i.codigo ? 'código confere' : '', i.motivo].filter(Boolean).join('; '), o.link].map(cel).join(';');
     });
@@ -788,6 +907,8 @@
       quem: estado.quem,
       nome: estado.nome,
       codigo: estado.codigo,
+      palavras: estado.palavras || '',
+      exigir: estado.exigir || '',
       nossoPreco: estado.nossoPreco,
       // Guarda a foto que está na tela, pra pesquisa reaberta mostrar a mesma.
       foto: estado.foto || fotoAtual(av).url,
@@ -812,7 +933,8 @@
       if (!r || r.ok !== true) throw new Error((r && r.erro) || 'sem resposta');
       setSyncIndicador('✅ Guardado no histórico', 2000);
       gravadas[reg.id] = {
-        id: reg.id, data: reg.data, quem: reg.quem, produto: reg.nome, codigo: reg.codigo, ofertas: reg.resumo.ofertas,
+        // Produto como o servidor grava na planilha: "Maçaneta externa · MB 1620"
+        id: reg.id, data: reg.data, quem: reg.quem, produto: comCaminhao(reg.nome, reg.palavras), codigo: reg.codigo, ofertas: reg.resumo.ofertas,
         menor: reg.resumo.menor, loja: reg.resumo.loja, media: reg.resumo.media, nosso: reg.nossoPreco
       };
       historico = juntarHistorico(historico);
@@ -885,7 +1007,8 @@
     apiGet({ action: 'precosAbrir', id: id }).then(function (r) {
       if (!r || r.ok !== true || !r.pesquisa) throw new Error((r && r.erro) || 'Não consegui abrir essa pesquisa.');
       const p = r.pesquisa;
-      estado = Object.assign(novaPesquisa(p.nome || '', p.codigo || '', p.nossoPreco), p);
+      estado = Object.assign(novaPesquisa(p.nome || '', p.codigo || '', p.palavras || '', p.nossoPreco), p);
+      estado.exigir = p.exigir || '';   // guardada antes do campo Caminhão: sem regra, como era
       estado.ofertas = Array.isArray(p.ofertas) ? p.ofertas : [];
       estado.decisoes = p.decisoes || {};
       estado.fontes = p.fontes || {};
@@ -932,7 +1055,31 @@
   function preencherFormulario() {
     $('fNome').value = estado.nome || '';
     $('fCodigo').value = estado.codigo || '';
+    $('fPalavras').value = estado.palavras || '';
     $('fNosso').value = estado.nossoPreco ? fmtBRL(estado.nossoPreco) : '';
+    renderDica();
+  }
+
+  // Embaixo do formulário: o que vai entrar na conta com o que está digitado.
+  function renderDica() {
+    const codigo = $('fCodigo').value;
+    const texto = $('fPalavras').value;
+    const regra = regraDa(codigo, texto);
+    let html;
+    if (regra === 'palavras') {
+      const digitadas = texto.split(/[\s,;\/]+/).filter(function (w) { return palavrasDe(w).length; });
+      const outras = digitadas.filter(function (w) { return SINONIMOS[semAcento(w)]; }).map(function (w) {
+        return esc(w) + ' também vale ' + SINONIMOS[semAcento(w)].map(function (s) { return s.charAt(0).toUpperCase() + s.slice(1); }).join(' e ');
+      });
+      html = '🎯 Só entram ofertas que citam ' + digitadas.map(function (w) { return '<b>' + esc(w) + '</b>'; }).join(' ou ')
+        + (regraDa(codigo, '') === 'codigo' ? ', ou o código original' : '') + '.'
+        + (outras.length ? ' <span class="muted">(' + outras.join('; ') + ')</span>' : '');
+    } else if (regra === 'codigo') {
+      html = '🎯 Sem caminhão, só entram ofertas com o <b>código original</b>. Pra ver mais, preencha o caminhão (ex.: Volvo FH).';
+    } else {
+      html = 'Dica: preencha o caminhão (ex.: Volvo FH, MB 1620) pra trazer só as peças dele.';
+    }
+    $('buscaDica').innerHTML = html;
   }
 
   function refazer() {
@@ -949,6 +1096,7 @@
       e.preventDefault();
       pesquisar(false);
     });
+    ['fCodigo', 'fPalavras'].forEach(function (id) { $(id).addEventListener('input', renderDica); });
 
     // Nosso preço muda a comparação na hora, sem pesquisar de novo.
     $('fNosso').addEventListener('change', function () {
@@ -1003,6 +1151,9 @@
         const o = estado.ofertas.find(function (x) { return x.id === id; });
         if (o) { estado.foto = o.imagem; renderFoto(avaliar()); guardarLocal(); agendarSalvar(); }
         fecharComparar();
+      } else if (acao === 'verEscondidas') {
+        mostrarEscondidas = !mostrarEscondidas;
+        renderOfertas(avaliar());
       } else if (acao === 'refazer') refazer();
       else if (acao === 'abrir') abrirDoHistorico(id);
       else if (acao === 'apagar') apagarDoHistorico(id);
@@ -1060,6 +1211,7 @@
   $('headerDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
   ligarEventos();
   restaurar();
+  renderDica();
   renderTudo();
   renderHistorico();
   renderSaldo();

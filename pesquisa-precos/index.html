@@ -54,11 +54,15 @@
         <form id="formBusca" class="busca-form" autocomplete="off">
           <div class="field campo-nome">
             <label for="fNome">Nome do produto</label>
-            <input type="text" id="fNome" placeholder="Ex.: para-choque Volvo FH 2015" maxlength="150">
+            <input type="text" id="fNome" placeholder="Ex.: maçaneta externa, para-choque" maxlength="150">
           </div>
           <div class="field">
             <label for="fCodigo">Código original <span class="label-dica">opcional</span></label>
             <input type="text" id="fCodigo" placeholder="Ex.: 20360775" maxlength="60">
+          </div>
+          <div class="field">
+            <label for="fPalavras">Caminhão <span class="label-dica">filtra os resultados</span></label>
+            <input type="text" id="fPalavras" placeholder="Ex.: Volvo FH, MB 1620" maxlength="80">
           </div>
           <div class="field">
             <label for="fNosso">Nosso preço <span class="label-dica">opcional</span></label>
@@ -66,6 +70,7 @@
           </div>
           <button class="btn bo btn-buscar" id="btnPesquisar" type="submit">🔍 Pesquisar preços</button>
         </form>
+        <p class="busca-dica" id="buscaDica"></p>
         <div class="fontes-linha">
           <span class="fontes-titulo">Onde pesquisar</span>
           <label class="fonte-chip"><input type="checkbox" id="usarGoogle" checked> <span class="ponto ponto-google"></span>Google Shopping</label>
@@ -78,6 +83,7 @@
         <h3 class="card-title">Como funciona</h3>
         <ol class="como-lista">
           <li>Digite o <b>nome do produto</b>, o <b>código original</b> ou os dois. Com o código, a pesquisa acha a peça exata.</li>
+          <li>Preencha o <b>caminhão</b> (ex.: Volvo FH, MB 1620): só entram ofertas que citam pelo menos uma dessas palavras, ou o código. Sem caminhão e com código, só entram as que têm o código. Lojas que não citam nada disso nem são abertas, e não gastam crédito.</li>
           <li>O sistema procura no <b>Google Shopping</b> (onde aparecem Mercado Livre, Amazon, Magalu e outras lojas) e abre as <b>páginas das lojas na web</b> pra ler o preço de cada uma.</li>
           <li>Os preços aparecem lado a lado, com o <b>menor preço em destaque</b> e um botão pra visitar cada loja. Preencha o nosso preço pra ver como ele fica no mercado.</li>
           <li>Toda pesquisa fica guardada no <b>Histórico</b>. Abrir uma pesquisa antiga não gasta nada.</li>
