@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BH Cabines — Pesquisa de Preços</title>
+<link rel="stylesheet" href="style.css">
+
+<!-- PWA: instalável como app ("Adicionar à tela inicial") -->
+<link rel="manifest" href="../manifest.json">
+<meta name="theme-color" content="#EA5B0C">
+<link rel="icon" href="../icons/icon-192.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BH Cabines">
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-in">
+    <a href="../index.html" class="hdr-back" title="Voltar ao painel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <img src="../logo_extraido/Logo/Logo - Formatos Variados/PNG (Fundo Transparente)/bhcabines_logoredesign_01.png" alt="BH Cabines">
+    <div class="hdr-title">
+      <h1>Pesquisa de Preços</h1>
+      <small>Google Shopping e lojas na web, lado a lado</small>
+    </div>
+    <div class="ml hdr-right">
+      <span id="syncIndicador" class="sync-indicador" style="display:none"></span>
+      <span class="header-date" id="headerDate"></span>
+      <a href="../index.html" class="btn-menu">🏠 Menu</a>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+      <button class="nav-item active" data-view="pesquisa">🔍 Pesquisar</button>
+      <button class="nav-item" data-view="historico">🕘 Histórico <span class="nav-contador" id="navContadorHistorico"></span></button>
+    </div>
+  </aside>
+
+  <main class="main-area">
+
+    <!-- ===================== PESQUISAR ===================== -->
+    <section class="view" id="view-pesquisa">
+
+      <div class="card">
+        <h3 class="card-title">O que você quer pesquisar</h3>
+        <form id="formBusca" class="busca-form" autocomplete="off">
+          <div class="field campo-nome">
+            <label for="fNome">Nome do produto</label>
+            <input type="text" id="fNome" placeholder="Ex.: para-choque Volvo FH 2015" maxlength="150">
+          </div>
+          <div class="field">
+            <label for="fCodigo">Código original <span class="label-dica">opcional</span></label>
+            <input type="text" id="fCodigo" placeholder="Ex.: 20360775" maxlength="60">
+          </div>
+          <div class="field">
+            <label for="fNosso">Nosso preço <span class="label-dica">opcional</span></label>
+            <input type="text" id="fNosso" inputmode="decimal" placeholder="R$ 0,00" maxlength="20">
+          </div>
+          <button class="btn bo btn-buscar" id="btnPesquisar" type="submit">🔍 Pesquisar preços</button>
+        </form>
+        <div class="fontes-linha">
+          <span class="fontes-titulo">Onde pesquisar</span>
+          <label class="fonte-chip"><input type="checkbox" id="usarGoogle" checked> <span class="ponto ponto-google"></span>Google Shopping</label>
+          <label class="fonte-chip"><input type="checkbox" id="usarWeb" checked> <span class="ponto ponto-web"></span>Lojas na web</label>
+          <span class="saldo" id="saldo"></span>
+        </div>
+      </div>
+
+      <div class="card vazio" id="vazio">
+        <h3 class="card-title">Como funciona</h3>
+        <ol class="como-lista">
+          <li>Digite o <b>nome do produto</b>, o <b>código original</b> ou os dois. Com o código, a pesquisa acha a peça exata.</li>
+          <li>O sistema procura no <b>Google Shopping</b> (onde aparecem Mercado Livre, Amazon, Magalu e outras lojas) e abre as <b>páginas das lojas na web</b> pra ler o preço de cada uma.</li>
+          <li>Os preços aparecem lado a lado, com o <b>menor preço em destaque</b> e um botão pra visitar cada loja. Preencha o nosso preço pra ver como ele fica no mercado.</li>
+          <li>Toda pesquisa fica guardada no <b>Histórico</b>. Abrir uma pesquisa antiga não gasta nada.</li>
+        </ol>
+      </div>
+
+      <div id="resultado" style="display:none">
+
+        <div class="res-topo">
+          <div class="res-topo-texto">
+            <h2 id="resTitulo"></h2>
+            <p class="muted" id="resSub"></p>
+          </div>
+          <div class="btn-row-h">
+            <a class="btn bgray btn-pequeno" id="linkGoogle" target="_blank" rel="noopener noreferrer">Abrir no Google Shopping ↗</a>
+            <a class="btn bgray btn-pequeno" id="linkML" target="_blank" rel="noopener noreferrer">Abrir no Mercado Livre ↗</a>
+            <button class="btn bk btn-pequeno" id="btnPlanilha" type="button">⬇ Planilha</button>
+          </div>
+        </div>
+
+        <div class="aviso-caixa" id="avisoAntiga" style="display:none"></div>
+        <div class="progresso" id="progresso"></div>
+
+        <div class="res-grid">
+
+          <aside class="foto-col">
+            <div class="card foto-card">
+              <h3 class="card-title">Foto do produto</h3>
+              <div class="foto-quadro">
+                <img id="fotoImg" alt="" referrerpolicy="no-referrer">
+                <div class="foto-vazia" id="fotoVazia">Sem foto ainda</div>
+              </div>
+              <div class="foto-nav">
+                <button class="icon-btn foto-seta" id="fotoAnt" type="button" title="Foto anterior" aria-label="Foto anterior">◀</button>
+                <span class="foto-info" id="fotoInfo"></span>
+                <button class="icon-btn foto-seta" id="fotoProx" type="button" title="Próxima foto" aria-label="Próxima foto">▶</button>
+              </div>
+              <label class="btn bgray btn-pequeno foto-arquivo">📁 Usar uma foto minha<input type="file" id="fotoArquivo" accept="image/*"></label>
+              <p class="muted foto-dica">Clique na foto de uma oferta pra comparar com esta.</p>
+            </div>
+          </aside>
+
+          <div class="res-main">
+            <div class="tiles" id="tiles"></div>
+
+            <div class="card">
+              <div class="card-topo">
+                <h3 class="card-title">Comparativo por loja</h3>
+                <span class="muted" id="graficoInfo"></span>
+              </div>
+              <div id="grafico" class="grafico"></div>
+              <div class="btn-row-h" style="margin-top:10px">
+                <button class="btn bgray btn-pequeno" id="btnMaisLojas" type="button" style="display:none"></button>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-topo">
+                <h3 class="card-title">Todas as ofertas <span class="muted" id="ofertasContagem"></span></h3>
+              </div>
+              <div class="filtros">
+                <div class="field">
+                  <label for="filtroFonte">Fonte</label>
+                  <select id="filtroFonte">
+                    <option value="">Todas</option>
+                    <option value="google">Google Shopping</option>
+                    <option value="web">Lojas na web</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="filtroMostrar">Mostrar</label>
+                  <select id="filtroMostrar">
+                    <option value="">Todas as ofertas</option>
+                    <option value="contam">Só as que entram na conta</option>
+                    <option value="codigo">Só com o código original</option>
+                    <option value="fora">Só as que ficaram de fora</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="filtroOrdem">Ordem</label>
+                  <select id="filtroOrdem">
+                    <option value="menor">Menor preço primeiro</option>
+                    <option value="maior">Maior preço primeiro</option>
+                    <option value="parecido">Mais parecidas primeiro</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="filtroTexto">Procurar</label>
+                  <input type="text" id="filtroTexto" placeholder="Loja ou palavra do título">
+                </div>
+              </div>
+              <div id="listaOfertas" class="lista-ofertas"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== HISTÓRICO ===================== -->
+    <section class="view" id="view-historico" style="display:none">
+      <div class="card">
+        <h3 class="card-title">Pesquisas guardadas</h3>
+        <p class="muted" style="margin-bottom:12px">Toda pesquisa fica guardada aqui com os preços do dia em que foi feita. Abrir uma não gasta nada. Pra ver o preço de hoje, abra e clique em “Pesquisar de novo”.</p>
+        <div class="filtros" style="grid-template-columns:minmax(0,320px)">
+          <div class="field">
+            <label for="histFiltro">Procurar</label>
+            <input type="text" id="histFiltro" placeholder="Produto, código ou quem pesquisou">
+          </div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table id="tblHistorico">
+            <thead><tr>
+              <th>Data</th><th>Produto</th><th>Código</th><th class="tr">Ofertas</th><th class="tr">Menor preço</th><th>Loja do menor</th>
+              <th class="tr">Média</th><th class="tr">Nosso preço</th><th>Quem</th><th></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Comparar a foto do produto com a de uma oferta -->
+<div class="modal" id="modalComparar" aria-hidden="true">
+  <div class="modal-caixa" role="dialog" aria-modal="true" aria-labelledby="cmpTitulo">
+    <button class="modal-fechar" id="cmpFechar" type="button" aria-label="Fechar">✕</button>
+    <h3 class="card-title" id="cmpTitulo">Comparar fotos</h3>
+    <div class="cmp-fotos">
+      <figure><div class="cmp-quadro"><img id="cmpRef" alt="" referrerpolicy="no-referrer"><span class="foto-vazia" id="cmpRefVazia">Sem foto</span></div><figcaption>Foto do produto</figcaption></figure>
+      <figure><div class="cmp-quadro"><img id="cmpOferta" alt="" referrerpolicy="no-referrer"><span class="foto-vazia" id="cmpOfertaVazia">Sem foto</span></div><figcaption>Esta oferta</figcaption></figure>
+    </div>
+    <p class="cmp-oferta-titulo" id="cmpOfertaTitulo"></p>
+    <p class="cmp-oferta-preco" id="cmpOfertaPreco"></p>
+    <div class="btn-row-h" id="cmpAcoes"></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip" role="tooltip"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
