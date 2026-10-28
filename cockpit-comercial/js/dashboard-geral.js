@@ -16,6 +16,15 @@ Cockpit.DashboardGeral = (function () {
   function fmtPerc(v) { return (Number(v) || 0).toFixed(1).replace('.', ',') + '%'; }
   function chaveMesAno(mes, ano) { return ano + '-' + String(mes).padStart(2, '0'); }
 
+  // Vendedor logado (null = gestor). Vendedor só filtra os próprios números e, na
+  // Corrida e no gráfico de participação, só enxerga o próprio nome.
+  function meuVendedor() {
+    return Cockpit.DashboardIndividual ? Cockpit.DashboardIndividual.vendedorAtual() : null;
+  }
+  function ehMeuCodigo(eu, codigo) {
+    return !!eu && Cockpit.Calc.normalizarCodigoVendedor(codigo) === Cockpit.Calc.normalizarCodigoVendedor(eu.codigo);
+  }
+
   /* ---------------------------------------------------------------------
      FILTROS
      --------------------------------------------------------------------- */
@@ -38,11 +47,13 @@ Cockpit.DashboardGeral = (function () {
     selAno.value = anoAtual;
 
     const vendedorAtual = selVend.value;
-    const roster = Cockpit.State.getVendedores().slice().sort(function (a, b) { return a.nome.localeCompare(b.nome); });
+    // Vendedor só escolhe entre a equipe toda e ele mesmo.
+    const eu = meuVendedor();
+    const roster = (eu ? [eu] : Cockpit.State.getVendedores().slice()).sort(function (a, b) { return a.nome.localeCompare(b.nome); });
     selVend.innerHTML = '<option value="">Todos</option>' + roster.map(function (v) {
       return '<option value="' + v.codigo + '">' + v.nome + '</option>';
     }).join('');
-    selVend.value = vendedorAtual;
+    selVend.value = roster.some(function (v) { return v.codigo === vendedorAtual; }) ? vendedorAtual : '';
 
     const selSetor = document.getElementById('filtroSetor');
     const setorAtual = selSetor.value;
@@ -67,10 +78,13 @@ Cockpit.DashboardGeral = (function () {
   }
 
   function getFiltros() {
+    const eu = meuVendedor();
+    let vendedorCodigo = document.getElementById('filtroVendedor').value;
+    if (eu && vendedorCodigo && !ehMeuCodigo(eu, vendedorCodigo)) vendedorCodigo = '';
     return {
       mes: document.getElementById('filtroMes').value,
       ano: document.getElementById('filtroAno').value,
-      vendedorCodigo: document.getElementById('filtroVendedor').value,
+      vendedorCodigo: vendedorCodigo,
       setor: document.getElementById('filtroSetor').value
     };
   }
@@ -167,7 +181,7 @@ Cockpit.DashboardGeral = (function () {
     }).join('');
 
     const ranking = Cockpit.Calc.rankingVendedores(linhas, roster, metasPorSetor, metaCfg.vendedoresPresentes, metaCfg.diasTrabalhados, metaCfg.diasFeriasPorVendedor, metaCfg.metaTotalFeriasPorVendedor);
-    Cockpit.Charts.renderParticipacao('chartParticipacao', ranking);
+    Cockpit.Charts.renderParticipacao('chartParticipacao', ranking, meuVendedor());
 
     const dias = Cockpit.Calc.agregarPorDia(linhas);
     Cockpit.Charts.renderDiarioSetor('chartDiarioSetor', dias, metaDiaria, labelMetaGrafico);
@@ -193,6 +207,10 @@ Cockpit.DashboardGeral = (function () {
       return true;
     });
 
+    const eu = meuVendedor();
+    document.getElementById('corridaSub').textContent = 'Cada caminhão mostra o quanto o vendedor já percorreu em direção à própria meta individual.'
+      + (eu ? ' O seu aparece em destaque; o nome dos colegas fica oculto.' : '');
+
     const container = document.getElementById('corridaContainer');
     if (!ranking.length) {
       container.innerHTML = '<p class="corrida-empty">Nenhum vendedor ativo para os filtros selecionados.</p>';
@@ -203,24 +221,33 @@ Cockpit.DashboardGeral = (function () {
       .sort(function (a, b) { return b.percAtingidoIndividual - a.percAtingidoIndividual; });
     const semMeta = ranking.filter(function (v) { return v.percAtingidoIndividual === null; });
 
-    let html = comMeta.map(function (v) { return linhaCorrida(v, false); }).join('');
+    let html = comMeta.map(function (v, i) { return linhaCorrida(v, false, i + 1, eu); }).join('');
     if (semMeta.length) {
       html += '<div class="muted" style="margin-top:6px;text-transform:uppercase;font-size:.65rem;font-weight:700;letter-spacing:.4px">Meta pendente</div>';
-      html += semMeta.map(function (v) { return linhaCorrida(v, true); }).join('');
+      html += semMeta.map(function (v) { return linhaCorrida(v, true, null, eu); }).join('');
     }
     container.innerHTML = html;
   }
 
-  function linhaCorrida(v, pendente) {
+  // posicao: 1, 2, 3... (null em "Meta pendente"). eu: vendedor logado — aí só a
+  // linha dele mostra nome e posição; a dos colegas fica borrada, e o nome de
+  // verdade nem vai pra página (embaixo do borrão vai um texto qualquer).
+  function linhaCorrida(v, pendente, posicao, eu) {
     const perc = pendente ? 0 : Math.min(v.percAtingidoIndividual, 100);
     const completo = !pendente && v.percAtingidoIndividual >= 100;
     const percLabel = pendente ? 'Meta pendente' : fmtPerc(v.percAtingidoIndividual);
     const valoresLabel = pendente ? fmt(v.acumulado) + ' vendido' : fmt(v.acumulado) + ' de ' + fmt(v.metaIndividual);
     const metaFimPista = pendente ? '' : '<span class="corrida-meta-label">' + fmt(v.metaIndividual) + '</span>';
+    const souEu = ehMeuCodigo(eu, v.codigo);
+    const oculto = !!eu && !souEu;
+    const quem = oculto ? 'Colega' : (souEu ? 'Você' : v.nome);
 
-    return '<div class="corrida-row' + (pendente ? ' pendente' : '') + '">' +
+    return '<div class="corrida-row' + (pendente ? ' pendente' : '') + (souEu ? ' eu' : '') + '">' +
       '<div class="corrida-label">' +
-        '<span class="corrida-nome">' + v.nome + '</span>' +
+        (posicao ? '<span class="corrida-pos' + (oculto ? ' corrida-oculto' : '') + '">' + (oculto ? '0' : posicao) + 'º</span>' : '') +
+        (oculto
+          ? '<span class="corrida-nome corrida-oculto" aria-label="Nome oculto">Vendedor da equipe</span>'
+          : '<span class="corrida-nome">' + v.nome + '</span>' + (souEu ? '<span class="corrida-voce">Você</span>' : '')) +
         Cockpit.State.setorBadgeHtml(v.setor) +
         '<span class="corrida-valores">' + valoresLabel + '</span>' +
         '<span class="corrida-perc">' + percLabel + '</span>' +
@@ -229,7 +256,7 @@ Cockpit.DashboardGeral = (function () {
         '<div class="corrida-linha-chegada"></div>' +
         metaFimPista +
         '<button type="button" class="corrida-truck' + (completo ? ' completo' : '') + '" style="left:' + perc + '%" ' + (pendente ? 'disabled' : '') +
-          ' title="' + v.nome + (pendente ? ' — meta individual ainda não cadastrada' : ' — ' + percLabel + ' da meta') + '">' + TRUCK_SVG + (completo ? '🏁' : '') + '</button>' +
+          ' title="' + quem + (pendente ? ' — meta individual ainda não cadastrada' : ' — ' + percLabel + ' da meta') + '">' + TRUCK_SVG + (completo ? '🏁' : '') + '</button>' +
       '</div>' +
     '</div>';
   }

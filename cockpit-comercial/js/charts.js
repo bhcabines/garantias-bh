@@ -17,8 +17,10 @@ Cockpit.Charts = (function () {
     if (Math.abs(v) >= 1000) return 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + 'k';
     return fmtMoeda(v);
   }
-  // vendedores: [{nome, acumulado}]
-  function renderParticipacao(canvasId, vendedores) {
+  // vendedores: [{codigo, nome, acumulado}]. eu: vendedor logado (null = gestor) —
+  // aí só o pedaço dele tem nome (em laranja); os colegas viram "Colega", em cinza,
+  // e o nome de verdade nem entra no gráfico.
+  function renderParticipacao(canvasId, vendedores, eu) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
     if (chartParticipacao) chartParticipacao.destroy();
@@ -31,21 +33,45 @@ Cockpit.Charts = (function () {
       return;
     }
 
+    const COR_EU = '#EA5B0C';
+    const COR_COLEGA = '#bdbab3';
+    const cinzas = ['#d6d3cf', '#bdbab3', '#a5a29b'];
+    const meuIdx = eu ? dados.findIndex(function (v) {
+      return Cockpit.Calc.normalizarCodigoVendedor(v.codigo) === Cockpit.Calc.normalizarCodigoVendedor(eu.codigo);
+    }) : -1;
+    const legenda = { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } };
+    if (eu) {
+      // Legenda: só "você" e um item único pros colegas; clicar não esconde pedaço.
+      legenda.onClick = function () {};
+      legenda.labels.generateLabels = function () {
+        const itens = [];
+        if (meuIdx >= 0) itens.push({ text: dados[meuIdx].nome + ' (você)', fillStyle: COR_EU, strokeStyle: COR_EU, lineWidth: 0, hidden: false, index: meuIdx });
+        if (dados.length > (meuIdx >= 0 ? 1 : 0)) itens.push({ text: 'Colegas (nomes ocultos)', fillStyle: COR_COLEGA, strokeStyle: COR_COLEGA, lineWidth: 0, hidden: false, index: -1 });
+        return itens;
+      };
+    }
+
     chartParticipacao = new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: dados.map(function (v) { return v.nome; }),
+        labels: dados.map(function (v, i) { return !eu || i === meuIdx ? v.nome : 'Colega'; }),
         datasets: [{
           data: dados.map(function (v) { return v.acumulado; }),
-          backgroundColor: dados.map(function (_, i) { return paleta[i % paleta.length]; }),
-          borderWidth: 0
+          backgroundColor: dados.map(function (_, i) {
+            if (!eu) return paleta[i % paleta.length];
+            return i === meuIdx ? COR_EU : cinzas[i % cinzas.length];
+          }),
+          borderWidth: eu ? 2 : 0,
+          borderColor: '#fff',
+          offset: dados.map(function (_, i) { return i === meuIdx ? 10 : 0; })
         }]
       },
       options: {
         cutout: '60%',
         maintainAspectRatio: false,
+        layout: { padding: eu ? 10 : 0 },
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+          legend: legenda,
           tooltip: {
             callbacks: {
               label: function (ctx) {

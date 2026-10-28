@@ -177,7 +177,7 @@ tbody tr:nth-child(even){background:#fafafa}
 #corridaContainer{display:flex;flex-direction:column;gap:14px}
 #corridaContainer .corrida-empty{color:#bbb;font-style:italic;font-size:.85rem;padding:12px 0}
 .corrida-row{display:flex;flex-direction:column;gap:6px}
-.corrida-label{display:flex;align-items:center;gap:10px;font-size:.82rem}
+.corrida-label{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:.82rem}
 .corrida-nome{font-weight:700;color:var(--black)}
 .corrida-valores{font-size:.78rem;color:var(--dark)}
 .corrida-perc{margin-left:auto;font-weight:700;color:var(--orange);font-size:.85rem}
@@ -203,6 +203,13 @@ tbody tr:nth-child(even){background:#fafafa}
 .corrida-truck.completo{border-color:var(--good);color:var(--good);box-shadow:0 0 0 4px rgba(22,163,74,.15),0 2px 6px rgba(0,0,0,.15)}
 .corrida-row.pendente .corrida-truck{border-color:#ccc;color:#ccc;background:#f3f2f1}
 .corrida-row.pendente .corrida-track{opacity:.6}
+.corrida-pos{display:inline-block;min-width:30px;padding:2px 7px;border-radius:20px;background:#f3f2f1;color:var(--dark);font-weight:700;font-size:.72rem;text-align:center}
+/* Vendedor logado: colegas com nome e posição borrados (o texto embaixo do borrão é fictício) */
+.corrida-oculto{display:inline-block;filter:blur(5px);user-select:none;pointer-events:none}
+.corrida-voce{padding:2px 8px;border-radius:20px;background:var(--orange);color:var(--white);font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.corrida-row.eu{background:var(--orange-dim);border-radius:12px;padding:8px 12px 10px;margin:0 -12px}
+.corrida-row.eu .corrida-pos{background:var(--orange);color:var(--white)}
+.corrida-row.eu .corrida-truck:not(.completo){background:var(--orange);color:var(--white)}
 
 /* ===== Agenda (contatos do Caçador de Cliente) ===== */
 .nav-badge{margin-left:auto;min-width:20px;padding:1px 7px;border-radius:20px;background:var(--orange);color:var(--white);font-size:.68rem;font-weight:700;text-align:center}
