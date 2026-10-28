@@ -8,9 +8,10 @@
    Quem não é vendedor (gestor) entra com a senha da Administração e escolhe
    de quem ver a agenda.
 
-   Contatos novos ficam destacados no topo; os demais, separados por status,
-   com Interessados e Negociando logo em seguida pra ninguém esquecer de
-   terminar o contato.
+   A tela é um quadro com uma coluna por status (Novo → Descartado), cada uma
+   com os primeiros cartões; mudou o status, o cartão muda de coluna. Clicar
+   num status (botões do topo ou cabeça da coluna) abre só aquele status, com
+   todos os cartões.
 
    Cada alteração manda só os campos mudados (o servidor junta com o que já
    está gravado, sem apagar o que o Caçador mudou). Sem internet, fica numa
@@ -32,21 +33,30 @@ Cockpit.Agenda = (function () {
   };
   const ABERTOS = { novo: true, contatado: true, interessado: true, negociando: true };
 
+  // Colunas do quadro, na ordem do funil.
   const SECOES = [
-    { status: 'novo', titulo: '🆕 Contatos novos', dica: 'Você ainda não falou com eles. Comece por aqui.', classe: 'novos' },
-    { status: 'interessado', titulo: '🔥 Interessados', dica: 'Não deixe esfriar: termine o contato.', classe: 'quente' },
-    { status: 'negociando', titulo: '🤝 Negociando', dica: 'Falta fechar a venda.', classe: 'quente' },
+    { status: 'novo', titulo: '🆕 Novos', dica: 'Você ainda não falou com eles. Comece por aqui.' },
     { status: 'contatado', titulo: '📞 Contatados', dica: 'Já falou uma vez. Marque o próximo passo.' },
-    { status: 'jaecliente', titulo: '✅ Já são clientes', dica: '' },
+    { status: 'interessado', titulo: '🔥 Interessados', dica: 'Não deixe esfriar: termine o contato.' },
+    { status: 'negociando', titulo: '🤝 Negociando', dica: 'Falta fechar a venda.' },
+    { status: 'jaecliente', titulo: '✅ Já são clientes', dica: 'Já compravam da gente: anote o código do cliente.' },
     { status: 'cliente', titulo: '🎉 Viraram clientes', dica: '' },
-    { status: 'descartado', titulo: '❌ Descartados', dica: '', recolhida: true }
+    { status: 'descartado', titulo: '❌ Descartados', dica: '' }
   ];
+  // Cartões por coluna no quadro; o resto aparece ao clicar no status.
+  const POR_COLUNA = 5;
 
   let contatos = [];
   let dono = null;            // { cod, nome } de quem é a agenda aberta
   let souVendedor = false;    // login é de vendedor: só a própria agenda
   let servidorPronto = false; // o Apps Script já conhece a agenda (evita POST perdido no log)
   let enviando = false;
+  let foco = '';              // '' = quadro; um status ou 'hoje' = só esses, todos os cartões
+  let abertos = {};           // cartões do quadro com os detalhes abertos
+  // Mexeu no status ou na data: o cartão continua à vista (no topo da coluna
+  // nova, ou no status aberto, com o aviso de pra onde foi) até trocar de tela.
+  let mantidos = {};
+  let piscar = '';            // cartão que acabou de mudar de coluna (pisca uma vez)
 
   /* ---------------- utilitários ---------------- */
   function escapeHtml(s) {
@@ -117,6 +127,7 @@ Cockpit.Agenda = (function () {
 
   /* ---------------- servidor ---------------- */
   function carregar() {
+    mantidos = {};
     definirDono();
     if (!dono) { render(); return Promise.resolve(); }
     const cache = Cockpit.State.getAgendaLocal();
@@ -227,30 +238,97 @@ Cockpit.Agenda = (function () {
     return '<span class="ag-data">📅 Ligar em ' + fmtDia(c.ligarEm) + '</span>';
   }
 
-  function cartao(c, hoje) {
+  function pegarHoje(c, hoje) { return !!(ABERTOS[c.status] && c.ligarEm && c.ligarEm <= hoje); }
+  function estaNoFoco(c, hoje) { return foco === 'hoje' ? pegarHoje(c, hoje) : c.status === foco; }
+
+  // compacto: cartão do quadro (status sempre à mão; o resto em "Detalhes").
+  // Fora disso, o cartão inteiro, como no status aberto.
+  function cartao(c, hoje, compacto) {
     const id = escapeHtml(c.id);
+    const aberto = !compacto || !!abertos[c.id];
     const wa = linkWhatsapp(c.whatsapp);
     const contatosLinha = [];
     if (c.telefone) contatosLinha.push('📞 <a href="' + linkTelefone(c.telefone) + '">' + escapeHtml(c.telefone) + '</a>');
     if (wa) contatosLinha.push('💬 <a href="' + wa + '" target="_blank" rel="noopener">WhatsApp</a>');
-    if (c.site) contatosLinha.push('🌐 <a href="' + escapeHtml(c.site) + '" target="_blank" rel="noopener">' + escapeHtml(encurtarSite(c.site)) + '</a>');
+    if (c.site && aberto) contatosLinha.push('🌐 <a href="' + escapeHtml(c.site) + '" target="_blank" rel="noopener">' + escapeHtml(encurtarSite(c.site)) + '</a>');
     const onde = [c.bairro, c.cidade && (c.cidade + (c.uf ? ' - ' + c.uf : ''))].filter(Boolean).join(', ');
-    return '<div class="ag-card' + (c.status === 'novo' ? ' novo' : '') + '" data-id="' + id + '">' +
+    // No status aberto, quem acabou de sair dele fica à vista, avisando pra onde foi.
+    let saiu = '';
+    if (foco && !compacto && mantidos[c.id] && !estaNoFoco(c, hoje)) {
+      saiu = '<div class="ag-saiu">' + (foco === 'hoje' && ABERTOS[c.status]
+        ? '📅 Remarcado' + (c.ligarEm ? ' para ' + fmtDia(c.ligarEm) : '')
+        : '➡️ Agora em: <b>' + STATUS[c.status] + '</b>') + '</div>';
+    }
+    return '<div class="ag-card' + (compacto ? ' compacto' : '') + (c.status === 'novo' ? ' novo' : '') + (piscar === c.id ? ' piscar' : '') + '" data-id="' + id + '">' +
+      saiu +
       '<div class="ag-topo"><div class="ag-nome">' + escapeHtml(c.nome) + '</div>' + (c.status === 'novo' ? '<span class="ag-selo">NOVO</span>' : '') + '</div>' +
       (c.tipo || c.tipoGoogle ? '<div class="ag-tipo">' + escapeHtml(c.tipo || c.tipoGoogle) + '</div>' : '') +
       seloData(c, hoje) +
       (onde ? '<div class="ag-linha">📍 ' + escapeHtml(onde) + '</div>' : '') +
-      (c.endereco ? '<div class="ag-linha ag-endereco">' + escapeHtml(c.endereco) + '</div>' : '') +
+      (aberto && c.endereco ? '<div class="ag-linha ag-endereco">' + escapeHtml(c.endereco) + '</div>' : '') +
       (contatosLinha.length ? '<div class="ag-linha">' + contatosLinha.join(' · ') + '</div>' : '') +
-      (c.mapsUrl ? '<div class="ag-linha"><a href="' + escapeHtml(c.mapsUrl) + '" target="_blank" rel="noopener">Ver no Google Maps</a></div>' : '') +
+      (aberto && c.mapsUrl ? '<div class="ag-linha"><a href="' + escapeHtml(c.mapsUrl) + '" target="_blank" rel="noopener">Ver no Google Maps</a></div>' : '') +
+      (!aberto && c.obs ? '<div class="ag-obs-previa">📝 ' + escapeHtml(c.obs) + '</div>' : '') +
       '<div class="ag-campos">' +
         '<div class="field"><label>Status</label><select class="ag-status st-' + c.status + '" data-id="' + id + '">' + opcoesStatus(c.status) + '</select></div>' +
-        '<div class="field"><label>Ligar em</label><input type="date" class="ag-ligar" data-id="' + id + '" value="' + escapeHtml(c.ligarEm) + '"></div>' +
-        '<div class="field largo ag-cod" style="' + (c.status === 'jaecliente' ? '' : 'display:none') + '"><label>Cód. do cliente</label><input type="text" class="ag-codcliente" data-id="' + id + '" value="' + escapeHtml(c.codCliente) + '" placeholder="Código no sistema"></div>' +
-        '<div class="field largo"><label>WhatsApp</label><input type="text" class="ag-whats" data-id="' + id + '" value="' + escapeHtml(c.whatsapp) + '" placeholder="(DDD) número"></div>' +
-        '<div class="field largo"><label>Observação</label><textarea class="ag-obs" data-id="' + id + '" rows="2" placeholder="Como foi o contato, próximo passo...">' + escapeHtml(c.obs) + '</textarea></div>' +
+        (aberto
+          ? '<div class="field"><label>Ligar em</label><input type="date" class="ag-ligar" data-id="' + id + '" value="' + escapeHtml(c.ligarEm) + '"></div>' +
+            '<div class="field largo ag-cod" style="' + (c.status === 'jaecliente' ? '' : 'display:none') + '"><label>Cód. do cliente</label><input type="text" class="ag-codcliente" data-id="' + id + '" value="' + escapeHtml(c.codCliente) + '" placeholder="Código no sistema"></div>' +
+            '<div class="field largo"><label>WhatsApp</label><input type="text" class="ag-whats" data-id="' + id + '" value="' + escapeHtml(c.whatsapp) + '" placeholder="(DDD) número"></div>' +
+            '<div class="field largo"><label>Observação</label><textarea class="ag-obs" data-id="' + id + '" rows="2" placeholder="Como foi o contato, próximo passo...">' + escapeHtml(c.obs) + '</textarea></div>'
+          : '') +
       '</div>' +
+      (compacto ? '<button type="button" class="ag-detalhes" data-detalhes="' + id + '">' + (aberto ? 'Fechar detalhes ▴' : 'Detalhes ▾') + '</button>' : '') +
     '</div>';
+  }
+
+  // Botões do topo: o quadro inteiro, "pra ligar hoje" e um por status.
+  function renderResumo(hoje) {
+    const conta = {};
+    contatos.forEach(function (c) { conta[c.status] = (conta[c.status] || 0) + 1; });
+    const nHoje = contatos.filter(function (c) { return pegarHoje(c, hoje); }).length;
+    document.getElementById('agendaResumo').innerHTML =
+      '<button type="button" class="ag-chip quadro' + (!foco ? ' ativo' : '') + '" data-foco="">▦ Quadro</button>' +
+      (nHoje || foco === 'hoje' ? '<button type="button" class="ag-chip hoje' + (foco === 'hoje' ? ' ativo' : '') + '" data-foco="hoje">📅 ' + nHoje + ' pra ligar hoje (ou atrasados)</button>' : '') +
+      SECOES.map(function (s) {
+        const n = conta[s.status] || 0;
+        return '<button type="button" class="ag-chip st-' + s.status + (foco === s.status ? ' ativo' : '') + (n ? '' : ' vazio') + '" data-foco="' + s.status + '">' + STATUS[s.status] + ': ' + n + '</button>';
+      }).join('');
+  }
+
+  // Quadro: uma coluna por status. Quem acabou de mudar fica no topo da coluna
+  // nova (senão podia cair no "ver todos" e sumir de vista).
+  function quadroHtml(lista, hoje, buscando) {
+    return '<div class="ag-quadro">' + SECOES.map(function (s) {
+      const itens = lista.filter(function (c) { return c.status === s.status; }).sort(ordenar);
+      const fixos = itens.filter(function (c) { return mantidos[c.id]; });
+      const ordem = fixos.concat(itens.filter(function (c) { return !mantidos[c.id]; }));
+      const visiveis = buscando ? ordem : ordem.slice(0, Math.max(POR_COLUNA, fixos.length));
+      return '<div class="ag-col" data-st="' + s.status + '">' +
+        '<button type="button" class="ag-col-topo st-' + s.status + '" data-foco="' + s.status + '" title="Abrir todos os contatos deste status">' +
+          '<span>' + s.titulo + '</span><span class="ag-conta">' + itens.length + '</span></button>' +
+        '<div class="ag-col-cards">' +
+          (visiveis.length ? visiveis.map(function (c) { return cartao(c, hoje, true); }).join('') : '<p class="ag-col-vazia">Nenhum contato</p>') +
+          (itens.length > visiveis.length ? '<button type="button" class="ag-col-mais" data-foco="' + s.status + '">Ver todos os ' + itens.length + ' →</button>' : '') +
+        '</div></div>';
+    }).join('') + '</div>';
+  }
+
+  // Um status aberto (ou "pra ligar hoje"): todos os cartões, inteiros.
+  function focoHtml(lista, hoje, buscando) {
+    const s = SECOES.find(function (x) { return x.status === foco; }) || {};
+    const titulo = foco === 'hoje' ? '📅 Pra ligar hoje (e atrasados)' : s.titulo;
+    const dica = foco === 'hoje' ? 'Contatos em aberto com a data de ligar até hoje.' : s.dica;
+    const itens = lista.filter(function (c) { return estaNoFoco(c, hoje) || mantidos[c.id]; }).sort(ordenar);
+    const n = itens.filter(function (c) { return estaNoFoco(c, hoje); }).length;
+    return '<section class="ag-foco"' + (foco !== 'hoje' ? ' data-st="' + foco + '"' : '') + '>' +
+      '<div class="ag-foco-topo"><button type="button" class="btn bgray" data-foco="">← Voltar ao quadro</button>' +
+        '<h3' + (foco !== 'hoje' ? ' class="st-' + foco + '"' : ' class="hoje"') + '>' + titulo + ' <span class="ag-conta">' + n + '</span></h3>' +
+        (dica ? '<span class="dica">' + dica + '</span>' : '') + '</div>' +
+      (itens.length
+        ? '<div class="ag-grid">' + itens.map(function (c) { return cartao(c, hoje, false); }).join('') + '</div>'
+        : '<div class="card"><p class="muted">Nenhum contato aqui' + (buscando ? ' com essa busca' : '') + '.</p></div>') +
+    '</section>';
   }
 
   function render() {
@@ -270,31 +348,23 @@ Cockpit.Agenda = (function () {
     const lista = contatos.filter(function (c) {
       return !filtro || normalizar([c.nome, c.cidade, c.bairro, c.telefone, c.whatsapp, c.obs, c.codCliente].join(' ')).indexOf(filtro) !== -1;
     });
-
-    const pegarHoje = contatos.filter(function (c) { return ABERTOS[c.status] && c.ligarEm && c.ligarEm <= hoje; }).length;
-    resumoEl.innerHTML = (pegarHoje ? '<span class="ag-chip hoje">📅 ' + pegarHoje + ' pra ligar hoje (ou atrasados)</span>' : '') +
-      SECOES.map(function (s) {
-        const n = contatos.filter(function (c) { return c.status === s.status; }).length;
-        return n ? '<span class="ag-chip st-' + s.status + '">' + STATUS[s.status] + ': ' + n + '</span>' : '';
-      }).join('');
+    renderResumo(hoje);
 
     if (!contatos.length) {
       el.innerHTML = '<div class="card"><p class="muted">Nenhum contato na agenda ainda. Quando o Caçador de Cliente encontrar empresas, elas são distribuídas e aparecem aqui.</p></div>';
-      return;
-    }
-    if (!lista.length) {
+    } else if (!lista.length) {
       el.innerHTML = '<div class="card"><p class="muted">Nenhum contato com "' + escapeHtml(document.getElementById('agendaBusca').value) + '".</p></div>';
-      return;
+    } else {
+      el.innerHTML = foco ? focoHtml(lista, hoje, !!filtro) : quadroHtml(lista, hoje, !!filtro);
     }
+    piscar = '';
+  }
 
-    el.innerHTML = SECOES.map(function (s) {
-      const itens = lista.filter(function (c) { return c.status === s.status; }).sort(ordenar);
-      if (!itens.length) return '';
-      const cabeca = '<div class="ag-secao-titulo"><h3>' + s.titulo + ' <span class="ag-conta">' + itens.length + '</span></h3>' + (s.dica ? '<span class="dica">' + s.dica + '</span>' : '') + '</div>';
-      const grade = '<div class="ag-grid">' + itens.map(function (c) { return cartao(c, hoje); }).join('') + '</div>';
-      if (s.recolhida) return '<details class="ag-secao"><summary>' + cabeca + '</summary>' + grade + '</details>';
-      return '<section class="ag-secao ' + (s.classe || '') + '">' + cabeca + grade + '</section>';
-    }).join('');
+  function mudarFoco(novo) {
+    // Clicar de novo no status que já está aberto volta pro quadro.
+    foco = novo === foco ? '' : novo;
+    mantidos = {};
+    render();
   }
 
   function atualizarBadge() {
@@ -314,15 +384,20 @@ Cockpit.Agenda = (function () {
       if (!id) return;
       if (el.classList.contains('ag-status')) {
         alterar(id, { status: el.value });
+        mantidos[id] = true;
+        piscar = id;
+        // "Já é cliente": abre os detalhes e já deixa o cursor no código do cliente.
+        if (el.value === 'jaecliente') abertos[id] = true;
         render();
         atualizarBadge();
-        // "Já é cliente": já deixa o cursor no código do cliente.
-        if (el.value === 'jaecliente') {
-          const cod = conteudo.querySelector('.ag-codcliente[data-id="' + CSS.escape(id) + '"]');
-          if (cod) { cod.scrollIntoView({ block: 'center' }); cod.focus(); }
-        }
+        const cartaoEl = conteudo.querySelector('.ag-card[data-id="' + CSS.escape(id) + '"]');
+        const cod = el.value === 'jaecliente' && conteudo.querySelector('.ag-codcliente[data-id="' + CSS.escape(id) + '"]');
+        if (cod) { cod.scrollIntoView({ block: 'center' }); cod.focus(); }
+        // No quadro, rola até a coluna nova (no celular ela pode estar fora da tela).
+        else if (cartaoEl && !foco) cartaoEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       } else if (el.classList.contains('ag-ligar')) {
         alterar(id, { ligarEm: el.value });
+        mantidos[id] = true;
         render();
       } else if (el.classList.contains('ag-codcliente')) {
         alterar(id, { codCliente: el.value.trim() });
@@ -333,6 +408,19 @@ Cockpit.Agenda = (function () {
         alterar(id, { obs: el.value.trim() });
       }
     });
+    // Status (botões do topo, cabeça da coluna, "ver todos", "voltar") e "Detalhes".
+    function clique(ev) {
+      const f = ev.target.closest('[data-foco]');
+      if (f) { mudarFoco(f.dataset.foco); return; }
+      const d = ev.target.closest('[data-detalhes]');
+      if (d) {
+        const id = d.dataset.detalhes;
+        if (abertos[id]) delete abertos[id]; else abertos[id] = true;
+        render();
+      }
+    }
+    conteudo.addEventListener('click', clique);
+    document.getElementById('agendaResumo').addEventListener('click', clique);
     document.getElementById('agendaBusca').addEventListener('input', render);
     document.getElementById('agendaVendedorSel').addEventListener('change', carregar);
     document.getElementById('btnAgendaAtualizar').addEventListener('click', carregar);

@@ -226,18 +226,46 @@ tbody tr:nth-child(even){background:#fafafa}
 .st-jaecliente{background:#ccfbf1;color:#0f766e}
 .st-cliente{background:#dcfce7;color:#15803d}
 .st-descartado{background:#fee2e2;color:#b91c1c}
-.ag-secao{margin-top:22px}
-.ag-secao.novos{background:var(--orange-dim);border:2px solid var(--orange);border-radius:14px;padding:16px}
-.ag-secao.quente .ag-secao-titulo h3{color:#b45309}
-.ag-secao-titulo{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-.ag-secao-titulo h3{font-size:1rem;font-weight:700;color:var(--black)}
-.ag-secao.novos .ag-secao-titulo h3{color:var(--orange)}
-.ag-secao-titulo .dica{font-size:.78rem;color:#888}
 .ag-conta{display:inline-block;min-width:22px;padding:1px 8px;margin-left:4px;border-radius:20px;background:var(--white);border:1px solid var(--border);font-size:.72rem;text-align:center;color:var(--dark)}
-details.ag-secao summary{cursor:pointer;list-style:none}
-details.ag-secao summary::-webkit-details-marker{display:none}
-details.ag-secao summary .ag-secao-titulo h3::before{content:'▸ ';color:#999}
-details.ag-secao[open] summary .ag-secao-titulo h3::before{content:'▾ '}
+/* Botões de status (topo): clicáveis, o aberto fica com contorno */
+button.ag-chip{border:none;cursor:pointer;font-family:inherit;transition:box-shadow .15s,opacity .15s}
+button.ag-chip:hover{box-shadow:0 0 0 2px rgba(0,0,0,.12)}
+.ag-chip.quadro{background:var(--white);color:var(--dark);border:1.5px solid var(--border)}
+.ag-chip.ativo,.ag-chip.ativo:hover{box-shadow:0 0 0 2px currentColor}
+.ag-chip.vazio{opacity:.5}
+/* Quadro: uma coluna por status, cada uma com a cor dele */
+.ag-quadro{display:grid;grid-template-columns:repeat(7,minmax(155px,1fr));gap:8px;align-items:start;overflow-x:auto;margin-top:16px;padding-bottom:8px}
+.ag-col{--fundo:#f7f6f5;--borda:var(--border);background:var(--fundo);border:1px solid var(--borda);border-radius:12px;min-width:0}
+.ag-col[data-st="novo"]{--fundo:#fff7ed;--borda:#fed7aa}
+.ag-col[data-st="contatado"]{--fundo:#eff6ff;--borda:#bfdbfe}
+.ag-col[data-st="interessado"]{--fundo:#fffbeb;--borda:#fde68a}
+.ag-col[data-st="negociando"]{--fundo:#fefce8;--borda:#facc15}
+.ag-col[data-st="jaecliente"]{--fundo:#f0fdfa;--borda:#99f6e4}
+.ag-col[data-st="cliente"]{--fundo:#f0fdf4;--borda:#bbf7d0}
+.ag-col[data-st="descartado"]{--fundo:#fef2f2;--borda:#fecaca}
+.ag-col-topo{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;padding:10px;border:none;border-radius:11px 11px 0 0;font-family:inherit;font-size:.76rem;font-weight:800;text-align:left;cursor:pointer}
+.ag-col-topo:hover{filter:brightness(.95)}
+.ag-col-cards{display:flex;flex-direction:column;gap:8px;padding:6px}
+.ag-col-vazia{font-size:.75rem;color:#aaa;text-align:center;padding:14px 4px}
+.ag-col-mais{border:1.5px dashed var(--borda);background:var(--white);border-radius:10px;padding:8px;font-family:inherit;font-size:.75rem;font-weight:700;color:var(--dark);cursor:pointer}
+.ag-col-mais:hover{border-style:solid}
+.ag-card.compacto{padding:9px;gap:4px;border-radius:10px}
+.ag-card.compacto .ag-campos>.field:first-child>label{display:none}
+.ag-card.compacto .ag-nome{font-size:.84rem}
+.ag-card.compacto .ag-linha{font-size:.74rem}
+.ag-card.compacto .ag-campos{grid-template-columns:1fr;margin-top:4px;padding-top:8px}
+.ag-card.compacto .ag-campos .largo{grid-column:auto}
+.ag-card.piscar{animation:agPiscar 1.6s ease-out}
+@keyframes agPiscar{0%,30%{box-shadow:0 0 0 4px rgba(234,91,12,.55)}100%{box-shadow:0 2px 8px rgba(0,0,0,.03)}}
+.ag-obs-previa{font-size:.72rem;color:#666;background:#faf9f8;border-radius:6px;padding:4px 6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ag-detalhes{align-self:flex-start;border:none;background:none;padding:2px 0;font-family:inherit;font-size:.72rem;font-weight:700;color:var(--orange);cursor:pointer}
+.ag-detalhes:hover{text-decoration:underline}
+/* Um status aberto: todos os cartões */
+.ag-foco-topo{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 12px}
+.ag-foco-topo h3{font-size:.95rem;font-weight:800;padding:6px 14px;border-radius:20px}
+.ag-foco-topo h3.hoje{background:#fee2e2;color:#b91c1c}
+.ag-foco-topo .dica{font-size:.78rem;color:#888}
+.ag-saiu{font-size:.74rem;color:var(--dark);background:#f3f4f6;border-radius:6px;padding:5px 8px}
 .ag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:12px}
 .ag-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.03)}
 .ag-card.novo{border:2px solid var(--orange);box-shadow:0 4px 14px rgba(234,91,12,.15)}
@@ -266,5 +294,8 @@ details.ag-secao[open] summary .ag-secao-titulo h3::before{content:'▾ '}
   .content{padding:20px}
   .field-wide{grid-column:span 1}
   .charts-grid{grid-template-columns:1fr}
+  /* Celular: as colunas do quadro passam de lado, uma de cada vez */
+  .ag-quadro{grid-template-columns:repeat(7,82vw);scroll-snap-type:x mandatory}
+  .ag-col{scroll-snap-align:start}
   .setor-mini-stats{gap:12px}
 }
