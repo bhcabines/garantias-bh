@@ -234,6 +234,104 @@ Cockpit.Calc = (function () {
     return out;
   }
 
+  /* ---------- Planejamento das metas do mês (aba Metas do Mês) ----------
+     O admin planeja por pessoa: diária do setor × dias trabalhados, com as
+     exceções do mês. plano = { diariaPorSetor: {SETOR: R$ por dia}, vendedores: {codigo: item} }:
+       { tipo: 'normal' }                     diária do setor × dias do mês
+       { tipo: 'parcial', dias }              diária do setor × os dias dele (férias, afastamento, entrou no meio do mês)
+       { tipo: 'cobertura', dias, setorCobertura, diasCobertura }
+                                              dias no setor dele + dias cobrindo outro setor, cada parte com a diária do seu setor
+       { tipo: 'fixa', valor, dias }          meta do mês digitada (e-commerce, meta diferenciada); dias vazio = dias do mês
+       { tipo: 'fora' }                       sem meta neste mês
+     Quem não tem item no plano segue o padrão: "normal" se está ativo no cadastro, senão "fora".
+     calcularPlanoMetas devolve a meta de cada pessoa, os totais por setor e os campos
+     que o resto do Cockpit já lê (metaGeral, metasPorSetor, vendedoresPresentes,
+     diasFeriasPorVendedor, metaTotalFeriasPorVendedor): quem está no mês normal vira
+     "presente" (rateio igual do setor, que dá exatamente diária × dias); o resto vira
+     "meta diferenciada" (dias + meta total). Cada pessoa conta no setor do CADASTRO
+     dela — é lá que as vendas dela também entram (inclusive quem cobre outro setor). */
+  function tipoPadraoPlano(v) { return v.status === 'ativo' ? 'normal' : 'fora'; }
+
+  function calcularPlanoMetas(plano, roster, diasMes) {
+    plano = plano || {};
+    const diarias = plano.diariaPorSetor || {};
+    const itens = plano.vendedores || {};
+    diasMes = Number(diasMes) || 0;
+    const porSetor = {};
+    const config = { metasPorSetor: {}, vendedoresPresentes: [], diasFeriasPorVendedor: {}, metaTotalFeriasPorVendedor: {} };
+    Cockpit.State.SETORES.forEach(function (s) {
+      porSetor[s] = { meta: 0, pessoas: 0 };
+      config.metasPorSetor[s] = 0;
+    });
+
+    const pessoas = (roster || []).filter(function (v) { return porSetor[v.setor]; }).map(function (v) {
+      const item = itens[v.codigo] || { tipo: tipoPadraoPlano(v) };
+      const diaria = function (s) { return Number(diarias[s]) || 0; };
+      let partes = [];
+      if (item.tipo === 'normal') partes = [{ setor: v.setor, dias: diasMes, diaria: diaria(v.setor) }];
+      else if (item.tipo === 'parcial') partes = [{ setor: v.setor, dias: Number(item.dias) || 0, diaria: diaria(v.setor) }];
+      else if (item.tipo === 'cobertura') {
+        partes = [{ setor: v.setor, dias: Number(item.dias) || 0, diaria: diaria(v.setor) }];
+        if (porSetor[item.setorCobertura]) partes.push({ setor: item.setorCobertura, dias: Number(item.diasCobertura) || 0, diaria: diaria(item.setorCobertura) });
+      }
+      let meta, dias;
+      if (item.tipo === 'fixa') {
+        meta = Number(item.valor) || 0;
+        dias = Number(item.dias) || diasMes;
+      } else {
+        meta = partes.reduce(function (s, p) { return s + p.dias * p.diaria; }, 0);
+        dias = partes.reduce(function (s, p) { return s + p.dias; }, 0);
+      }
+      const temMeta = meta > 0 && dias > 0;
+      if (temMeta) {
+        porSetor[v.setor].meta += meta;
+        porSetor[v.setor].pessoas++;
+        if (item.tipo === 'normal' && v.status === 'ativo') {
+          config.vendedoresPresentes.push(v.codigo);
+          config.metasPorSetor[v.setor] += meta;
+        } else {
+          config.diasFeriasPorVendedor[v.codigo] = dias;
+          config.metaTotalFeriasPorVendedor[v.codigo] = meta;
+        }
+      }
+      return { codigo: v.codigo, nome: v.nome, setor: v.setor, status: v.status, tipo: item.tipo, item: item,
+        partes: partes, dias: dias, meta: temMeta ? meta : 0, temMeta: temMeta };
+    });
+
+    const total = Cockpit.State.SETORES.reduce(function (s, setor) { return s + porSetor[setor].meta; }, 0);
+    config.metaGeral = total;
+    return { pessoas: pessoas, porSetor: porSetor, total: total, config: config };
+  }
+
+  // Plano de um mês salvo antes do planejamento por pessoa: reconstrói a partir dos
+  // campos antigos, com a mesma régua do rateio (meta do setor ÷ presentes ÷ dias),
+  // então os totais batem com o que estava salvo.
+  function planoDoMes(item, roster) {
+    if (item && item.plano) return JSON.parse(JSON.stringify(item.plano));
+    const plano = { diariaPorSetor: {}, vendedores: {} };
+    if (!item) return plano;
+    const dias = Number(item.diasTrabalhados) || 0;
+    const presentes = item.vendedoresPresentes
+      ? new Set(item.vendedoresPresentes)
+      : new Set((roster || []).filter(function (v) { return v.status === 'ativo'; }).map(function (v) { return v.codigo; }));
+    const diasF = item.diasFeriasPorVendedor || {};
+    const metaF = item.metaTotalFeriasPorVendedor || {};
+    const taxas = metaIndividualDiariaPorSetor(item.metasPorSetor || {}, roster, Array.from(presentes), dias);
+    // Sem arredondar: diária quebrada (ex.: 2.250.000 ÷ 7 ÷ 23) arredondada mudaria o total em centavos.
+    Cockpit.State.SETORES.forEach(function (s) { plano.diariaPorSetor[s] = taxas[s].metaIndividualDiaria || 0; });
+    (roster || []).forEach(function (v) {
+      const d = Number(diasF[v.codigo]) || 0;
+      const m = Number(metaF[v.codigo]) || 0;
+      if (d > 0 && m > 0) {
+        const diaria = plano.diariaPorSetor[v.setor] || 0;
+        plano.vendedores[v.codigo] = Math.abs(d * diaria - m) < 0.01 ? { tipo: 'parcial', dias: d } : { tipo: 'fixa', valor: m, dias: d };
+      } else {
+        plano.vendedores[v.codigo] = { tipo: v.status === 'ativo' && presentes.has(v.codigo) ? 'normal' : 'fora' };
+      }
+    });
+    return plano;
+  }
+
   // Código de vendedor pode chegar em formatos diferentes dependendo da origem: texto
   // com zeros à esquerda (vindo do .xls importado, ex. "0047486") ou número puro
   // (quando a venda volta do Google Sheets via sincronização — planilha guarda células
@@ -331,6 +429,9 @@ Cockpit.Calc = (function () {
     metasSetorAjustadas: metasSetorAjustadas,
     extraDiariaPorSetor: extraDiariaPorSetor,
     metaDiariaSetorComExtras: metaDiariaSetorComExtras,
+    tipoPadraoPlano: tipoPadraoPlano,
+    calcularPlanoMetas: calcularPlanoMetas,
+    planoDoMes: planoDoMes,
     rankingVendedores: rankingVendedores
   };
 })();

@@ -41,6 +41,23 @@ Cockpit.DashboardAdmin = (function () {
     });
   }
 
+  // Planejamento por pessoa (ver Cockpit.Calc.calcularPlanoMetas): o que está na
+  // tela fica em `plano`; cada campo mexe nele e o resumo é refeito na hora.
+  const TIPOS_PLANO = [
+    { tipo: 'normal', nome: 'Mês normal' },
+    { tipo: 'parcial', nome: 'Férias / dias parciais' },
+    { tipo: 'cobertura', nome: 'Cobre outro setor' },
+    { tipo: 'fixa', nome: 'Meta fixa no mês' },
+    { tipo: 'fora', nome: 'Fora deste mês' }
+  ];
+  let plano = { diariaPorSetor: {}, vendedores: {} };
+
+  function labelMes(chave) {
+    const partes = chave.split('-');
+    return MESES[Number(partes[1]) - 1] + '/' + partes[0];
+  }
+  function diasDoMes() { return Number(document.getElementById('metaDias').value) || 0; }
+
   function initMetasTab() {
     const selMes = document.getElementById('metaMesSel');
     selMes.innerHTML = MESES.map(function (m, i) { return '<option value="' + (i + 1) + '">' + m + '</option>'; }).join('');
@@ -52,11 +69,29 @@ Cockpit.DashboardAdmin = (function () {
     carregarMetaDoFormulario();
     selMes.addEventListener('change', carregarMetaDoFormulario);
     document.getElementById('metaAno').addEventListener('change', carregarMetaDoFormulario);
+    document.getElementById('metaDias').addEventListener('input', atualizarResumo);
 
-    const metaGeralInput = document.getElementById('metaGeral');
-    wireMascaraMoeda(metaGeralInput);
-    metaGeralInput.addEventListener('input', atualizarCalculoMetaDiaria);
-    document.getElementById('metaDias').addEventListener('input', atualizarCalculoMetaDiaria);
+    const tbody = document.querySelector('#tblPlanoMetas tbody');
+    tbody.addEventListener('change', function (e) {
+      const tr = e.target.closest('tr[data-cod]');
+      if (!tr) return;
+      const cod = tr.dataset.cod;
+      if (e.target.classList.contains('plano-tipo')) {
+        plano.vendedores[cod] = novoItem(e.target.value, cod);
+        renderConta(tr);
+      } else if (e.target.dataset.campo === 'setorCobertura') {
+        itemDe(cod).setorCobertura = e.target.value;
+        renderConta(tr);
+      }
+      atualizarResumo();
+    });
+    tbody.addEventListener('input', function (e) {
+      const tr = e.target.closest('tr[data-cod]');
+      const campo = e.target.dataset.campo;
+      if (!tr || !campo || campo === 'setorCobertura') return;
+      itemDe(tr.dataset.cod)[campo] = campo === 'valor' ? Cockpit.Calc.parseNumeroBR(e.target.value) : (Number(e.target.value) || '');
+      atualizarResumo();
+    });
 
     document.getElementById('btnSalvarMetas').addEventListener('click', salvarMetas);
 
@@ -68,7 +103,6 @@ Cockpit.DashboardAdmin = (function () {
       if (btn.dataset.action === 'excluir') excluirMetaMes(chave);
     });
 
-    atualizarCalculoMetaDiaria();
     renderTabelaMetas();
   }
 
@@ -79,13 +113,11 @@ Cockpit.DashboardAdmin = (function () {
     document.getElementById('metaAno').value = partes[0];
     document.getElementById('metaMesSel').value = Number(partes[1]);
     carregarMetaDoFormulario();
-    document.getElementById('metaGeral').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.getElementById('metaDias').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function excluirMetaMes(chave) {
-    const partes = chave.split('-');
-    const label = MESES[Number(partes[1]) - 1] + '/' + partes[0];
-    if (!confirm('Excluir a meta de ' + label + '? Essa ação não pode ser desfeita.')) return;
+    if (!confirm('Excluir a meta de ' + labelMes(chave) + '? Essa ação não pode ser desfeita.')) return;
 
     const cfg = Cockpit.State.getConfig();
     delete cfg[chave];
@@ -100,291 +132,281 @@ Cockpit.DashboardAdmin = (function () {
     if (window.Cockpit.DashboardGeral) Cockpit.DashboardGeral.render();
   }
 
-  // Gera um input de meta por setor (um por Cockpit.State.SETORES) — assim, adicionar
-  // um novo setor no cadastro não exige mexer nesta tela.
-  function renderCamposSetorMetas(valores) {
-    const grid = document.getElementById('metasPorSetorGrid');
-    grid.innerHTML = Cockpit.State.SETORES.map(function (s) {
-      const v = valores && valores[s] !== undefined && valores[s] !== null ? fmt(valores[s]) : '';
-      return '<div class="field"><label>Meta ' + Cockpit.State.setorLabel(s) + ' (R$)</label>' +
-        '<input type="text" inputmode="decimal" class="campo-valor-br" placeholder="R$ 0,00" data-setor-meta="' + s + '" value="' + v + '"></div>';
-    }).join('');
-    grid.querySelectorAll('[data-setor-meta]').forEach(function (inp) {
-      wireMascaraMoeda(inp);
-      inp.addEventListener('input', atualizarCalculoMetaDiaria);
-    });
-  }
-
-  function lerMetasPorSetor() {
-    const out = {};
-    document.querySelectorAll('#metasPorSetorGrid [data-setor-meta]').forEach(function (inp) {
-      out[inp.dataset.setorMeta] = Cockpit.Calc.parseNumeroBR(inp.value);
-    });
-    return out;
-  }
-
-  // Lista de vendedores presentes no mês (afeta a divisão da meta individual).
-  // Se vendedoresPresentes ainda não foi salvo pra esse mês, o padrão marca todo mundo
-  // com status "ativo" no cadastro atual. Ao DESMARCAR alguém, revela uma caixinha
-  // uma caixa de "Meta individual diferenciada" com dois campos: quantos dias ele vai
-  // trabalhar no mês (o mês inteiro, se for o caso — ex.: período inicial/experiência)
-  // e a Meta Total dele. A Meta Total vem PRÉ-PREENCHIDA (dias × taxa diária dos
-  // vendedores ativos do setor) mas é editável — o admin pode ajustar à mão pra
-  // qualquer situação (férias, período inicial, acordo diferente etc.); a partir do
-  // momento em que ele mexe nela, o campo marca data-auto="0" e para de ser
-  // sobrescrito automaticamente. Esse lançamento é 100% mensal — não depende de mudar
-  // o status permanente do vendedor lá no cadastro.
-  function renderVendedoresPresentes(vendedoresPresentes, diasFeriasPorVendedor, metaTotalFeriasPorVendedor) {
+  // Mês salvo: abre como foi salvo (mês salvo na tela antiga é remontado por pessoa,
+  // com o mesmo total). Mês novo: começa com as diárias e as metas fixas do último
+  // mês salvo — férias e coberturas são do mês, não passam pro seguinte.
+  function carregarMetaDoFormulario() {
+    const chave = chaveMesAno(document.getElementById('metaMesSel').value, document.getElementById('metaAno').value);
+    const cfg = Cockpit.State.getConfig();
     const roster = Cockpit.State.getVendedores();
-    const container = document.getElementById('vendedoresPresentesGrid');
-    if (!roster.length) {
-      container.innerHTML = '<p class="muted">Nenhum vendedor cadastrado ainda.</p>';
-      return;
+    const item = cfg[chave];
+    let aviso = '';
+    if (item) {
+      plano = Cockpit.Calc.planoDoMes(item, roster);
+      document.getElementById('metaDias').value = item.diasTrabalhados || '';
+      if (!item.plano) aviso = '<div class="alert warn">Este mês foi salvo na tela antiga: as diárias e a lista abaixo foram montadas a partir do que estava salvo (o total confere). Ao salvar de novo, ele passa pro formato novo.</div>';
+    } else {
+      plano = { diariaPorSetor: {}, vendedores: {} };
+      document.getElementById('metaDias').value = '';
+      const anterior = Object.keys(cfg).filter(function (k) { return k < chave; }).sort().pop();
+      if (anterior) {
+        const p = Cockpit.Calc.planoDoMes(cfg[anterior], roster);
+        plano.diariaPorSetor = p.diariaPorSetor;
+        Object.keys(p.vendedores).forEach(function (cod) {
+          if (p.vendedores[cod].tipo === 'fixa') plano.vendedores[cod] = { tipo: 'fixa', valor: p.vendedores[cod].valor, dias: '' };
+        });
+        aviso = '<div class="alert ok">Mês novo: as diárias e as metas fixas vieram de ' + labelMes(anterior) + '. Preencha os dias trabalhados, confira as diárias e ajuste quem tem exceção neste mês.</div>';
+      }
     }
-    const selecionados = vendedoresPresentes
-      ? new Set(vendedoresPresentes)
-      : new Set(roster.filter(function (v) { return v.status === 'ativo'; }).map(function (v) { return v.codigo; }));
-    const diasFerias = diasFeriasPorVendedor || {};
-    const metaFerias = metaTotalFeriasPorVendedor || {};
+    document.getElementById('planoAviso').innerHTML = aviso;
+    renderDiarias();
+    renderPlano();
+    atualizarResumo();
+  }
 
-    container.innerHTML = roster.map(function (v) {
-      const checked = selecionados.has(v.codigo);
-      const statusNota = v.status !== 'ativo' ? ' <span class="muted">(' + Cockpit.State.statusLabel(v.status) + ' no cadastro)</span>' : '';
-      const dias = diasFerias[v.codigo] !== undefined && diasFerias[v.codigo] !== null ? diasFerias[v.codigo] : '';
-      // Se já existe um valor salvo de Meta Total, respeita ele (não sobrescreve
-      // automaticamente) — só entra em modo "auto" quando ainda não há nada salvo.
-      const metaSalva = metaFerias[v.codigo];
-      const metaValue = metaSalva !== undefined && metaSalva !== null && metaSalva !== '' ? fmt(metaSalva) : '';
-      const autoFlag = metaValue ? '0' : '1';
-      return '<div class="presente-row">' +
-        '<label class="presente-item"><input type="checkbox" data-presente="' + v.codigo + '" ' + (checked ? 'checked' : '') + '>' +
-          '<span class="presente-nome">' + v.nome + '</span>' + Cockpit.State.setorBadgeHtml(v.setor) + statusNota + '</label>' +
-        '<div class="ferias-parcial-box" data-ferias-box="' + v.codigo + '" style="display:' + (checked ? 'none' : 'flex') + '">' +
-          '<span class="ferias-motivo-label">Meta individual diferenciada (férias, período inicial, afastamento parcial etc.)</span>' +
-          '<label class="ferias-parcial-campo">Dias trabalhados no mês' +
-            '<input type="number" min="0" max="31" placeholder="0" data-ferias-dias="' + v.codigo + '" value="' + dias + '"></label>' +
-          '<label class="ferias-parcial-campo">Meta total <span class="muted" style="text-transform:none;font-weight:400">(editável)</span>' +
-            '<input type="text" inputmode="decimal" class="campo-valor-br" placeholder="R$ 0,00" data-ferias-meta="' + v.codigo + '" data-auto="' + autoFlag + '" value="' + metaValue + '"></label>' +
-        '</div>' +
-      '</div>';
+  function renderDiarias() {
+    const grid = document.getElementById('diariasSetorGrid');
+    grid.innerHTML = Cockpit.State.SETORES.map(function (s) {
+      const v = Number(plano.diariaPorSetor[s]) || 0;
+      return '<div class="field"><label>' + Cockpit.State.setorLabel(s) + ' (R$ por dia)</label>' +
+        '<input type="text" inputmode="decimal" class="campo-valor-br" placeholder="R$ 0,00" data-diaria="' + s + '" value="' + (v ? fmt(v) : '') + '"></div>';
     }).join('');
-
-    // Recalcula a meta individual na hora, assim que uma presença ou os dias parciais mudam.
-    container.querySelectorAll('[data-presente]').forEach(function (chk) {
-      chk.addEventListener('change', function () {
-        const box = container.querySelector('[data-ferias-box="' + chk.dataset.presente + '"]');
-        if (box) box.style.display = chk.checked ? 'none' : 'flex';
-        if (chk.checked) {
-          // Voltou a contar como presente o mês inteiro — limpa dias/meta parciais lançados.
-          const diasInp = container.querySelector('[data-ferias-dias="' + chk.dataset.presente + '"]');
-          const metaInp = container.querySelector('[data-ferias-meta="' + chk.dataset.presente + '"]');
-          if (diasInp) diasInp.value = '';
-          if (metaInp) { metaInp.value = ''; metaInp.dataset.auto = '1'; }
-        }
-        atualizarCalculoMetaDiaria();
+    grid.querySelectorAll('[data-diaria]').forEach(function (inp) {
+      wireMascaraMoeda(inp);
+      inp.addEventListener('input', function () {
+        plano.diariaPorSetor[inp.dataset.diaria] = Cockpit.Calc.parseNumeroBR(inp.value);
+        atualizarResumo();
       });
     });
-    container.querySelectorAll('[data-ferias-dias]').forEach(function (inp) {
-      inp.addEventListener('input', atualizarCalculoMetaDiaria);
-    });
-    container.querySelectorAll('[data-ferias-meta]').forEach(function (inp) {
-      wireMascaraMoeda(inp);
-      // Assim que o admin mexe na Meta Total na mão, ela para de ser recalculada
-      // automaticamente a partir de dias × taxa — o valor digitado passa a valer.
-      inp.addEventListener('input', function () { inp.dataset.auto = '0'; atualizarCalculoMetaDiaria(); });
+  }
+
+  // Quem aparece na lista: todo mundo com setor, menos os inativos (a não ser que
+  // tenham meta neste mês), por setor e nome.
+  function rosterDoPlano() {
+    const ordem = Cockpit.State.SETORES;
+    return Cockpit.State.getVendedores().filter(function (v) {
+      if (ordem.indexOf(v.setor) < 0) return false;
+      const item = plano.vendedores[v.codigo];
+      return v.status !== 'inativo' || (item && item.tipo !== 'fora');
+    }).sort(function (a, b) {
+      return (ordem.indexOf(a.setor) - ordem.indexOf(b.setor)) || String(a.nome).localeCompare(String(b.nome), 'pt-BR');
     });
   }
 
-  function lerVendedoresPresentes() {
-    return Array.prototype.map.call(
-      document.querySelectorAll('#vendedoresPresentesGrid [data-presente]:checked'),
-      function (inp) { return inp.dataset.presente; }
-    );
+  function vendedorDe(cod) { return Cockpit.State.getVendedores().find(function (v) { return v.codigo === cod; }); }
+
+  function itemDe(cod) {
+    if (!plano.vendedores[cod]) {
+      const v = vendedorDe(cod);
+      plano.vendedores[cod] = { tipo: v ? Cockpit.Calc.tipoPadraoPlano(v) : 'fora' };
+    }
+    return plano.vendedores[cod];
   }
 
-  function lerDiasFeriasPorVendedor() {
-    const out = {};
-    document.querySelectorAll('#vendedoresPresentesGrid [data-ferias-dias]').forEach(function (inp) {
-      const v = Number(inp.value);
-      if (v > 0) out[inp.dataset.feriasDias] = v;
-    });
-    return out;
+  // Trocou "como fica no mês": a meta fixa já começa com o que a pessoa faria
+  // até agora (é só ajustar); a cobertura começa cobrindo o primeiro outro setor.
+  function novoItem(tipo, cod) {
+    const v = vendedorDe(cod);
+    const antes = itemDe(cod);
+    if (tipo === 'parcial') return { tipo: tipo, dias: antes.dias || '' };
+    if (tipo === 'cobertura') {
+      const outro = Cockpit.State.SETORES.find(function (s) { return s !== v.setor && Number(plano.diariaPorSetor[s]) > 0; })
+        || Cockpit.State.SETORES.find(function (s) { return s !== v.setor; });
+      return { tipo: tipo, dias: antes.dias || '', setorCobertura: outro, diasCobertura: '' };
+    }
+    if (tipo === 'fixa') {
+      const r = Cockpit.Calc.calcularPlanoMetas(plano, [v], diasDoMes());
+      return { tipo: tipo, valor: r.total || '', dias: '' };
+    }
+    return { tipo: tipo };
   }
 
-  function lerMetaTotalFeriasPorVendedor() {
-    const out = {};
-    document.querySelectorAll('#vendedoresPresentesGrid [data-ferias-meta]').forEach(function (inp) {
-      const v = Cockpit.Calc.parseNumeroBR(inp.value);
-      if (v > 0) out[inp.dataset.feriasMeta] = v;
+  function renderPlano() {
+    const tbody = document.querySelector('#tblPlanoMetas tbody');
+    const lista = rosterDoPlano();
+    if (!lista.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Nenhum vendedor com setor no cadastro (aba Vendedores).</td></tr>';
+      return;
+    }
+    tbody.innerHTML = lista.map(function (v) {
+      const item = itemDe(v.codigo);
+      const statusNota = v.status !== 'ativo' ? ' <span class="muted">(' + Cockpit.State.statusLabel(v.status) + ' no cadastro)</span>' : '';
+      return '<tr data-cod="' + v.codigo + '">' +
+        '<td><div class="plano-nome">' + v.nome + '</div>' + Cockpit.State.setorBadgeHtml(v.setor) + statusNota + '</td>' +
+        '<td><select class="plano-tipo">' + TIPOS_PLANO.map(function (t) {
+          return '<option value="' + t.tipo + '"' + (t.tipo === item.tipo ? ' selected' : '') + '>' + t.nome + '</option>';
+        }).join('') + '</select></td>' +
+        '<td class="plano-conta"></td>' +
+        '<td class="tr plano-meta"></td>' +
+      '</tr>';
+    }).join('');
+    tbody.querySelectorAll('tr[data-cod]').forEach(renderConta);
+  }
+
+  // A conta da pessoa, com os campos do tipo dela. Os valores (dias do mês e
+  // diárias) são preenchidos por atualizarResumo, que roda a cada tecla.
+  function renderConta(tr) {
+    const v = vendedorDe(tr.dataset.cod);
+    const item = itemDe(tr.dataset.cod);
+    const diaria = function (s) { return '<span data-diaria-de="' + s + '"></span>'; };
+    const dias = function (campo, valor, extra) {
+      return '<input type="number" min="0" max="31" class="plano-num" data-campo="' + campo + '" value="' + (valor || '') + '"' + (extra || '') + '>';
+    };
+    let html;
+    if (item.tipo === 'normal') {
+      html = '<span data-dias-mes></span> dias × ' + diaria(v.setor);
+    } else if (item.tipo === 'parcial') {
+      html = dias('dias', item.dias) + ' dias × ' + diaria(v.setor);
+    } else if (item.tipo === 'cobertura') {
+      html = dias('dias', item.dias) + ' dias no ' + Cockpit.State.setorLabel(v.setor) + ' × ' + diaria(v.setor) +
+        '<div class="plano-cobre">+ ' + dias('diasCobertura', item.diasCobertura) + ' dias cobrindo ' +
+        '<select data-campo="setorCobertura">' + Cockpit.State.SETORES.filter(function (s) { return s !== v.setor; }).map(function (s) {
+          return '<option value="' + s + '"' + (s === item.setorCobertura ? ' selected' : '') + '>' + Cockpit.State.setorLabel(s) + '</option>';
+        }).join('') + '</select> × ' + diaria(item.setorCobertura) + '</div>';
+    } else if (item.tipo === 'fixa') {
+      html = '<input type="text" inputmode="decimal" class="campo-valor-br plano-valor" data-campo="valor" placeholder="R$ 0,00" value="' + (item.valor ? fmt(item.valor) : '') + '">' +
+        ' em ' + dias('dias', item.dias, ' data-dias-padrao') + ' dias';
+    } else {
+      html = '<span class="muted">Sem meta neste mês</span>';
+    }
+    tr.querySelector('.plano-conta').innerHTML = html;
+    const valor = tr.querySelector('[data-campo="valor"]');
+    if (valor) wireMascaraMoeda(valor);
+  }
+
+  // Refeito a cada tecla: valores dentro das linhas, meta de cada pessoa, resumo
+  // por setor e a memória de cálculo (a mesma conta que se faz no papel).
+  function atualizarResumo() {
+    const dias = diasDoMes();
+    const roster = Cockpit.State.getVendedores();
+    const r = Cockpit.Calc.calcularPlanoMetas(plano, roster, dias);
+    const tbody = document.querySelector('#tblPlanoMetas tbody');
+
+    tbody.querySelectorAll('[data-dias-mes]').forEach(function (el) { el.textContent = dias || '?'; });
+    tbody.querySelectorAll('[data-diaria-de]').forEach(function (el) { el.textContent = fmt(plano.diariaPorSetor[el.dataset.diariaDe] || 0); });
+    tbody.querySelectorAll('[data-dias-padrao]').forEach(function (el) { el.placeholder = dias || ''; });
+    r.pessoas.forEach(function (p) {
+      const tr = tbody.querySelector('tr[data-cod="' + CSS.escape(p.codigo) + '"]');
+      if (!tr) return;
+      tr.classList.toggle('sem-meta', !p.temMeta);
+      tr.querySelector('.plano-meta').innerHTML = p.temMeta
+        ? '<b>' + fmt(p.meta) + '</b><small>' + p.dias + ' dias · ' + fmt(p.meta / p.dias) + '/dia</small>'
+        : '<span class="muted">—</span>';
     });
-    return out;
+
+    // Cards: meta do mês, meta diária média e um por setor
+    let html = '<div class="sum-card orange"><span class="sum-label">Meta do mês</span><span class="sum-value">' + fmt(r.total) + '</span>' +
+      '<div class="sum-card-sub">soma dos setores</div></div>' +
+      '<div class="sum-card"><span class="sum-label">Meta diária</span><span class="sum-value">' + fmt(dias ? r.total / dias : 0) + '</span>' +
+      '<div class="sum-card-sub">meta do mês ÷ ' + (dias || '?') + ' dias</div></div>';
+    Cockpit.State.SETORES.forEach(function (s) {
+      const ps = r.porSetor[s];
+      html += '<div class="sum-card"><span class="sum-label">' + Cockpit.State.setorLabel(s) + '</span><span class="sum-value">' + fmt(ps.meta) + '</span>' +
+        '<div class="sum-card-sub">' + ps.pessoas + (ps.pessoas === 1 ? ' pessoa' : ' pessoas') + '</div></div>';
+    });
+    document.getElementById('resumoMetasGrid').innerHTML = html;
+    document.getElementById('memoriaCalculo').innerHTML = memoriaHtml(r, dias);
+
+    // Avisos que não impedem salvar
+    const avisos = [];
+    r.pessoas.forEach(function (p) {
+      if (dias && p.temMeta && p.dias > dias) avisos.push(p.nome + ': ' + p.dias + ' dias, mas o mês tem ' + dias + '.');
+    });
+    Cockpit.State.SETORES.forEach(function (s) {
+      const semDiaria = r.pessoas.filter(function (p) { return p.setor === s && p.tipo === 'normal' && !p.temMeta; }).length;
+      if (dias && semDiaria && !(Number(plano.diariaPorSetor[s]) > 0)) avisos.push(Cockpit.State.setorLabel(s) + ' sem diária: ' + semDiaria + (semDiaria === 1 ? ' vendedor do mês normal fica' : ' vendedores do mês normal ficam') + ' sem meta.');
+    });
+    document.getElementById('alertaSomaMetas').innerHTML = avisos.length ? '<div class="alert warn">' + avisos.join('<br>') + '</div>' : '';
+  }
+
+  // "5 vendedores Telemarketing × R$ 28.000,00 × 24 dias = R$ 3.360.000,00" pra quem
+  // está no mês normal, e uma linha pra cada exceção — fecha com o total do mês.
+  function memoriaHtml(r, dias) {
+    const linhas = [];
+    const primeiroNome = function (p) { return String(p.nome).split(/\s+/)[0]; };
+    const setorDe = function (s) { return Cockpit.State.setorLabel(s); };
+    Cockpit.State.SETORES.forEach(function (s) {
+      const normais = r.pessoas.filter(function (p) { return p.setor === s && p.tipo === 'normal' && p.temMeta; });
+      if (!normais.length) return;
+      const soma = normais.reduce(function (t, p) { return t + p.meta; }, 0);
+      linhas.push({ texto: normais.length + (normais.length === 1 ? ' vendedor ' : ' vendedores ') + setorDe(s) + ' × ' + fmt(plano.diariaPorSetor[s]) + ' × ' + dias + ' dias',
+        nomes: normais.map(primeiroNome).join(', '), valor: soma });
+    });
+    r.pessoas.forEach(function (p) {
+      if (!p.temMeta || p.tipo === 'normal') return;
+      let conta;
+      if (p.tipo === 'fixa') conta = 'meta fixa (' + p.dias + ' dias)';
+      else conta = p.partes.filter(function (x) { return x.dias > 0; }).map(function (x) {
+        return x.dias + ' dias' + (x.setor !== p.setor ? ' no ' + setorDe(x.setor) : '') + ' × ' + fmt(x.diaria);
+      }).join(' + ');
+      const tipo = { parcial: 'férias / dias parciais', cobertura: 'cobrindo ' + setorDe(p.item.setorCobertura), fixa: '' }[p.tipo];
+      linhas.push({ texto: p.nome + ' (' + setorDe(p.setor) + (tipo ? ', ' + tipo : '') + '): ' + conta, valor: p.meta });
+    });
+    const semMeta = r.pessoas.filter(function (p) { return !p.temMeta; });
+    if (!linhas.length && !semMeta.length) return '';
+    return '<div class="memoria">' +
+      '<div class="memoria-titulo">Como a meta do mês foi calculada</div>' +
+      linhas.map(function (l) {
+        return '<div class="mem-linha"><span>' + l.texto + (l.nomes ? '<small>' + l.nomes + '</small>' : '') + '</span><b>' + fmt(l.valor) + '</b></div>';
+      }).join('') +
+      (semMeta.length ? '<div class="mem-linha mem-sem"><span>Sem meta neste mês: ' + semMeta.map(primeiroNome).join(', ') + '</span><b>—</b></div>' : '') +
+      '<div class="mem-linha mem-total"><span>Meta do mês</span><b>' + fmt(r.total) + '</b></div>' +
+      '<p class="muted mem-nota">Cada pessoa conta no setor do cadastro dela, que é onde as vendas dela também entram. Quem cobre outro setor soma no setor de origem.</p>' +
+    '</div>';
   }
 
   // Chamado sempre que o cadastro de vendedores muda (novo/editado/excluído), pra
-  // manter a lista de presença da aba Metas do Mês em dia sem perder marcações
-  // que o admin já tenha feito manualmente nessa visita à tela.
+  // manter a lista de vendedores da aba Metas do Mês em dia sem perder o que o
+  // admin já mexeu nessa visita à tela.
   function refreshVendedoresPresentesSeVisivel() {
-    const grid = document.getElementById('vendedoresPresentesGrid');
-    if (grid && grid.children.length) {
-      renderVendedoresPresentes(lerVendedoresPresentes(), lerDiasFeriasPorVendedor(), lerMetaTotalFeriasPorVendedor());
-    }
+    if (!document.querySelector('#tblPlanoMetas tbody tr')) return;
+    renderPlano();
+    atualizarResumo();
   }
 
-  function carregarMetaDoFormulario() {
-    const mes = document.getElementById('metaMesSel').value;
-    const ano = document.getElementById('metaAno').value;
-    const cfg = Cockpit.State.getConfig();
-    const item = cfg[chaveMesAno(mes, ano)];
-    document.getElementById('metaGeral').value = item && item.metaGeral ? fmt(item.metaGeral) : '';
-    document.getElementById('metaDias').value = item ? item.diasTrabalhados : '';
-    renderCamposSetorMetas(item ? item.metasPorSetor : null);
-    renderVendedoresPresentes(item ? item.vendedoresPresentes : null, item ? item.diasFeriasPorVendedor : null, item ? item.metaTotalFeriasPorVendedor : null);
-    document.getElementById('alertaSomaMetas').innerHTML = '';
-    atualizarCalculoMetaDiaria();
-  }
-
-  // Recalculado a cada tecla digitada nos campos de meta, a cada marcar/desmarcar
-  // presença e a cada dia/meta parcial preenchido — por isso não pode depender de nada
-  // async. Pra cada setor, mostra a Meta Diária (já somando a Meta Total de quem tem
-  // dias parciais lançados) e, logo abaixo, a Meta Individual DIÁRIA (meta do setor ÷
-  // vendedores ativos presentes ÷ dias trabalhados), com a diferença em relação ao
-  // cenário "todos ativos presentes" quando alguém está desmarcado.
-  function atualizarCalculoMetaDiaria() {
-    const dias = Number(document.getElementById('metaDias').value) || 0;
-    const geral = Cockpit.Calc.parseNumeroBR(document.getElementById('metaGeral').value);
-    const metasPorSetor = lerMetasPorSetor();
-    const roster = Cockpit.State.getVendedores();
-    const presentesCodigos = lerVendedoresPresentes();
-    const diasFeriasPorVendedor = lerDiasFeriasPorVendedor();
-
-    const taxas = Cockpit.Calc.metaIndividualDiariaPorSetor(metasPorSetor, roster, presentesCodigos, dias);
-
-    // Sugere a Meta Total (dias × taxa diária do setor) só pra quem ainda não editou
-    // esse campo na mão (data-auto="1") — quem já digitou um valor próprio (data-auto="0")
-    // não é mais sobrescrito automaticamente.
-    document.querySelectorAll('#vendedoresPresentesGrid [data-ferias-meta]').forEach(function (metaInp) {
-      if (metaInp.dataset.auto !== '1') return;
-      const codigo = metaInp.dataset.feriasMeta;
-      const v = roster.find(function (r) { return r.codigo === codigo; });
-      const diasInp = document.querySelector('#vendedoresPresentesGrid [data-ferias-dias="' + codigo + '"]');
-      const seusDias = diasInp ? (Number(diasInp.value) || 0) : 0;
-      const taxa = (v && taxas[v.setor]) ? taxas[v.setor].metaIndividualDiaria : null;
-      metaInp.value = (taxa && seusDias > 0) ? fmt(taxa * seusDias) : '';
-    });
-
-    const metaTotalFeriasPorVendedor = lerMetaTotalFeriasPorVendedor();
-
-    // Taxa DIÁRIA de cada vendedor com meta diferenciada (meta total dele ÷ os dias
-    // que ele mesmo vai trabalhar) — soma-se essa taxa direto na meta diária do setor,
-    // nunca o total mensal dele dividido pelos dias do mês inteiro (isso diluiria a
-    // contribuição dele nos dias em que ele nem vai trabalhar).
-    const extrasDiarios = Cockpit.Calc.extraDiariaPorSetor(roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
-
-    // "Meta Diária Geral" é sempre a SOMA dos cards de setor abaixo — nunca calculada
-    // separadamente a partir do campo "Meta Geral" digitado. Isso evita que ela fique
-    // dessincronizada se a Meta Geral não bater exatamente com a soma dos setores
-    // (erro de digitação, ou setor ainda não preenchido).
-    const metaDiariaGeralSoma = Cockpit.State.SETORES.reduce(function (s, setor) {
-      return s + Cockpit.Calc.metaDiaria(metasPorSetor[setor] || 0, dias) + (extrasDiarios[setor] || 0);
-    }, 0);
-
-    const ativosTotalPorSetor = {};
-    roster.forEach(function (v) {
-      if (v.status === 'ativo') ativosTotalPorSetor[v.setor] = (ativosTotalPorSetor[v.setor] || 0) + 1;
-    });
-
-    let html = '<div class="sum-card"><span class="sum-label">Meta Diária Geral</span><span class="sum-value">' +
-      fmt(metaDiariaGeralSoma) + '</span></div>';
-
-    Cockpit.State.SETORES.forEach(function (s) {
-      const metaSetor = metasPorSetor[s] || 0;
-      const taxa = taxas[s].metaIndividualDiaria;
-      const qtdAtivosTotal = ativosTotalPorSetor[s] || 0;
-      const metaIndividualBase = (qtdAtivosTotal > 0 && dias > 0) ? (metaSetor / qtdAtivosTotal / dias) : null;
-      const extraDiaria = extrasDiarios[s] || 0;
-
-      let sub;
-      if (taxa === null) {
-        sub = '<div class="sum-card-sub">Meta Individual: sem vendedor ativo presente</div>';
-      } else {
-        sub = '<div class="sum-card-sub">Meta Individual (diária): ' + fmt(taxa) + '</div>';
-        if (metaIndividualBase !== null && Math.abs(taxa - metaIndividualBase) > 0.01) {
-          const diferenca = taxa - metaIndividualBase;
-          sub += '<div class="sum-card-sub up">' + (diferenca > 0 ? '+' : '') + fmt(diferenca) + ' vs. todos ativos presentes</div>';
-        }
-      }
-      if (extraDiaria > 0.01) {
-        sub += '<div class="sum-card-sub up">+' + fmt(extraDiaria) + '/dia de vendedor(es) com meta diferenciada</div>';
-      }
-
-      html += '<div class="sum-card"><span class="sum-label">Meta Diária ' + Cockpit.State.setorLabel(s) + '</span><span class="sum-value">' +
-        fmt(Cockpit.Calc.metaDiaria(metaSetor, dias) + extraDiaria) + '</span>' + sub + '</div>';
-    });
-    document.getElementById('calcMetasDiariasGrid').innerHTML = html;
-
-    // Avisa em tempo real (sem precisar clicar em Salvar) se a Meta Geral digitada não
-    // bate com a soma das metas por setor — pega erro de digitação (ex.: zero a mais)
-    // na hora, antes de virar um card confuso. A Meta Geral é o total FINAL (já
-    // incluindo o que os vendedores com meta diferenciada vão gerar), então a
-    // comparação usa a soma AJUSTADA dos setores (base + extra de férias), não a base sozinha.
-    const ajustadasMensais = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
-    const somaSetoresAjustada = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (ajustadasMensais[setor] || 0); }, 0);
-    const alertaEl = document.getElementById('alertaSomaMetas');
-    if (geral > 0 && Math.abs(somaSetoresAjustada - geral) > 0.01) {
-      alertaEl.innerHTML = '<div class="alert error">A soma das metas por setor, já somando quem tem meta diferenciada, (' + fmt(somaSetoresAjustada) +
-        ') não bate com a Meta Geral (' + fmt(geral) + '). Diferença: ' + fmt(Math.abs(somaSetoresAjustada - geral)) + '.</div>';
-    } else {
-      alertaEl.innerHTML = '';
-    }
-  }
-
+  // Salva o plano por pessoa e, junto, os campos que o resto do Cockpit já lê
+  // (Visão Geral, Minha Visão e Corrida não mudam nada).
   function salvarMetas() {
     const mes = document.getElementById('metaMesSel').value;
     const ano = document.getElementById('metaAno').value;
-    const geral = Cockpit.Calc.parseNumeroBR(document.getElementById('metaGeral').value);
-    const dias = Number(document.getElementById('metaDias').value) || 0;
-    const metasPorSetor = lerMetasPorSetor();
-    const vendedoresPresentes = lerVendedoresPresentes();
-    const diasFeriasPorVendedor = lerDiasFeriasPorVendedor();
-    const metaTotalFeriasPorVendedor = lerMetaTotalFeriasPorVendedor();
+    const dias = diasDoMes();
+    const roster = Cockpit.State.getVendedores();
+    const r = Cockpit.Calc.calcularPlanoMetas(plano, roster, dias);
 
     const alertaEl = document.getElementById('alertaSomaMetas');
-    if (!geral || !dias) {
-      alertaEl.innerHTML = '<div class="alert error">Preencha Meta Geral e Dias Trabalhados.</div>';
+    if (!dias) {
+      alertaEl.innerHTML = '<div class="alert error">Preencha os dias trabalhados no mês.</div>';
+      document.getElementById('metaDias').focus();
       return;
     }
-    // A Meta Geral é o total FINAL do mês (já incluindo o que os vendedores com meta
-    // diferenciada vão gerar) — por isso compara com a soma AJUSTADA dos setores
-    // (base + extra de férias/período inicial/etc.), não a soma base sozinha.
-    const roster = Cockpit.State.getVendedores();
-    const ajustadasMensais = Cockpit.Calc.metasSetorAjustadas(metasPorSetor, roster, diasFeriasPorVendedor, metaTotalFeriasPorVendedor);
-    const soma = Cockpit.State.SETORES.reduce(function (s, setor) { return s + (ajustadasMensais[setor] || 0); }, 0);
-    const diff = Math.abs(soma - geral);
-    if (diff > 0.01) {
-      alertaEl.innerHTML = '<div class="alert error">A soma das metas por setor, já somando quem tem meta diferenciada, (' + fmt(soma) +
-        ') não bate com a Meta Geral (' + fmt(geral) + '). Diferença: ' + fmt(diff) + '. Ajuste os valores antes de salvar.</div>';
+    if (!(r.total > 0)) {
+      alertaEl.innerHTML = '<div class="alert error">A meta do mês ficou em zero: preencha a diária dos setores.</div>';
       return;
     }
-    alertaEl.innerHTML = '';
+
+    // Guarda o tipo de todo mundo da lista (não depende do status do cadastro mudar depois).
+    const vendedores = {};
+    rosterDoPlano().forEach(function (v) { vendedores[v.codigo] = Object.assign({}, itemDe(v.codigo)); });
+    const diariaPorSetor = {};
+    Cockpit.State.SETORES.forEach(function (s) { diariaPorSetor[s] = Number(plano.diariaPorSetor[s]) || 0; });
 
     const cfg = Cockpit.State.getConfig();
-    const chave = chaveMesAno(mes, ano);
-    cfg[chave] = {
-      metaGeral: geral, metasPorSetor: metasPorSetor, diasTrabalhados: dias, vendedoresPresentes: vendedoresPresentes,
-      diasFeriasPorVendedor: diasFeriasPorVendedor, metaTotalFeriasPorVendedor: metaTotalFeriasPorVendedor,
+    cfg[chaveMesAno(mes, ano)] = Object.assign({}, r.config, {
+      diasTrabalhados: dias,
+      plano: { diariaPorSetor: diariaPorSetor, vendedores: vendedores },
       atualizadoEm: new Date().toISOString(), atualizadoPor: Cockpit.Auth.currentUserName()
-    };
+    });
     Cockpit.State.saveConfigLocal(cfg);
     Cockpit.Sync.pushConfig(cfg).catch(function () {});
 
+    document.getElementById('planoAviso').innerHTML = '';
     renderTabelaMetas();
     if (window.Cockpit.DashboardGeral) Cockpit.DashboardGeral.render();
-    alert('Metas de ' + MESES[mes - 1] + '/' + ano + ' salvas.');
+    alert('Metas de ' + MESES[mes - 1] + '/' + ano + ' salvas: ' + fmt(r.total) + '.');
   }
 
   function renderTabelaMetas() {
     const cfg = Cockpit.State.getConfig();
-    const roster = Cockpit.State.getVendedores();
     const tbody = document.querySelector('#tblMetas tbody');
     const chaves = Object.keys(cfg).sort().reverse();
     if (!chaves.length) {
@@ -393,17 +415,9 @@ Cockpit.DashboardAdmin = (function () {
     }
     tbody.innerHTML = chaves.map(function (chave) {
       const c = cfg[chave];
-      const partes = chave.split('-');
-      const label = MESES[Number(partes[1]) - 1] + '/' + partes[0];
-      const metasPorSetorSalvas = c.metasPorSetor || {};
-      const extrasDiariosSalvos = Cockpit.Calc.extraDiariaPorSetor(roster, c.diasFeriasPorVendedor, c.metaTotalFeriasPorVendedor);
-      // Mesma regra do painel ao vivo: Meta Diária Geral é a soma dos setores, nunca
-      // calculada isoladamente a partir do campo Meta Geral salvo.
-      const metaDiariaGeralSalva = Cockpit.State.SETORES.reduce(function (s, setor) {
-        return s + Cockpit.Calc.metaDiaria(metasPorSetorSalvas[setor] || 0, c.diasTrabalhados) + (extrasDiariosSalvos[setor] || 0);
-      }, 0);
-      return '<tr><td>' + label + '</td><td>' + fmt(c.metaGeral) + '</td><td>' + c.diasTrabalhados + '</td><td>' +
-        fmt(metaDiariaGeralSalva) + '</td>' +
+      // Mesma conta do card "Meta Diária" da Visão Geral: meta do mês ÷ dias trabalhados.
+      return '<tr><td>' + labelMes(chave) + '</td><td>' + fmt(c.metaGeral) + '</td><td>' + c.diasTrabalhados + '</td><td>' +
+        fmt(Cockpit.Calc.metaDiaria(c.metaGeral, c.diasTrabalhados)) + '</td>' +
         '<td><button class="icon-btn" data-action="editar" data-chave="' + chave + '" title="Editar">✏️</button>' +
         '<button class="icon-btn" data-action="excluir" data-chave="' + chave + '" title="Excluir">🗑️</button></td></tr>';
     }).join('');

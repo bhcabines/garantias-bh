@@ -208,6 +208,7 @@
       <div class="admin-tab-panel active" id="tab-metas">
         <div class="card">
           <h3 class="card-title">Metas do Mês</h3>
+          <p class="muted" style="margin-bottom:14px">A meta de cada vendedor é a <b>diária do setor × os dias que ele trabalha</b>. Somando as pessoas, sai a meta de cada setor; somando os setores, a meta do mês. Na lista de vendedores, mude só quem tem alguma exceção (férias, cobertura de outro setor, meta fixa).</p>
           <div class="form-grid">
             <div class="field">
               <label>Mês</label>
@@ -217,21 +218,25 @@
               <label>Ano</label>
               <input type="number" id="metaAno" min="2020" max="2100">
             </div>
-            <div class="field"><label>Meta Geral (R$) *</label><input type="text" inputmode="decimal" id="metaGeral" class="campo-valor-br" placeholder="R$ 0,00"></div>
-            <div class="field"><label>Dias Trabalhados *</label><input type="number" id="metaDias" min="1" max="31"></div>
+            <div class="field"><label>Dias trabalhados no mês *</label><input type="number" id="metaDias" min="1" max="31" placeholder="Ex.: 24"></div>
           </div>
-          <div style="margin-top:16px">
-            <div style="font-size:.72rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Meta por setor (a soma deve bater com a Meta Geral)</div>
-            <div class="form-grid" id="metasPorSetorGrid"></div>
-          </div>
-          <div id="alertaSomaMetas"></div>
-          <div class="cards-grid" id="calcMetasDiariasGrid" style="margin-top:16px"></div>
+          <div id="planoAviso"></div>
 
-          <div style="margin-top:20px">
-            <div style="font-size:.72rem;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Vendedores presentes neste mês</div>
-            <p class="muted" style="margin-bottom:8px">Desmarque quem precisar de uma meta diferente da régua padrão do setor só neste mês — férias, afastamento parcial, período inicial/experiência etc. Ao desmarcar, abre uma caixa com dois campos: quantos dias esse vendedor vai trabalhar no mês (o mês inteiro, se ele estiver presente o tempo todo) e a meta total dele. A meta total vem sugerida automaticamente (mesma régua diária dos vendedores ativos), mas pode ser editada livremente. Essa meta é somada de volta na meta do setor, sem alterar a meta dos demais ativos — e não precisa mexer no cadastro do vendedor.</p>
-            <div id="vendedoresPresentesGrid"></div>
+          <div class="meta-passo">1. Diária de cada vendedor, por setor</div>
+          <div class="form-grid" id="diariasSetorGrid"></div>
+
+          <div class="meta-passo">2. Vendedores no mês</div>
+          <div class="table-wrap plano-wrap">
+            <table id="tblPlanoMetas">
+              <thead><tr><th>Vendedor</th><th>Como fica no mês</th><th>Conta</th><th class="tr">Meta do mês</th></tr></thead>
+              <tbody></tbody>
+            </table>
           </div>
+
+          <div class="meta-passo">3. Resumo do mês</div>
+          <div class="cards-grid" id="resumoMetasGrid"></div>
+          <div id="memoriaCalculo"></div>
+          <div id="alertaSomaMetas"></div>
 
           <div class="btn-row-h" style="margin-top:16px">
             <button class="btn bo" id="btnSalvarMetas">Salvar Metas do Mês</button>

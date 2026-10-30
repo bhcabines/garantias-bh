@@ -59,6 +59,7 @@ body{font-family:'Inter','Segoe UI',Arial,sans-serif;background:var(--bg);color:
 .sum-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.03);overflow:hidden}
 .sum-card.orange{background:var(--orange);border-color:var(--orange)}
 .sum-card.orange .sum-label,.sum-card.orange .sum-value{color:var(--white)}
+.sum-card.orange .sum-card-sub{color:rgba(255,255,255,.85)}
 .sum-card.green-soft{background:#dcfce7;border-color:#bbf7d0}
 .sum-card.green-soft .sum-label,.sum-card.green-soft .sum-value{color:#15803d}
 .sum-card.green-soft .sum-card-sub{color:#166534}
@@ -132,20 +133,28 @@ tbody tr:nth-child(even){background:#fafafa}
 .badge-status.inativo{background:#f3f4f6;color:#999}
 .badge-status.ferias{background:#fef9c3;color:#854d0e}
 
-/* ===== Vendedores presentes (Metas do Mês) ===== */
-#vendedoresPresentesGrid{max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:6px 14px;display:flex;flex-direction:column;gap:2px;background:var(--white)}
-.presente-row{border-bottom:1px solid #f3f2f1}
-.presente-row:last-child{border-bottom:none}
-.presente-item{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:.82rem}
-.presente-item input[type="checkbox"]{width:16px;height:16px;flex-shrink:0;accent-color:var(--orange);cursor:pointer}
-.presente-nome{font-weight:600;color:var(--black);min-width:160px}
-
-/* Caixa revelada ao desmarcar um vendedor — dias parciais (ex.: férias) */
-.ferias-parcial-box{align-items:center;gap:14px;flex-wrap:wrap;padding:8px 10px 10px 30px;margin-bottom:4px;background:#fffbeb;border-radius:8px;font-size:.78rem}
-.ferias-motivo-label{font-weight:700;color:#854d0e;text-transform:uppercase;letter-spacing:.3px;font-size:.68rem}
-.ferias-parcial-campo{display:flex;align-items:center;gap:6px;color:#78350f;font-weight:600}
-.ferias-parcial-campo input{width:88px;padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:.8rem;text-align:center;font-weight:600}
-.ferias-parcial-campo input[readonly]{background:#f9f7f5;color:#854d0e}
+/* ===== Metas do Mês: planejamento por pessoa ===== */
+.meta-passo{margin:22px 0 10px;font-size:.72rem;font-weight:800;color:var(--orange);text-transform:uppercase;letter-spacing:.4px}
+.plano-wrap{max-height:none}
+#tblPlanoMetas td{vertical-align:middle}
+.plano-nome{font-weight:700;font-size:.8rem;margin-bottom:3px}
+.plano-tipo{padding:6px 8px;font-size:.78rem;font-weight:600;min-width:170px}
+.plano-conta{font-size:.8rem;color:var(--dark);line-height:1.9}
+.plano-conta [data-diaria-de],.plano-conta [data-dias-mes]{font-weight:700;color:var(--black)}
+.plano-num{width:62px;padding:4px 6px;font-size:.8rem;text-align:center;font-weight:700}
+.plano-valor{width:140px;padding:4px 8px;font-size:.8rem;font-weight:700}
+.plano-conta select{width:auto;padding:4px 6px;font-size:.78rem}
+.plano-meta b{display:block;font-size:.88rem}
+.plano-meta small{display:block;font-size:.68rem;color:#999;white-space:nowrap}
+#tblPlanoMetas tr.sem-meta td{background:#faf9f8}
+.memoria{margin-top:14px;border:1px solid var(--border);border-radius:12px;padding:12px 16px;background:#fcfbfa}
+.memoria-titulo{font-size:.72rem;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.mem-linha{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px dashed #e7e4e0;font-size:.8rem}
+.mem-linha small{display:block;font-size:.7rem;color:#999;margin-top:1px}
+.mem-linha b{white-space:nowrap;font-variant-numeric:tabular-nums}
+.mem-linha.mem-sem{color:#999}
+.mem-linha.mem-total{border-bottom:none;border-top:2px solid var(--black);margin-top:4px;padding-top:8px;font-size:.9rem;font-weight:800}
+.mem-nota{margin-top:8px;font-size:.72rem}
 
 /* ===== Alertas ===== */
 .alert{padding:10px 14px;border-radius:8px;font-size:.78rem;margin-top:14px}
@@ -298,4 +307,12 @@ button.ag-chip:hover{box-shadow:0 0 0 2px rgba(0,0,0,.12)}
   .ag-quadro{grid-template-columns:repeat(7,82vw);scroll-snap-type:x mandatory}
   .ag-col{scroll-snap-align:start}
   .setor-mini-stats{gap:12px}
+  /* Metas do Mês: cada vendedor vira um bloco (nome, como fica, conta, meta) */
+  #tblPlanoMetas thead{display:none}
+  #tblPlanoMetas,#tblPlanoMetas tbody,#tblPlanoMetas tr,#tblPlanoMetas td{display:block;width:100%}
+  #tblPlanoMetas tr{border:1px solid var(--border);border-radius:10px;margin-bottom:8px;padding:6px 0}
+  #tblPlanoMetas td{border:none;padding:4px 12px;white-space:normal}
+  #tblPlanoMetas td.tr{text-align:left}
+  .plano-tipo{width:100%}
+  .mem-linha{flex-direction:column;gap:2px}
 }
